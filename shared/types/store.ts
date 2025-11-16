@@ -1,6 +1,6 @@
 import type { AdminActivityEntry } from './admin'
 import type { DashboardResponse } from './admin-dashboard'
-import type { ServerListEntry } from './servers'
+import type { ServerListEntry } from './server'
 
 export interface ServersStoreState {
   servers: ServerListEntry[]

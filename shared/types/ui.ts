@@ -29,6 +29,9 @@ export interface AdminSettingsTabDefinition {
   label: string
   value: string
   icon?: string
+  component: string
+  order?: number
+  permission?: string
 }
 
 export interface NodeOption {

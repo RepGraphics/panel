@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 
 definePageMeta({
   auth: true,
@@ -101,18 +101,84 @@ function formatDate(date: Date | string | number | null | undefined) {
       </template>
     </UPageHeader>
 
+    <UModal
+      v-model:open="showCreateModal"
+      title="Add SSH Key"
+      description="Add a new SSH key for secure SFTP access to your servers"
+    >
+      <template #body>
+        <form class="space-y-4" @submit.prevent="createSshKey">
+          <UFormField label="Name" name="name" required>
+            <UInput
+              v-model="createForm.name"
+              placeholder="My Laptop"
+              class="w-full"
+              required
+            />
+          </UFormField>
+
+          <UFormField
+            label="Public Key"
+            name="publicKey"
+            required
+            help="Paste your SSH public key (starts with ssh-rsa, ssh-ed25519, etc.)"
+          >
+            <UTextarea
+              v-model="createForm.publicKey"
+              placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+              :rows="6"
+              class="w-full"
+              required
+            />
+          </UFormField>
+        </form>
+      </template>
+
+      <template #footer="{ close }">
+        <div class="flex justify-end gap-2">
+          <UButton
+            variant="ghost"
+            :disabled="isCreating"
+            @click="close"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            :loading="isCreating"
+            :disabled="isCreating"
+            @click="createSshKey"
+          >
+            Add SSH Key
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
     <UPageBody>
-      <UCard>
+      <UCard :ui="{ body: 'space-y-3' }">
+        <template #header>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold">Configured SSH Keys</h2>
+              <p class="text-sm text-muted-foreground">Add SSH keys to access your servers over SFTP.</p>
+            </div>
+            <UButton
+              icon="i-lucide-plus"
+              color="primary"
+              variant="soft"
+              @click="showCreateModal = true"
+            >
+              Add SSH Key
+            </UButton>
+          </div>
+        </template>
         <UEmpty
           v-if="sshKeys.length === 0"
           icon="i-lucide-key-round"
           title="No SSH keys yet"
           description="Add an SSH key to securely access your servers via SFTP"
-          :actions="[{
-            label: 'Add Your First SSH Key',
-            icon: 'i-lucide-plus',
-            onClick: () => { showCreateModal = true }
-          }]"
         />
 
         <div v-else class="divide-y">
@@ -149,53 +215,6 @@ function formatDate(date: Date | string | number | null | undefined) {
       </UCard>
 
     </UPageBody>
-
-    <UModal v-model="showCreateModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-lg font-semibold">Add SSH Key</h3>
-        </template>
-
-        <form class="space-y-4" @submit.prevent="createSshKey">
-          <UFormField label="Name" name="name" required>
-            <UInput
-              v-model="createForm.name"
-              placeholder="My Laptop"
-              required
-            />
-          </UFormField>
-
-          <UFormField
-            label="Public Key"
-            name="publicKey"
-            required
-            help="Paste your SSH public key (starts with ssh-rsa, ssh-ed25519, etc.)"
-          >
-            <UTextarea
-              v-model="createForm.publicKey"
-              placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
-              :rows="6"
-              required
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2">
-            <UButton
-              variant="ghost"
-              @click="showCreateModal = false"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              type="submit"
-              :loading="isCreating"
-              :disabled="isCreating"
-            >
-              Add SSH Key
-            </UButton>
-          </div>
-        </form>
-      </UCard>
-    </UModal>
   </UPage>
 </template>
+

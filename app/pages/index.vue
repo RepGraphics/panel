@@ -3,16 +3,8 @@
     <UPageHeader
       :title="`Welcome back, ${userName}`"
       description="Manage your servers and recent activity from one place."
-    >
-      <template #actions>
-        <UButton icon="i-lucide-clock" variant="soft" to="/account/activity">
-          Account activity
-        </UButton>
-        <UButton icon="i-lucide-shield" variant="soft" to="/account/sessions">
-          Sessions
-        </UButton>
-      </template>
-    </UPageHeader>
+      :links="headerLinks"
+    />
 
     <UPageBody class="space-y-8">
 
@@ -80,18 +72,24 @@
             <UAlert color="error" icon="i-lucide-alert-circle" :title="error" />
           </template>
           <template v-else-if="activity.length === 0">
-            <UAlert icon="i-lucide-info" title="No recent activity" description="Your account activity will appear here" />
+            <UAlert variant="subtle" icon="i-lucide-info" title="No recent activity" description="Your account activity will appear here" />
           </template>
           <template v-else>
             <div v-for="item in activity.slice(0, 5)" :key="item.id"
-              class="flex items-start gap-3 rounded-lg border border-default p-3 hover:bg-elevated/50 transition-colors">
+              class="flex items-start gap-3 rounded-lg border border-default p-3 transition-colors hover:bg-elevated/50">
               <div class="rounded-md bg-primary/10 p-2 text-primary">
                 <UIcon :name="item.icon" class="size-4" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between gap-2">
-                  <h3 class="font-medium text-sm truncate">{{ item.title }}</h3>
-                  <span class="text-xs text-muted-foreground shrink-0">{{ formatRelative(item.occurredAt) }}</span>
+                  <h3 class="text-sm font-medium truncate">{{ item.title }}</h3>
+                  <NuxtTime
+                    v-if="item.occurredAt"
+                    :datetime="item.occurredAt"
+                    relative
+                    class="text-xs text-muted-foreground shrink-0"
+                  />
+                  <span v-else class="text-xs text-muted-foreground shrink-0">Unknown</span>
                 </div>
                 <p class="text-xs text-muted-foreground line-clamp-2">{{ item.description || 'No additional details' }}</p>
               </div>
@@ -106,108 +104,107 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
+
+import type { ButtonProps } from '#ui/types'
 
 import type {
   ClientDashboardMetric,
   ClientDashboardActivity,
   ClientDashboardResponse,
+  DashboardUserIdentity,
+  MeResponse,
+  DashboardData,
 } from '#shared/types/dashboard'
-import type { ServerUI as Server } from '#shared/types/ui'
+
+const headerLinks: ButtonProps[] = [
+  {
+    label: 'Account activity',
+    icon: 'i-lucide-clock',
+    to: '/account/activity',
+    variant: 'soft',
+    size: 'sm',
+  },
+  {
+    label: 'Sessions',
+    icon: 'i-lucide-shield',
+    to: '/account/sessions',
+    variant: 'soft',
+    size: 'sm',
+  },
+]
 
 const { data: session } = useAuth()
 
-const metrics = ref<ClientDashboardMetric[]>([])
-const activity = ref<ClientDashboardActivity[]>([])
-const servers = ref<Server[]>([])
-const loading = ref(true)
-const loadingServers = ref(true)
-const error = ref<string | null>(null)
+const requestFetch = useRequestFetch()
+
+const defaultDashboard: ClientDashboardResponse = {
+  metrics: [],
+  activity: [],
+  quickLinks: [],
+  maintenance: [],
+  nodes: [],
+  generatedAt: '',
+}
+
+const {
+  data: dashboardData,
+  pending: dashboardPending,
+  error: dashboardError,
+} = await useAsyncData<DashboardData>(
+  'client-dashboard',
+  async () => {
+    const [meResponse, dashboardResponse] = await Promise.all([
+      requestFetch<MeResponse>('/api/me'),
+      requestFetch<ClientDashboardResponse>('/api/dashboard'),
+    ])
+
+    return {
+      user: meResponse.user,
+      dashboard: dashboardResponse,
+    }
+  },
+  {
+    default: () => ({
+      user: null,
+      dashboard: defaultDashboard,
+    }),
+  },
+)
+
+const metrics = computed<ClientDashboardMetric[]>(() => dashboardData.value?.dashboard.metrics ?? [])
+const activity = computed<ClientDashboardActivity[]>(() => dashboardData.value?.dashboard.activity ?? [])
+
+function toErrorMessage(err: unknown, fallback: string) {
+  if (!err) {
+    return null
+  }
+  if (typeof err === 'string') {
+    return err
+  }
+  if (err instanceof Error) {
+    return err.message
+  }
+  if (typeof err === 'object' && err !== null && 'data' in err) {
+    const data = (err as { data?: { message?: string } }).data
+    if (data?.message) {
+      return data.message
+    }
+  }
+  return fallback
+}
+
+const loading = computed(() => dashboardPending.value)
+const error = computed<string | null>(() => toErrorMessage(dashboardError.value, 'Failed to load dashboard overview.'))
+
 const userName = computed(() => {
-  const sessionUser = session.value?.user as { username?: string | null; email?: string | null } | undefined
-  const resolved = sessionUser?.username || sessionUser?.email || me.value?.user.username || me.value?.user.email
+  const sessionUser = session.value?.user as DashboardUserIdentity | undefined
+  const meUser = dashboardData.value?.user ?? null
+  const resolved =
+    sessionUser?.username ||
+    sessionUser?.email ||
+    meUser?.username ||
+    meUser?.email
   return resolved ?? ''
 })
-
-function formatRelative(iso: string | null | undefined) {
-  if (!iso) {
-    return 'Unknown'
-  }
-
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) {
-    return 'Unknown'
-  }
-
-  const diffMs = Date.now() - date.getTime()
-  if (diffMs < 0) {
-    return 'In the future'
-  }
-
-  const diffMinutes = Math.floor(diffMs / 60000)
-  if (diffMinutes < 1) {
-    return 'Just now'
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) {
-    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
-  }
-
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) {
-    return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
-  }
-
-  const diffWeeks = Math.floor(diffDays / 7)
-  if (diffWeeks < 5) {
-    return `${diffWeeks} week${diffWeeks === 1 ? '' : 's'} ago`
-  }
-
-  const diffMonths = Math.floor(diffDays / 30)
-  if (diffMonths < 12) {
-    return `${diffMonths} month${diffMonths === 1 ? '' : 's'} ago`
-  }
-
-  const diffYears = Math.floor(diffDays / 365)
-  return `${diffYears} year${diffYears === 1 ? '' : 's'} ago`
-}
-
-async function loadDashboard() {
-  loading.value = true
-  error.value = null
-
-  try {
-    const data = await $fetch<ClientDashboardResponse>('/api/dashboard')
-    metrics.value = data.metrics
-    activity.value = data.activity
-  }
-  catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to load dashboard overview.'
-  }
-  finally {
-    loading.value = false
-  }
-}
-
-const { data: me } = await useAsyncData('me', () => $fetch<{ user: { username: string; email?: string | null } }>('/api/me'))
-
-async function loadServers() {
-  loadingServers.value = true
-  try {
-    const data = await $fetch<{ data: Server[] }>('/api/client/servers')
-    servers.value = data.data || []
-  }
-  catch (err) {
-    console.error('Failed to load servers:', err)
-  }
-  finally {
-    loadingServers.value = false
-  }
-}
-
-await Promise.all([loadDashboard(), loadServers()])
 </script>

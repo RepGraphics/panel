@@ -1,15 +1,14 @@
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { randomUUID } from 'crypto'
+import type {
+  CreateServerSubuserPayload,
+  CreateServerSubuserResponse,
+} from '#shared/types/server-subusers'
 
-interface CreateSubuserPayload {
-  email: string
-  permissions: string[]
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<CreateServerSubuserResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -22,7 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'Server ID is required' })
   }
 
-  const body = await readBody<CreateSubuserPayload>(event)
+  const body = await readBody<CreateServerSubuserPayload>(event)
 
   if (!body.email || !body.permissions || body.permissions.length === 0) {
     throw createError({
@@ -90,13 +89,14 @@ export default defineEventHandler(async (event) => {
   await db.insert(tables.serverSubusers).values(newSubuser)
 
   return {
+    success: true,
     data: {
       id: newSubuser.id,
       serverId: newSubuser.serverId,
       userId: newSubuser.userId,
       username: targetUser.username,
       email: targetUser.email,
-      permissions: body.permissions,
+      permissions: [...body.permissions],
       createdAt: newSubuser.createdAt.toISOString(),
       updatedAt: newSubuser.updatedAt.toISOString(),
     },

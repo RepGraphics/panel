@@ -1,7 +1,6 @@
 
 
 import { useDrizzle, tables, eq, and } from './drizzle'
-import type { Session } from 'next-auth'
 
 export const PERMISSIONS = {
 
@@ -51,12 +50,10 @@ export const PERMISSIONS = {
   'settings.reinstall': 'Reinstall server',
 } as const
 
-export type Permission = keyof typeof PERMISSIONS
-
 export async function hasPermission(
   userId: string,
   serverId: string,
-  permission: Permission
+  permission: keyof typeof PERMISSIONS
 ): Promise<boolean> {
   const db = useDrizzle()
 
@@ -90,7 +87,7 @@ export async function hasPermission(
   }
 
   const permissions = subuser.permissions
-    ? JSON.parse(subuser.permissions as string) as Permission[]
+    ? JSON.parse(subuser.permissions as string) as Array<keyof typeof PERMISSIONS>
     : []
 
   return permissions.includes(permission)
@@ -99,7 +96,7 @@ export async function hasPermission(
 export async function hasAllPermissions(
   userId: string,
   serverId: string,
-  permissions: Permission[]
+  permissions: Array<keyof typeof PERMISSIONS>
 ): Promise<boolean> {
   for (const permission of permissions) {
     if (!(await hasPermission(userId, serverId, permission))) {
@@ -112,7 +109,7 @@ export async function hasAllPermissions(
 export async function hasAnyPermission(
   userId: string,
   serverId: string,
-  permissions: Permission[]
+  permissions: Array<keyof typeof PERMISSIONS>
 ): Promise<boolean> {
   for (const permission of permissions) {
     if (await hasPermission(userId, serverId, permission)) {
@@ -125,7 +122,7 @@ export async function hasAnyPermission(
 export async function getUserPermissions(
   userId: string,
   serverId: string
-): Promise<Permission[]> {
+): Promise<Array<keyof typeof PERMISSIONS>> {
   const db = useDrizzle()
 
   const server = await db
@@ -139,7 +136,7 @@ export async function getUserPermissions(
   }
 
   if (server.ownerId === userId) {
-    return Object.keys(PERMISSIONS) as Permission[]
+    return Object.keys(PERMISSIONS) as Array<keyof typeof PERMISSIONS>
   }
 
   const subuser = await db
@@ -158,25 +155,6 @@ export async function getUserPermissions(
   }
 
   return subuser.permissions
-    ? JSON.parse(subuser.permissions as string) as Permission[]
+    ? JSON.parse(subuser.permissions as string) as Array<keyof typeof PERMISSIONS>
     : []
-}
-
-export async function requirePermission(
-  session: Session | null,
-  serverId: string,
-  permission: Permission
-): Promise<void> {
-
-  const { resolveSessionUser } = await import('./auth/sessionUser')
-  const user = resolveSessionUser(session)
-
-  if (!user?.id) {
-    throw new Error('Unauthorized')
-  }
-
-  const hasAccess = await hasPermission(user.id, serverId, permission)
-  if (!hasAccess) {
-    throw new Error(`Missing permission: ${permission}`)
-  }
 }

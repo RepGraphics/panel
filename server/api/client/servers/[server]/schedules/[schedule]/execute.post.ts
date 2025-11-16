@@ -1,9 +1,7 @@
-import { getServerSession } from '#auth'
-import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
+import { requirePermission } from '~~/server/utils/permission-middleware'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
   const serverId = getRouterParam(event, 'server')
   const scheduleId = getRouterParam(event, 'schedule')
 
@@ -14,7 +12,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { server } = await getServerWithAccess(serverId, session)
+  // Check permissions - user must have schedule update access
+  await requirePermission(event, 'server.schedule.update', serverId)
 
   const db = useDrizzle()
   const schedule = db
@@ -23,7 +22,7 @@ export default defineEventHandler(async (event) => {
     .where(
       and(
         eq(tables.serverSchedules.id, scheduleId),
-        eq(tables.serverSchedules.serverId, server.id)
+        eq(tables.serverSchedules.serverId, serverId)
       )
     )
     .get()

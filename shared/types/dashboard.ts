@@ -9,9 +9,9 @@ export interface ClientDashboardMetric {
 export interface ClientDashboardActivity {
   id: string
   title: string
-  description: string
-  occurredAt: string
-  actor: string
+  description?: string
+  occurredAt?: string
+  actor?: string
   icon: string
   serverUuid?: string | null
   nodeId?: string | null
@@ -64,4 +64,18 @@ export interface ClientDashboardResponse {
   maintenance: ClientDashboardMaintenanceItem[]
   nodes: ClientDashboardNodeSummary[]
   generatedAt: string
+}
+
+export interface DashboardUserIdentity {
+  username?: string | null
+  email?: string | null
+}
+
+export interface MeResponse {
+  user: DashboardUserIdentity | null
+}
+
+export interface DashboardData {
+  user: DashboardUserIdentity | null
+  dashboard: ClientDashboardResponse
 }

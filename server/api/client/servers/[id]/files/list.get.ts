@@ -2,18 +2,7 @@ import { createError } from 'h3'
 import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
-
-interface FileEntry {
-  name: string
-  mode: string
-  mode_bits: string
-  size: number
-  is_file: boolean
-  is_symlink: boolean
-  mimetype: string
-  created_at: string
-  modified_at: string
-}
+import type { FileEntry } from '#shared/types/api-responses'
 
 export default defineEventHandler(async (event): Promise<FileEntry[]> => {
   const session = await getServerSession(event)

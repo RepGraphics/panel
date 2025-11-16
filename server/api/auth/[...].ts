@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs'
 import { defineEventHandler, getQuery, sendRedirect, type EventHandler } from 'h3'
 import { useDrizzle, tables, eq, or } from '~~/server/utils/drizzle'
 import { verifyRecoveryToken, verifyTotpToken } from '~~/server/utils/totp'
-import type { Role } from '#shared/types/auth'
+import type { Role, AuthCredentials as Credentials, AuthExtendedUser as ExtendedUser } from '#shared/types/auth'
 
 const ADMIN_PANEL_PERMISSIONS = [
   'admin.users.read',
@@ -19,22 +19,6 @@ const ADMIN_PANEL_PERMISSIONS = [
   'admin.activity.read',
   'admin.settings.read',
 ]
-
-interface Credentials {
-  identity: string
-  password: string
-  token?: string
-}
-
-interface ExtendedUser {
-  id: string
-  email: string | null
-  username: string
-  role: Role
-  permissions: string[]
-  useTotp: boolean
-  totpAuthenticatedAt: number | null
-}
 
 const runtimeConfig = useRuntimeConfig()
 const credentialsProvider = (CredentialsProvider as unknown as { default?: typeof CredentialsProvider }).default ?? CredentialsProvider
@@ -237,7 +221,9 @@ const authHandler = NuxtAuthHandler({
 
         token.useTotp = !!extendedUser.useTotp
 
-        token.totpAuthenticatedAt = extendedUser.totpAuthenticatedAt ?? null
+        token.totpAuthenticatedAt = extendedUser.totpAuthenticatedAt
+          ? new Date(extendedUser.totpAuthenticatedAt).toISOString()
+          : null
         if (!token.sessionToken) {
           token.sessionToken = randomUUID()
         }
@@ -265,7 +251,9 @@ const authHandler = NuxtAuthHandler({
 
         if (dbUser) {
           token.useTotp = !!dbUser.useTotp
-          token.totpAuthenticatedAt = dbUser.totpAuthenticatedAt ?? null
+          token.totpAuthenticatedAt = dbUser.totpAuthenticatedAt
+            ? new Date(dbUser.totpAuthenticatedAt).toISOString()
+            : null
         }
       }
       return token

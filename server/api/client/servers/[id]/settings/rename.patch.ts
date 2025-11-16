@@ -2,12 +2,9 @@ import { eq } from 'drizzle-orm'
 import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import type { RenameServerPayload, RenameServerResponse } from '#shared/types/server-settings'
 
-interface RenameServerPayload {
-  name: string
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<RenameServerResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -55,6 +52,7 @@ export default defineEventHandler(async (event) => {
     .where(eq(tables.servers.id, serverId))
 
   return {
+    success: true,
     data: {
       name: body.name.trim(),
     },

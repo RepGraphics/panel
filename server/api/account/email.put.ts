@@ -3,13 +3,9 @@ import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { getSessionUser } from '~~/server/utils/session'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import bcrypt from 'bcryptjs'
+import type { UpdateEmailPayload, UpdateEmailResponse } from '#shared/types/account'
 
-interface UpdateEmailPayload {
-  email: string
-  password: string
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<UpdateEmailResponse> => {
   assertMethod(event, 'PUT')
 
   const session = await getServerSession(event)

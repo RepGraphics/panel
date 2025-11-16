@@ -3,13 +3,9 @@ import { randomUUID } from 'node:crypto'
 import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import type { CreateBackupPayload, CreateBackupResponse } from '#shared/types/server-backups'
 
-interface CreateBackupPayload {
-  name?: string
-  locked?: boolean
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<CreateBackupResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 

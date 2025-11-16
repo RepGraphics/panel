@@ -1,38 +1,9 @@
 import { createError } from 'h3'
 import { randomUUID } from 'node:crypto'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import type { EggImportData, EggImportResponse } from '#shared/types/admin-eggs'
 
-interface EggImportData {
-  name: string
-  author?: string
-  description?: string
-  docker_images?: Record<string, string>
-  startup?: string
-  config?: {
-    files?: Record<string, unknown>
-    startup?: Record<string, unknown>
-    logs?: Record<string, unknown>
-    stop?: string
-  }
-  scripts?: {
-    installation?: {
-      script?: string
-      container?: string
-      entrypoint?: string
-    }
-  }
-  variables?: Array<{
-    name: string
-    description?: string
-    env_variable: string
-    default_value?: string
-    user_viewable?: boolean
-    user_editable?: boolean
-    rules?: string
-  }>
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<EggImportResponse> => {
   const body = await readBody(event)
 
   const { nestId, eggData } = body as { nestId: string; eggData: EggImportData }

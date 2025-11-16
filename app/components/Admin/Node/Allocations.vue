@@ -10,12 +10,37 @@ const page = ref(1)
 const pageSize = ref(50)
 const filter = ref<'all' | 'assigned' | 'unassigned'>('all')
 
-const { data: allocationsData, pending, refresh } = await useFetch<{ data: Allocation[] }>(
-  `/api/admin/nodes/${props.nodeId}/allocations`,
-  { key: `node-allocations-${props.nodeId}` },
+type SimpleRequestFetch = <T = unknown>(
+  input: string,
+  options?: {
+    method?: string
+    body?: unknown
+    signal?: AbortSignal
+  }
+) => Promise<T>
+
+const requestFetch = useRequestFetch() as SimpleRequestFetch
+
+const {
+  data: allocationsData,
+  pending,
+  refresh,
+} = await useAsyncData<Allocation[]>(
+  `node-allocations-${props.nodeId}`,
+  async (_nuxtApp, { signal }) => {
+    const response = await requestFetch<{ data: Allocation[] }>(
+      `/api/admin/nodes/${props.nodeId}/allocations`,
+      { signal },
+    )
+
+    return response?.data ?? []
+  },
+  {
+    default: () => [],
+  },
 )
 
-const allocations = computed(() => allocationsData.value?.data || [])
+const allocations = computed<Allocation[]>(() => allocationsData.value ?? [])
 
 const filteredAllocations = computed(() => {
   if (filter.value === 'assigned') {
@@ -75,7 +100,7 @@ async function createAllocations() {
       ports.push(port)
     }
 
-    await $fetch(`/api/admin/nodes/${props.nodeId}/allocations`, {
+    await requestFetch(`/api/admin/nodes/${props.nodeId}/allocations`, {
       method: 'POST',
       body: {
         ip: createForm.ip,
@@ -83,6 +108,8 @@ async function createAllocations() {
         ipAlias: createForm.ipAlias || undefined,
       },
     })
+
+    await refresh()
 
     toast.add({
       title: 'Allocations created',
@@ -110,7 +137,7 @@ const updatingAlias = ref<string | null>(null)
 async function updateAlias(allocation: Allocation, newAlias: string) {
   updatingAlias.value = allocation.id
   try {
-    await $fetch(`/api/admin/allocations/${allocation.id}`, {
+    await requestFetch(`/api/admin/allocations/${allocation.id}`, {
       method: 'PATCH',
       body: { ipAlias: newAlias || null },
     })
@@ -138,7 +165,7 @@ async function deleteAllocation(allocation: Allocation) {
   }
 
   try {
-    await $fetch(`/api/admin/allocations/${allocation.id}`, {
+    await requestFetch(`/api/admin/allocations/${allocation.id}`, {
       method: 'DELETE',
     })
 

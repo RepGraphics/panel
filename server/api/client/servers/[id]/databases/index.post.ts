@@ -3,13 +3,12 @@ import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { randomUUID } from 'crypto'
+import type {
+  CreateServerDatabasePayload,
+  ServerDatabaseCreateResponse,
+} from '#shared/types/server-databases'
 
-interface CreateDatabasePayload {
-  name: string
-  remote: string
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<ServerDatabaseCreateResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -22,7 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'Server ID is required' })
   }
 
-  const body = await readBody<CreateDatabasePayload>(event)
+  const body = await readBody<CreateServerDatabasePayload>(event)
 
   if (!body.name) {
     throw createError({
@@ -80,15 +79,16 @@ export default defineEventHandler(async (event) => {
   await db.insert(tables.serverDatabases).values(newDatabase)
 
   return {
+    success: true,
     data: {
       id: newDatabase.id,
       name: newDatabase.name,
       username: newDatabase.username,
       password: newDatabase.password,
-      host: dbHost.hostname,
-      port: dbHost.port,
-      remote: newDatabase.remote,
-      createdAt: newDatabase.createdAt.toISOString(),
+      host: {
+        hostname: dbHost.hostname,
+        port: dbHost.port,
+      },
     },
   }
 })

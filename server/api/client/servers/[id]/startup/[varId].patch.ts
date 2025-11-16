@@ -2,12 +2,12 @@ import { eq, and } from 'drizzle-orm'
 import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import type {
+  UpdateStartupVariablePayload,
+  UpdateStartupVariableResponse,
+} from '#shared/types/server-startup'
 
-interface UpdateVariablePayload {
-  value: string
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<UpdateStartupVariableResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'IDs are required' })
   }
 
-  const body = await readBody<UpdateVariablePayload>(event)
+  const body = await readBody<UpdateStartupVariablePayload>(event)
 
   if (body.value === undefined) {
     throw createError({
@@ -74,7 +74,10 @@ export default defineEventHandler(async (event) => {
     })
     .where(eq(tables.serverStartupEnv.id, varId))
 
+  const updatedAt = new Date()
+
   return {
+    success: true,
     data: {
       id: variable.id,
       serverId: variable.serverId,
@@ -83,7 +86,7 @@ export default defineEventHandler(async (event) => {
       description: variable.description,
       isEditable: Boolean(variable.isEditable),
       createdAt: new Date(variable.createdAt).toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedAt: updatedAt.toISOString(),
     },
   }
 })

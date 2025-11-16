@@ -8,3 +8,22 @@ export interface ServerSubuser {
   createdAt: string
   updatedAt: string
 }
+
+export interface UpdateServerSubuserPayload {
+  permissions: string[]
+}
+
+export interface UpdateServerSubuserResponse {
+  success: boolean
+  data: ServerSubuser
+}
+
+export interface CreateServerSubuserPayload {
+  email: string
+  permissions: string[]
+}
+
+export interface CreateServerSubuserResponse {
+  success: boolean
+  data: ServerSubuser
+}

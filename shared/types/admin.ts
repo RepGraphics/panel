@@ -1,5 +1,6 @@
 import type { AuditEventResponse } from './admin-audit'
 import type { AdminUserResponse } from './api-responses'
+export type { AdminUserResponse } from './api-responses'
 
 export interface AdminScheduleResponse {
   id: string

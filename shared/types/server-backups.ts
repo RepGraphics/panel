@@ -13,3 +13,18 @@ export interface ServerBackup {
   createdAt: string
   updatedAt: string
 }
+
+export interface CreateBackupPayload {
+  name?: string
+  locked?: boolean
+}
+
+export interface CreateBackupResponse {
+  data: {
+    id: string
+    uuid: string
+    name: string
+    isLocked: boolean
+    createdAt: string
+  }
+}

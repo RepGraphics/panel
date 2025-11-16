@@ -6,7 +6,7 @@ import { remoteListServers } from '~~/server/utils/wings/registry'
 import { toWingsHttpError } from '~~/server/utils/wings/http'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 
-import type { ServerListEntry, ServersResponse } from '#shared/types/servers'
+import type { ServerListEntry, ServersResponse } from '#shared/types/server'
 
 export default defineEventHandler(async (event): Promise<ServersResponse> => {
   const session = await getServerSession(event)
@@ -45,6 +45,8 @@ export default defineEventHandler(async (event): Promise<ServersResponse> => {
           featureLimits: typeof extended.feature_limits === 'object' && extended.feature_limits !== null ? extended.feature_limits as Record<string, unknown> : null,
           status: 'unknown',
           ownership: includeAll ? 'shared' : 'mine',
+          suspended: Boolean(extended.suspended),
+          isTransferring: Boolean(extended.is_transferring),
         })
       }
     }

@@ -57,6 +57,7 @@ export default defineEventHandler(async (event): Promise<AccountActivityResponse
     occurredAt: row.occurredAt.toISOString(),
     action: row.action,
     target: row.targetId ? `${row.targetType}#${row.targetId}` : row.targetType,
+    actor: row.actor,
     metadata: parseMetadata(row.metadata),
   }))
 

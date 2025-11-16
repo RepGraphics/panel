@@ -3,13 +3,9 @@ import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { getWingsClientForServer } from '~~/server/utils/wings-client'
+import type { PowerAction, PowerActionRequest } from '#shared/types/server-console'
 
-const VALID_POWER_ACTIONS = ['start', 'stop', 'restart', 'kill'] as const
-type PowerAction = typeof VALID_POWER_ACTIONS[number]
-
-interface PowerActionRequest {
-  action: PowerAction
-}
+const VALID_POWER_ACTIONS: PowerAction[] = ['start', 'stop', 'restart', 'kill']
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)

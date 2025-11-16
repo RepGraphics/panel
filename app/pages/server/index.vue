@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useTimeAgo } from '@vueuse/core'
-import type { ServersResponse } from '#shared/types/servers'
+import type { ServersResponse } from '#shared/types/server'
 
 const search = ref('')
 const showAll = ref(false)
@@ -14,6 +13,7 @@ const servers = ref<ServersResponse['data']>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const generatedAt = ref<string | null>(null)
+const generatedAtDate = computed(() => (generatedAt.value ? new Date(generatedAt.value) : null))
 
 const { data: me } = await useAsyncData('me', () => $fetch<{ user: { role: string } }>('/api/me'), {
   default: () => ({ user: { role: 'user' } }),
@@ -48,9 +48,6 @@ async function fetchServers(scope: 'own' | 'all') {
 watch(scope, (value) => {
   fetchServers(value)
 }, { immediate: true })
-
-const generatedAtForAgo = computed(() => generatedAt.value ?? new Date().toISOString())
-const generatedAgo = useTimeAgo(generatedAtForAgo)
 
 const filteredServers = computed(() => {
   const term = search.value.trim().toLowerCase()
@@ -119,10 +116,19 @@ function formatLimit(limits: Record<string, unknown> | null, key: 'memory' | 'di
 
 <template>
   <UPage>
-    <UPageHeader
-      title="Servers"
-      :description="`Overview of containers you can access across the cluster. Updated ${generatedAgo}`"
-    >
+    <UPageHeader title="Servers">
+      <template #description>
+        <span>
+          Overview of containers you can access across the cluster. Updated
+          <NuxtTime
+            v-if="generatedAtDate"
+            :datetime="generatedAtDate"
+            relative
+            class="font-medium"
+          />
+          <span v-else>recently</span>
+        </span>
+      </template>
       <template #actions>
         <div class="flex items-center gap-2">
           <USwitch v-model="showAll" size="sm" :disabled="loading || !isAdmin" />

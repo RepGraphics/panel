@@ -65,14 +65,38 @@ async function loadSessions() {
   await fetchSessions()
 }
 
-function formatTimestamp(iso: string) {
-  const date = new Date(iso)
-  return `${date.toLocaleString()} (${date.toISOString()})`
-}
-
 const sortedSessions = computed(() => (
   [...sessions.value].sort((a, b) => b.expiresAtTimestamp - a.expiresAtTimestamp)
 ))
+
+const revealedIps = ref<Record<string, boolean>>({})
+
+function maskIp(ip: string) {
+  if (!ip || ip === 'Unknown') return 'Unknown'
+  if (ip.includes(':')) {
+    const segments = ip.split(':')
+    return segments.slice(0, 4).join(':') + '::'
+  }
+  const parts = ip.split('.')
+  if (parts.length !== 4) return ip
+  return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`
+}
+
+function isIpRevealed(token: string) {
+  return revealedIps.value[token] === true
+}
+
+function toggleIpReveal(token: string) {
+  revealedIps.value = {
+    ...revealedIps.value,
+    [token]: !isIpRevealed(token),
+  }
+}
+
+function displayIp(ip: string, token: string) {
+  if (!ip || ip === 'Unknown') return 'Unknown'
+  return isIpRevealed(token) ? ip : maskIp(ip)
+}
 
 async function handleSignOut(token: string) {
   if (updatingSessions.value) return
@@ -185,28 +209,80 @@ async function handleSignOutAll(includeCurrent = false) {
 
         <div v-else class="space-y-3">
           <div v-for="session in sortedSessions" :key="session.token"
-            class="flex flex-col gap-3 rounded-lg border border-default p-3 md:flex-row md:items-center md:justify-between">
-            <div class="space-y-1">
-              <p class="text-sm font-medium">
-                Session token: <code class="break-all text-xs text-muted-foreground">{{ session.token }}</code>
-              </p>
-              <p class="text-xs text-muted-foreground">
-                Issued: {{ formatTimestamp(session.issuedAt) }}
-              </p>
-              <p class="text-xs text-muted-foreground">
-                Expires: {{ formatTimestamp(session.expiresAt) }}
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span v-if="session.token === currentSessionToken" class="flex items-center gap-1 text-primary">
-                <UIcon name="i-lucide-dot" class="size-3" /> Current session
-              </span>
-              <UButton variant="ghost" color="neutral" size="xs"
-                :disabled="session.token === currentSessionToken || updatingSessions"
-                @click="handleSignOut(session.token)">
+            class="flex flex-col gap-3 rounded-lg border border-default p-4">
+            <div class="flex items-start justify-between">
+              <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <UIcon 
+                    :name="session.device === 'Mobile' ? 'i-lucide-smartphone' : 
+                          session.device === 'Tablet' ? 'i-lucide-tablet' : 'i-lucide-monitor'" 
+                    class="size-4 text-muted-foreground" 
+                  />
+                  <span class="font-medium text-sm">{{ session.browser }} on {{ session.os }}</span>
+                  <UBadge v-if="session.isCurrent" color="primary" variant="soft" size="xs">
+                    Current
+                  </UBadge>
+                </div>
+                
+                <div class="space-y-1 text-xs text-muted-foreground">
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-map-pin" class="size-3" />
+                    <span>{{ displayIp(session.ipAddress, session.token) }}</span>
+                    <UButton
+                      variant="ghost"
+                      size="xs"
+                      color="neutral"
+                      @click="toggleIpReveal(session.token)"
+                    >
+                      {{ isIpRevealed(session.token) ? 'Hide' : 'Reveal' }}
+                    </UButton>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-clock" class="size-3" />
+                    <span>
+                      Expires:
+                      <NuxtTime
+                        v-if="session.expiresAt"
+                        :datetime="session.expiresAt"
+                        relative
+                        class="font-medium"
+                      />
+                      <span v-else>Unknown</span>
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-fingerprint" class="size-3" />
+                    <span class="font-mono">{{ session.fingerprint }}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <UButton 
+                variant="ghost" 
+                color="error" 
+                size="xs"
+                icon="i-lucide-log-out"
+                :disabled="session.isCurrent || updatingSessions"
+                @click="handleSignOut(session.token)"
+              >
                 Sign out
               </UButton>
             </div>
+            
+            <details v-if="session.isCurrent" class="text-xs">
+              <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+                Show session details
+              </summary>
+              <div class="mt-2 space-y-1 text-muted-foreground">
+                <div><strong>Token:</strong> <code class="break-all">{{ session.token }}</code></div>
+                <div><strong>User Agent:</strong> {{ session.userAgent }}</div>
+                <div>
+                  <strong>Issued:</strong>
+                  <NuxtTime v-if="session.issuedAt" :datetime="session.issuedAt" relative class="font-medium" />
+                  <span v-else>Unknown</span>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </template>

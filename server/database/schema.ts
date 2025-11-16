@@ -60,6 +60,17 @@ export const sessions = sqliteTable('sessions', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }),
 })
 
+export const sessionMetadata = sqliteTable('session_metadata', {
+  sessionToken: text('session_token').primaryKey().references(() => sessions.sessionToken, { onDelete: 'cascade' }),
+  firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  deviceName: text('device_name'),
+  browserName: text('browser_name'),
+  osName: text('os_name'),
+})
+
 export const verificationTokens = sqliteTable(
   'verification_tokens',
   {
@@ -514,6 +525,7 @@ export const tables = {
   users,
   accounts,
   sessions,
+  sessionMetadata,
   verificationTokens,
   locations,
   wingsNodes,

@@ -10,9 +10,44 @@ definePageMeta({
 
 const toast = useToast()
 
-const users = ref<AdminUserResponse[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
+const requestFetch = useRequestFetch()
+
+type UsersResponse = {
+  data: AdminUserResponse[]
+}
+
+const {
+  data: usersData,
+  pending: loading,
+  error,
+  refresh: refreshUsers,
+} = await useAsyncData<UsersResponse>(
+  'admin-users',
+  () => requestFetch<UsersResponse>('/api/admin/users'),
+  {
+    default: () => ({ data: [] }),
+  },
+)
+
+const users = computed(() => usersData.value?.data ?? [])
+
+const errorMessage = computed(() => {
+  const err = error.value
+  if (!err) {
+    return null
+  }
+
+  if (typeof err === 'string') {
+    return err
+  }
+
+  if (err instanceof Error) {
+    return err.message
+  }
+
+  const message = (err as { data?: { message?: string } }).data?.message
+  return message ?? 'Failed to load users'
+})
 
 const showUserModal = ref(false)
 const editingUser = ref<AdminUserResponse | null>(null)
@@ -25,29 +60,6 @@ const userForm = ref({
   name: '',
   role: 'user' as 'user' | 'admin',
 })
-
-async function loadUsers() {
-  loading.value = true
-  error.value = null
-
-  try {
-    const response = await useFetch('/api/admin/users')
-    if (response.error.value) {
-      throw response.error.value
-    }
-
-    users.value = response.data.value?.data ?? []
-  }
-  catch (err) {
-    console.error('Failed to load users', err)
-    error.value = 'Failed to load users'
-  }
-  finally {
-    loading.value = false
-  }
-}
-
-await loadUsers()
 
 function resetForm() {
   userForm.value = {
@@ -92,15 +104,14 @@ async function handleSubmit() {
 
   try {
     if (editingUser.value) {
-
-      await $fetch(`/api/admin/users/${editingUser.value.id}`, {
+      await requestFetch(`/api/admin/users/${editingUser.value.id}`, {
         method: 'PATCH',
         body: userForm.value,
       })
       toast.add({ title: 'User updated', color: 'success' })
-    } else {
-
-      await $fetch('/api/admin/users', {
+    }
+    else {
+      await requestFetch('/api/admin/users', {
         method: 'POST',
         body: userForm.value,
       })
@@ -109,7 +120,7 @@ async function handleSubmit() {
 
     showUserModal.value = false
     resetForm()
-    await loadUsers()
+    await refreshUsers()
   } catch (err) {
     toast.add({
       title: editingUser.value ? 'Update failed' : 'Create failed',
@@ -127,11 +138,11 @@ async function handleDelete(user: AdminUserResponse) {
   }
 
   try {
-    await $fetch(`/api/admin/users/${user.id}`, {
+    await requestFetch(`/api/admin/users/${user.id}`, {
       method: 'DELETE',
     })
     toast.add({ title: 'User deleted', color: 'success' })
-    await loadUsers()
+    await refreshUsers()
   } catch (err) {
     toast.add({
       title: 'Delete failed',
@@ -181,8 +192,8 @@ async function handleDelete(user: AdminUserResponse) {
             <div v-if="loading" class="space-y-2 p-4">
               <USkeleton v-for="i in 4" :key="i" class="h-8 w-full" />
             </div>
-            <div v-else-if="error" class="p-4 text-sm text-error-500">
-              {{ error }}
+            <div v-else-if="errorMessage" class="p-4 text-sm text-error-500">
+              {{ errorMessage }}
             </div>
             <div v-else-if="users.length === 0" class="p-4 text-sm text-muted-foreground">
               No users found.

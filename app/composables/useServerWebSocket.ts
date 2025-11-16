@@ -1,35 +1,9 @@
 import { onUnmounted, ref } from 'vue'
-import type { ServerStats, ServerState, WebSocketMessage } from '#shared/types/server-console'
-
-interface ServerEventDetails {
-  event: string
-  message?: string
-  raw?: string
-  timestamp: number
-}
+import type { ServerStats, ServerState } from '#shared/types/server-console'
+import type { ServerEventDetails, WebSocketMessage, WingsStatsPayload } from '#shared/types/websocket'
 
 const MAX_HISTORY_POINTS = 60
 const RECONNECT_DELAY = 5000
-
-interface WingsStatsPayload {
-  memory_bytes?: number
-  memory_limit_bytes?: number
-  cpu_absolute?: number
-  disk_bytes?: number
-  uptime?: number
-  state?: string
-  status?: string
-  memory?: number
-  memory_limit?: number
-  cpu?: number
-  disk?: number
-  network?: {
-    rx_bytes?: number
-    tx_bytes?: number
-  }
-  network_rx_bytes?: number
-  network_tx_bytes?: number
-}
 
 function mapWingsStats(payload: WingsStatsPayload): ServerStats {
   const network = payload.network || {}
@@ -43,6 +17,34 @@ function mapWingsStats(payload: WingsStatsPayload): ServerStats {
     networkRxBytes: Number(network.rx_bytes ?? payload.network_rx_bytes ?? 0),
     networkTxBytes: Number(network.tx_bytes ?? payload.network_tx_bytes ?? 0),
   }
+}
+
+function normalizeMessageArgs(args?: unknown[]): string[] {
+  if (!args) return []
+
+  return args
+    .map((value) => {
+      if (typeof value === 'string') {
+        return value
+      }
+
+      if (value == null) {
+        return ''
+      }
+
+      try {
+        return JSON.stringify(value)
+      }
+      catch {
+        return String(value)
+      }
+    })
+    .filter((value): value is string => value.length > 0)
+}
+
+function formatRawArgs(args?: unknown[]): string | undefined {
+  const lines = normalizeMessageArgs(args)
+  return lines.length > 0 ? lines.join('\n') : undefined
 }
 
 export function useServerWebSocket(serverId: string) {
@@ -106,10 +108,6 @@ export function useServerWebSocket(serverId: string) {
     }, delay)
   }
 
-  const fetchCredentials = async () => {
-    return $fetch<{ token: string; socket: string }>(`/api/client/servers/${serverId}/websocket`)
-  }
-
   const send = (event: string, args: string[] = []) => {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) {
       return
@@ -126,8 +124,9 @@ export function useServerWebSocket(serverId: string) {
     send('authenticate', [token])
   }
 
-  const handleConsoleOutput = (lines: string[]) => {
-    lines.forEach((line) => {
+  const handleConsoleOutput = (args?: unknown[]) => {
+    const normalized = normalizeMessageArgs(args)
+    normalized.forEach((line) => {
       logs.value.push(line)
       if (logs.value.length > 1000) {
         logs.value.shift()
@@ -171,11 +170,17 @@ export function useServerWebSocket(serverId: string) {
         break
 
       case 'status':
-        if (message.args && message.args[0]) {
-          serverState.value = message.args[0] as ServerState
-          recordEvent({ event: 'status', message: message.args[0], timestamp: Date.now() })
-          if (message.args[0] === 'running' && lifecycleStatus.value !== 'normal') {
-            clearLifecycle()
+        {
+          const stateArg = message.args?.[0]
+          if (typeof stateArg === 'string') {
+            serverState.value = stateArg as ServerState
+            recordEvent({ event: 'status', message: stateArg, timestamp: Date.now() })
+            if (stateArg === 'running' && lifecycleStatus.value !== 'normal') {
+              clearLifecycle()
+            }
+          }
+          else {
+            recordEvent({ event: 'status', raw: formatRawArgs(message.args), timestamp: Date.now() })
           }
         }
         break
@@ -183,17 +188,20 @@ export function useServerWebSocket(serverId: string) {
       case 'console output':
       case 'install output':
       case 'daemon message':
-        if (message.args && message.args.length > 0) {
-          handleConsoleOutput(message.args)
-          recordEvent({ event: message.event, raw: message.args.join('\n'), timestamp: Date.now() })
-          if (message.event === 'install output') {
-            if (message.args && message.args.length > 0) {
-              const lastLine = message.args[message.args.length - 1]
-              setLifecycle('installing', lastLine)
+        {
+          const rawLines = normalizeMessageArgs(message.args)
+          if (rawLines.length > 0) {
+            handleConsoleOutput(message.args)
+            recordEvent({ event: message.event, raw: rawLines.join('\n'), timestamp: Date.now() })
+            if (message.event === 'install output') {
+              const lastLine = rawLines[rawLines.length - 1]
+              if (lastLine) {
+                setLifecycle('installing', lastLine)
+              }
             }
-          }
-          if (message.event === 'daemon message' && message.args && message.args[0]) {
-            error.value = message.args[0]
+            if (message.event === 'daemon message' && rawLines[0]) {
+              error.value = rawLines[0]
+            }
           }
         }
         break
@@ -209,43 +217,59 @@ export function useServerWebSocket(serverId: string) {
         break
 
       case 'transfer status':
-        if (message.args && message.args[0]) {
-          const payload = parseJson<{ progress?: number; status?: string; message?: string }>(message.args[0])
-          setLifecycle('transferring', payload?.message ?? payload?.status ?? 'Transfer in progress…', payload?.progress)
-          recordEvent({ event: 'transfer status', raw: message.args[0], timestamp: Date.now() })
+        {
+          const raw = message.args?.[0]
+          if (typeof raw === 'string') {
+            const payload = parseJson<{ progress?: number; status?: string; message?: string }>(raw)
+            setLifecycle('transferring', payload?.message ?? payload?.status ?? 'Transfer in progress…', payload?.progress)
+            recordEvent({ event: 'transfer status', raw, timestamp: Date.now() })
+          }
         }
         break
 
       case 'transfer logs':
-        if (message.args && message.args[0]) {
-          recordEvent({ event: 'transfer logs', raw: message.args[0], timestamp: Date.now() })
+        {
+          const raw = formatRawArgs(message.args)
+          if (raw) {
+            recordEvent({ event: 'transfer logs', raw, timestamp: Date.now() })
+          }
         }
         break
 
       case 'backup restore completed':
-        if (message.args && message.args[0]) {
-          const payload = parseJson<{ successful?: boolean; message?: string }>(message.args[0])
-          if (payload?.successful === false) {
-            setLifecycle('error', payload.message ?? 'Backup restore failed')
+        {
+          const raw = message.args?.[0]
+          if (typeof raw === 'string') {
+            const payload = parseJson<{ successful?: boolean; message?: string }>(raw)
+            if (payload?.successful === false) {
+              setLifecycle('error', payload.message ?? 'Backup restore failed')
+            }
+            else {
+              setLifecycle('normal', 'Backup restore finished')
+            }
+            recordEvent({ event: 'backup restore completed', raw, timestamp: Date.now() })
           }
           else {
             setLifecycle('normal', 'Backup restore finished')
+            recordEvent({ event: 'backup restore completed', timestamp: Date.now() })
           }
         }
-        else {
-          setLifecycle('normal', 'Backup restore finished')
-        }
-        recordEvent({ event: 'backup restore completed', raw: message.args?.[0], timestamp: Date.now() })
         break
 
       case 'backup completed':
-        setLifecycle('normal', 'Backup completed')
-        recordEvent({ event: 'backup completed', raw: message.args?.[0], timestamp: Date.now() })
+        {
+          const raw = formatRawArgs(message.args)
+          setLifecycle('normal', 'Backup completed')
+          recordEvent({ event: 'backup completed', raw, timestamp: Date.now() })
+        }
         break
 
       case 'stats':
-        if (message.args && message.args[0]) {
-          handleStats(message.args[0])
+        {
+          const raw = message.args?.[0]
+          if (typeof raw === 'string') {
+            handleStats(raw)
+          }
         }
         break
 
@@ -260,8 +284,7 @@ export function useServerWebSocket(serverId: string) {
 
       default:
         if (message.event) {
-          console.debug('Unhandled Wings socket event:', message.event, message.args)
-          recordEvent({ event: message.event, raw: message.args?.join('\n'), timestamp: Date.now() })
+          recordEvent({ event: message.event, raw: formatRawArgs(message.args), timestamp: Date.now() })
         }
     }
   }
@@ -322,7 +345,7 @@ export function useServerWebSocket(serverId: string) {
 
     tokenRefreshInFlight.value = true
     try {
-      const credentials = await fetchCredentials()
+      const credentials = await $fetch<{ token: string; socket: string }>(`/api/client/servers/${serverId}/websocket`)
       currentToken.value = credentials.token
 
       if (currentSocketUrl.value && currentSocketUrl.value !== credentials.socket) {
@@ -359,7 +382,7 @@ export function useServerWebSocket(serverId: string) {
     connected.value = false
 
     try {
-      const credentials = await fetchCredentials()
+      const credentials = await $fetch<{ token: string; socket: string }>(`/api/client/servers/${serverId}/websocket`)
       currentToken.value = credentials.token
       currentSocketUrl.value = credentials.socket
 

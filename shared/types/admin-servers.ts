@@ -100,3 +100,22 @@ export interface UpdateAdminServerPayload {
   ownerId?: string
   externalId?: string
 }
+
+export type ServerAction =
+  | 'suspend'
+  | 'unsuspend'
+  | 'reinstall'
+  | 'delete'
+  | 'start'
+  | 'stop'
+  | 'restart'
+  | 'kill'
+
+export interface ServerActionPayload {
+  action: ServerAction
+}
+
+export interface ServerActionResponse {
+  success: boolean
+  message: string
+}

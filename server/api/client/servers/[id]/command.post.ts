@@ -3,10 +3,7 @@ import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { getWingsClientForServer } from '~~/server/utils/wings-client'
-
-interface CommandRequest {
-  command: string
-}
+import type { ServerCommandPayload } from '#shared/types/server-console'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -26,7 +23,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readBody<CommandRequest>(event)
+  const body = await readBody<ServerCommandPayload>(event)
 
   if (!body.command || typeof body.command !== 'string') {
     throw createError({

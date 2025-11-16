@@ -46,8 +46,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { requireServerPermission } = await import('../../../../../utils/api-helpers')
-  await requireServerPermission(event, server.id, 'file.update')
+  const { requireServerPermission } = await import('../../../../../utils/permission-middleware')
+  await requireServerPermission(event, {
+    serverId: server.id,
+    requiredPermissions: ['server.files.write'],
+  })
 
   const { getWingsClientForServer } = await import('../../../../../utils/wings-client')
   const { client } = await getWingsClientForServer(uuid)

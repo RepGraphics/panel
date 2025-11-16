@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useTimeAgo } from '@vueuse/core'
 import type { AccountActivityItem, AccountActivityResponse } from '#shared/types/activity'
 
 definePageMeta({
@@ -14,8 +13,7 @@ const generatedAt = ref<string | null>(null)
 
 const requestFetch = useRequestFetch()
 
-const generatedAgo = useTimeAgo(() => (generatedAt.value ? new Date(generatedAt.value) : new Date(0)))
-const generatedAgoText = computed(() => (generatedAt.value ? generatedAgo.value : 'Not generated yet'))
+const generatedAtDate = computed(() => (generatedAt.value ? new Date(generatedAt.value) : null))
 
 async function fetchActivity() {
   loading.value = true
@@ -39,17 +37,23 @@ function formatTarget(target: string | null) {
   return target ?? 'No target recorded'
 }
 
-function timeAgoFor(entry: AccountActivityItem) {
-  return useTimeAgo(() => new Date(entry.occurredAt)).value
-}
 </script>
 
 <template>
   <UPage>
-    <UPageHeader
-      title="Account activity"
-      :description="`Personal actions you've taken across XyraPanel. Use this log to verify recent changes and sign-ins. Updated ${generatedAgoText}`"
-    >
+    <UPageHeader title="Account activity">
+      <template #description>
+        <span>
+          Personal actions you've taken across XyraPanel. Use this log to verify recent changes and sign-ins. Updated
+          <NuxtTime
+            v-if="generatedAtDate"
+            :datetime="generatedAtDate"
+            relative
+            class="font-medium"
+          />
+          <span v-else>recently</span>
+        </span>
+      </template>
       <template #actions>
         <UButton variant="soft" color="neutral" :loading="loading" @click="fetchActivity">
           Refresh
@@ -92,7 +96,7 @@ function timeAgoFor(entry: AccountActivityItem) {
                 <p class="text-xs text-muted-foreground">{{ formatTarget(entry.target) }}</p>
               </div>
               <div class="text-xs text-muted-foreground">
-                {{ timeAgoFor(entry) }}
+                <NuxtTime :datetime="entry.occurredAt" relative />
               </div>
             </div>
           </div>

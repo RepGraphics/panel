@@ -1,9 +1,9 @@
-import { getServerSession } from '#auth'
-import { getServerWithAccess, getNodeForServer } from '~~/server/utils/server-helpers'
+import { getNodeForServer } from '~~/server/utils/server-helpers'
 import { generateWebSocketCredentials } from '~~/server/utils/wings/jwt'
+import { requirePermission } from '~~/server/utils/permission-middleware'
+import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
   const serverId = getRouterParam(event, 'server')
 
   if (!serverId) {
@@ -13,7 +13,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { server, user } = await getServerWithAccess(serverId, session)
+  // Check permissions - user must have console access
+  const { userId } = await requirePermission(event, 'server.console', serverId)
+
+  // Get server details
+  const db = useDrizzle()
+  const server = await db
+    .select()
+    .from(tables.servers)
+    .where(eq(tables.servers.id, serverId))
+    .get()
+
+  if (!server) {
+    throw createError({
+      statusCode: 404,
+      message: 'Server not found',
+    })
+  }
 
   const node = await getNodeForServer(server.nodeId)
 
@@ -32,8 +48,8 @@ export default defineEventHandler(async (event) => {
         id: server.id,
       },
       {
-        id: user.id,
-        uuid: user.id,
+        id: userId,
+        uuid: userId,
       }
     )
 

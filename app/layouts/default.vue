@@ -26,22 +26,14 @@ const navigationItems = computed<NavigationMenuItem[]>(() => {
   const items: NavigationMenuItem[] = [
     {
       label: 'Dashboard',
-      icon: 'i-lucide-layout-dashboard',
       to: '/',
     },
     {
       label: 'Servers',
-      icon: 'i-lucide-server',
       to: '/server',
     },
     {
-      label: 'Activity',
-      icon: 'i-lucide-activity',
-      to: '/activity',
-    },
-    {
       label: 'Account',
-      icon: 'i-lucide-user-cog',
       to: '/account',
       children: [
         { label: 'Profile', to: '/account/profile' },
@@ -97,14 +89,14 @@ const isAdminUser = computed(() => authUser.value?.role === 'admin')
       <template #footer="{ collapsed }">
         <UDropdownMenu
           :items="[[
-            { label: 'Profile', icon: 'i-lucide-user', to: '/account/profile' },
-            { label: 'Security', icon: 'i-lucide-shield', to: '/account/security' },
-            { label: 'API Keys', icon: 'i-lucide-key', to: '/account/api-keys' },
-            { label: 'SSH Keys', icon: 'i-lucide-terminal', to: '/account/ssh-keys' },
-            { label: 'Sessions', icon: 'i-lucide-monitor', to: '/account/sessions' },
-            { label: 'Activity', icon: 'i-lucide-activity', to: '/account/activity' }
+            { label: 'Profile', to: '/account/profile' },
+            { label: 'Security', to: '/account/security' },
+            { label: 'API Keys', to: '/account/api-keys' },
+            { label: 'SSH Keys', to: '/account/ssh-keys' },
+            { label: 'Sessions', to: '/account/sessions' },
+            { label: 'Activity', to: '/account/activity' }
           ], [
-            { label: 'Sign out', icon: 'i-lucide-log-out', click: handleSignOut }
+            { label: 'Sign out', click: handleSignOut }
           ]]"
         >
           <UButton :avatar="userAvatar" :label="collapsed ? undefined : userLabel" color="neutral" variant="ghost"
@@ -120,7 +112,6 @@ const isAdminUser = computed(() => authUser.value?.role === 'admin')
             <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="neutral" to="/admin">
               Admin
             </UButton>
-            <UButton icon="i-lucide-cog" variant="ghost" color="neutral" to="/account">Account</UButton>
             <UButton icon="i-lucide-log-out" color="primary" variant="soft" :loading="signOutLoading"
               @click="handleSignOut">
               Sign out

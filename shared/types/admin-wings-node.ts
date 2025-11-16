@@ -57,3 +57,25 @@ export interface AdminWingsNodeAllocationsPayload {
   data: AdminWingsNodeAllocationSummary[]
   pagination: AdminPaginatedMeta
 }
+
+export interface UpdateWingsNodePayload {
+  name?: string
+  description?: string
+  fqdn?: string
+  scheme?: string
+  public?: boolean
+  maintenanceMode?: boolean
+  behindProxy?: boolean
+  memory?: number
+  memoryOverallocate?: number
+  disk?: number
+  diskOverallocate?: number
+  uploadSize?: number
+  daemonListen?: number
+  daemonSftp?: number
+  daemonBase?: string
+}
+
+export interface UpdateWingsNodeResponse {
+  data: StoredWingsNode
+}

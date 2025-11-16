@@ -3,12 +3,12 @@ import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { randomUUID } from 'crypto'
+import type {
+  CreateServerAllocationPayload,
+  CreateServerAllocationResponse,
+} from '#shared/types/server-network'
 
-interface CreateAllocationPayload {
-  allocationId: string
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<CreateServerAllocationResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'Server ID is required' })
   }
 
-  const body = await readBody<CreateAllocationPayload>(event)
+  const body = await readBody<CreateServerAllocationPayload>(event)
 
   if (!body.allocationId) {
     throw createError({
@@ -64,6 +64,7 @@ export default defineEventHandler(async (event) => {
   await db.insert(tables.serverAllocations).values(newAllocation)
 
   return {
+    success: true,
     data: {
       id: newAllocation.id,
       serverId: newAllocation.serverId,

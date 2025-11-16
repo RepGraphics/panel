@@ -147,6 +147,12 @@ export default defineNuxtConfig({
       tasks: true,
       websocket: true,
     },
+    scheduledTasks: {
+      // Run task every minute
+      '* * * * *': ['scheduler:process'],
+      // Run resource collection every 2 minutes
+      '*/2 * * * *': ['monitoring:collect-resources']
+    },
     storage: {
       cache: {
         driver: 'redis',
@@ -159,9 +165,5 @@ export default defineNuxtConfig({
         base: './.data/cache',
       },
     },
-  },
-
-  typescript: {
-    typeCheck: false,
   },
 })

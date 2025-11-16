@@ -1,3 +1,5 @@
+import type { Session } from 'next-auth'
+
 export type Role = 'admin' | 'user'
 
 export interface SanitizedUser {
@@ -46,11 +48,25 @@ export interface ExtendedSession {
   user: ServerSessionUser | null
 }
 
+export interface AuthContext {
+  session: Session
+  user: ResolvedSessionUser
+}
+
 export interface UserSessionSummary {
   token: string
   issuedAt: string
   expiresAt: string
   expiresAtTimestamp: number
+  isCurrent: boolean
+  ipAddress: string
+  userAgent: string
+  browser: string
+  os: string
+  device: string
+  lastSeenAt: string | null
+  firstSeenAt: string | null
+  fingerprint: string | null
 }
 
 export interface SessionMetadata {
@@ -82,4 +98,42 @@ export interface AccountProfileResponse {
 export interface AccountSessionsResponse {
   data: UserSessionSummary[]
   currentToken: string | null
+}
+
+export interface AccountSessionRow {
+  sessionToken: string
+  expires: Date | number
+  metadataIp?: string | null
+  metadataUserAgent?: string | null
+  metadataDevice?: string | null
+  metadataBrowser?: string | null
+  metadataOs?: string | null
+  firstSeenAt?: Date | number | null
+  lastSeenAt?: Date | number | null
+}
+
+export interface SessionMetadataUpsertInput {
+  sessionToken: string
+  ipAddress: string | null
+  userAgent: string | null
+  deviceName: string | null
+  browserName: string | null
+  osName: string | null
+  firstSeenAt?: Date | null
+}
+
+export interface AuthCredentials {
+  identity: string
+  password: string
+  token?: string
+}
+
+export interface AuthExtendedUser {
+  id: string
+  email: string | null
+  username: string
+  role: Role
+  permissions: string[]
+  useTotp: boolean
+  totpAuthenticatedAt: number | null
 }

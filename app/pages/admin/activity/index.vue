@@ -22,15 +22,6 @@ const { data, pending, error } = await useAsyncData('admin-activity', () =>
 const activities = computed<AdminActivityEntry[]>(() => data.value?.data ?? [])
 const pagination = computed(() => data.value?.pagination)
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-function formatTimestamp(timestamp: string) {
-  return dateFormatter.format(new Date(timestamp))
-}
-
 const hasMore = computed(() => Boolean(pagination.value?.hasMore))
 </script>
 
@@ -95,7 +86,7 @@ const hasMore = computed(() => Boolean(pagination.value?.hasMore))
                 </details>
               </div>
               <div class="flex flex-col items-start gap-1 text-xs text-muted-foreground md:items-end">
-                <span>{{ formatTimestamp(entry.occurredAt) }}</span>
+                <NuxtTime :datetime="entry.occurredAt" relative class="font-medium" />
               </div>
             </div>
           </div>

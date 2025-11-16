@@ -33,3 +33,11 @@ export interface CreateApiKeyPayload {
 export interface ApiKeysResponse {
   data: ApiKey[]
 }
+
+export interface CreateApiKeyResponse {
+  id: string
+  identifier: string
+  apiKey: string
+  memo: string | null
+  createdAt: string
+}

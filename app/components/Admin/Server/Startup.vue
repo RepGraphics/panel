@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Server } from '#shared/types/server'
 import type { StartupResponse } from '#shared/types/api-responses'
+import type {
+  StartupForm,
+  EnvironmentEntry,
+  EnvironmentInputValue,
+} from '#shared/types/server-startup'
 
 const props = defineProps<{
   server: Server
@@ -14,10 +19,10 @@ const { data: startupData, refresh } = await useFetch<StartupResponse>(`/api/adm
 })
 const startup = computed(() => startupData.value?.data)
 
-const form = reactive({
-  startup: startup.value?.startup || '',
-  dockerImage: startup.value?.dockerImage || '',
-  environment: startup.value?.environment || {},
+const form = reactive<StartupForm>({
+  startup: startup.value?.startup ?? '',
+  dockerImage: startup.value?.dockerImage ?? '',
+  environment: { ...(startup.value?.environment ?? {}) },
 })
 
 watch(startup, (newStartup) => {
@@ -28,12 +33,22 @@ watch(startup, (newStartup) => {
   }
 })
 
-const environmentVars = computed(() => {
-  return Object.entries(form.environment).map(([key, value]) => ({ key, value }))
-})
+const environmentVars = computed<EnvironmentEntry[]>(() =>
+  Object.entries(form.environment).map(([key, value]) => ({ key, value })),
+)
 
-function updateEnvVar(key: string, value: string) {
-  form.environment[key] = value
+function updateEnvVar(key: string, value: EnvironmentInputValue) {
+  if (value === null || value === undefined) {
+    form.environment[key] = ''
+    return
+  }
+
+  if (typeof value === 'string') {
+    form.environment[key] = value
+    return
+  }
+
+  form.environment[key] = String(value)
 }
 
 function removeEnvVar(key: string) {

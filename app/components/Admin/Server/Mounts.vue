@@ -9,15 +9,28 @@ const toast = useToast()
 const showAttachModal = ref(false)
 const isSubmitting = ref(false)
 
-const { data: mountsData, refresh } = await useFetch<{ data: Mount[] }>(`/api/admin/servers/${props.serverId}/mounts`, {
-  key: `server-mounts-${props.serverId}`,
-})
-const serverMounts = computed(() => mountsData.value?.data || [])
+const requestFetch = useRequestFetch()
 
-const { data: availableMountsData } = await useFetch('/api/admin/mounts', {
-  key: 'admin-mounts-list',
-})
-const availableMounts = computed(() => availableMountsData.value?.data || [])
+const {
+  data: mountsData,
+  refresh,
+} = await useAsyncData<{ data: Mount[] }>(
+  `server-mounts-${props.serverId}`,
+  () => requestFetch<{ data: Mount[] }>(`/api/admin/servers/${props.serverId}/mounts`),
+  {
+    default: () => ({ data: [] }),
+  },
+)
+const serverMounts = computed(() => mountsData.value?.data ?? [])
+
+const { data: availableMountsData } = await useAsyncData<{ data: Mount[] }>(
+  'admin-mounts-list',
+  () => requestFetch<{ data: Mount[] }>('/api/admin/mounts'),
+  {
+    default: () => ({ data: [] }),
+  },
+)
+const availableMounts = computed(() => availableMountsData.value?.data ?? [])
 
 const selectedMountId = ref('')
 

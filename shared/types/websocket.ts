@@ -4,6 +4,7 @@ export interface ServerEventDetails {
   event: string
   message?: string
   raw?: string
+  timestamp: number
 }
 
 export interface WingsStatsPayload {
@@ -11,12 +12,19 @@ export interface WingsStatsPayload {
   memory_limit_bytes?: number
   cpu_absolute?: number
   disk_bytes?: number
+  memory?: number
+  memory_limit?: number
+  cpu?: number
+  disk?: number
   network?: {
     rx_bytes?: number
     tx_bytes?: number
   }
+  network_rx_bytes?: number
+  network_tx_bytes?: number
   uptime?: number
   state?: string
+  status?: string
 }
 
 export interface WebSocketMessage {

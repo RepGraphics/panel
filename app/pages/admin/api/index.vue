@@ -103,10 +103,6 @@ function copyToClipboard(text: string) {
   })
 }
 
-function formatDate(date: string | null) {
-  if (!date) return 'Never'
-  return new Date(date).toLocaleDateString()
-}
 </script>
 
 <template>
@@ -141,16 +137,41 @@ function formatDate(date: string | null) {
               <div class="flex-1 space-y-1">
                 <div class="flex items-center gap-2">
                   <code class="text-sm font-mono">{{ key.identifier }}</code>
-                  <UBadge v-if="key.expiresAt && new Date(key.expiresAt) < new Date()" color="error" size="xs">
-                    Expired
+                  <UBadge
+                    v-if="key.expiresAt"
+                    :color="new Date(key.expiresAt) < new Date() ? 'error' : 'neutral'"
+                    size="xs"
+                    variant="soft"
+                  >
+                    {{ new Date(key.expiresAt) < new Date() ? 'Expired' : 'Active' }}
                   </UBadge>
                 </div>
                 <p v-if="key.memo" class="text-sm text-muted-foreground">{{ key.memo }}</p>
                 <div class="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>Created: {{ formatDate(key.createdAt) }}</span>
-                  <span v-if="key.lastUsedAt">Last used: {{ formatDate(key.lastUsedAt) }}</span>
-                  <span v-else>Never used</span>
-                  <span v-if="key.expiresAt">Expires: {{ formatDate(key.expiresAt) }}</span>
+                  <span>
+                    Created:
+                    <NuxtTime
+                      v-if="key.createdAt"
+                      :datetime="key.createdAt"
+                      relative
+                      class="font-medium"
+                    />
+                    <span v-else>Unknown</span>
+                  </span>
+                  <span>
+                    Last used:
+                    <NuxtTime
+                      v-if="key.lastUsedAt"
+                      :datetime="key.lastUsedAt"
+                      relative
+                      class="font-medium"
+                    />
+                    <span v-else>Never used</span>
+                  </span>
+                  <span v-if="key.expiresAt">
+                    Expires:
+                    <NuxtTime :datetime="key.expiresAt" relative class="font-medium" />
+                  </span>
                 </div>
               </div>
 

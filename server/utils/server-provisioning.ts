@@ -1,22 +1,83 @@
-
-
-import { useDrizzle, tables, eq } from './drizzle'
+import { useDrizzle, tables, eq, inArray } from './drizzle'
 import { getWingsClient } from './wings-client'
-import type { WingsNode } from './wings-client'
+import type { WingsClient, WingsNode } from './wings-client'
 import type { WingsServerConfiguration } from '#shared/types/wings-config'
+import type { ServerProvisioningConfig } from '#shared/types/server-provisioning'
 
-export interface ServerProvisioningConfig {
-  serverId: string
-  serverUuid: string
-  eggId: string
-  nodeId: string
-  allocationId: string
-  environment?: Record<string, string>
+interface ServerProvisioningContext {
+  wingsNode: WingsNode
+  server: typeof tables.servers.$inferSelect
+  limits: typeof tables.serverLimits.$inferSelect
+  egg: typeof tables.eggs.$inferSelect
+  allocation: typeof tables.serverAllocations.$inferSelect
+  additionalAllocations: typeof tables.serverAllocations.$inferSelect[]
+  eggVariables: typeof tables.eggVariables.$inferSelect[]
+  mounts: typeof tables.mounts.$inferSelect[]
 }
 
-export async function buildWingsServerConfig(
+function buildEnvironmentVariables(
+  context: ServerProvisioningContext,
+  overrides?: Record<string, string>
+): Record<string, string> {
+  const environment: Record<string, string> = {}
+
+  for (const eggVar of context.eggVariables) {
+    const envKey = eggVar.envVariable
+    const userValue = overrides?.[envKey]
+    const defaultValue = eggVar.defaultValue
+
+    if (userValue !== undefined) {
+      environment[envKey] = String(userValue)
+    } else if (defaultValue) {
+      environment[envKey] = defaultValue
+    }
+  }
+
+  environment.SERVER_MEMORY = String(context.limits.memory ?? 512)
+  environment.SERVER_IP = context.allocation.ip
+  environment.SERVER_PORT = String(context.allocation.port)
+
+  return environment
+}
+
+function buildAllocationsConfig(
+  context: ServerProvisioningContext
+): WingsServerConfiguration['allocations'] {
+  const mappings: Record<string, number[]> = {}
+
+  for (const allocation of context.additionalAllocations) {
+    const allocationIp = allocation.ip
+    if (!allocationIp) {
+      continue
+    }
+
+    const ports = (mappings[allocationIp] ??= [])
+    ports.push(allocation.port)
+  }
+
+  return {
+    force_outgoing_ip: false,
+    default: {
+      ip: context.allocation.ip ?? '0.0.0.0',
+      port: context.allocation.port,
+    },
+    mappings,
+  }
+}
+
+function buildMountsConfig(
+  context: ServerProvisioningContext
+): WingsServerConfiguration['mounts'] {
+  return context.mounts.map(mount => ({
+    source: mount.source,
+    target: mount.target,
+    read_only: mount.readOnly ?? false,
+  }))
+}
+
+async function buildProvisioningContext(
   config: ServerProvisioningConfig
-): Promise<WingsServerConfiguration> {
+): Promise<ServerProvisioningContext> {
   const db = useDrizzle()
 
   const server = await db
@@ -56,79 +117,30 @@ export async function buildWingsServerConfig(
     .get()
 
   if (!allocation) {
-    throw new Error('Allocation not found')
+    throw new Error('Primary allocation not found')
   }
 
-  const eggVars = await db
+  const additionalAllocations = config.additionalAllocationIds?.length
+    ? await db
+        .select()
+        .from(tables.serverAllocations)
+        .where(inArray(tables.serverAllocations.id, config.additionalAllocationIds))
+        .all()
+    : []
+
+  const eggVariables = await db
     .select()
     .from(tables.eggVariables)
     .where(eq(tables.eggVariables.eggId, config.eggId))
     .all()
 
-  const environment: Record<string, string> = {}
-
-  for (const eggVar of eggVars) {
-    const envKey = eggVar.envVariable
-    const userValue = config.environment?.[envKey]
-    const defaultValue = eggVar.defaultValue
-
-    if (userValue !== undefined) {
-      environment[envKey] = String(userValue)
-    } else if (defaultValue) {
-      environment[envKey] = defaultValue
-    }
-  }
-
-  environment.SERVER_MEMORY = String(limits.memory)
-  environment.SERVER_IP = allocation.ip
-  environment.SERVER_PORT = String(allocation.port)
-
-  const wingsConfig: WingsServerConfiguration = {
-    uuid: config.serverUuid,
-    meta: {
-      name: server.name,
-      description: server.description || '',
-    },
-    suspended: false,
-    environment,
-    invocation: egg.startup || '',
-    skip_egg_scripts: false,
-    labels: {},
-    crash_detection_enabled: true,
-    build: {
-      memory_limit: limits.memory ?? 512,
-      swap: limits.swap ?? 0,
-      io_weight: limits.io ?? 500,
-      cpu_limit: limits.cpu ?? 100,
-      disk_space: limits.disk ?? 1024,
-      oom_disabled: true,
-      threads: '',
-    },
-    container: {
-      image: egg.dockerImage || 'ghcr.io/pterodactyl/yolks:latest',
-    },
-    allocations: {
-      force_outgoing_ip: false,
-      default: {
-        ip: allocation.ip,
-        port: allocation.port,
-      },
-      mappings: {},
-    },
-    mounts: [],
-    egg: {
-      id: egg.id,
-      file_denylist: [],
-    },
-  }
-
-  return wingsConfig
-}
-
-export async function provisionServerOnWings(
-  config: ServerProvisioningConfig
-): Promise<void> {
-  const db = useDrizzle()
+  const mounts = config.mountIds?.length
+    ? await db
+        .select()
+        .from(tables.mounts)
+        .where(inArray(tables.mounts.id, config.mountIds))
+        .all()
+    : []
 
   const node = await db
     .select()
@@ -139,8 +151,6 @@ export async function provisionServerOnWings(
   if (!node) {
     throw new Error('Node not found')
   }
-
-  const wingsConfig = await buildWingsServerConfig(config)
 
   const wingsNode: WingsNode = {
     id: node.id,
@@ -153,18 +163,144 @@ export async function provisionServerOnWings(
     token: node.tokenSecret,
   }
 
-  const client = getWingsClient(wingsNode)
+  return {
+    wingsNode,
+    server,
+    limits,
+    egg,
+    allocation,
+    additionalAllocations,
+    eggVariables,
+    mounts,
+  }
+}
 
-  await client.createServer(config.serverUuid, wingsConfig as unknown as Record<string, unknown>)
+export async function waitForServerInstall(client: WingsClient, serverUuid: string): Promise<void> {
+  const maxRetries = 60
+  const delayMs = 5000
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const details = await client.getServerDetails(serverUuid)
+
+    if (details.state === 'running' || details.state === 'offline') {
+      return
+    }
+
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+  }
+
+  throw new Error('Server install timed out while waiting for Wings')
+}
+
+export async function buildWingsServerConfig(
+  config: ServerProvisioningConfig
+): Promise<{ context: ServerProvisioningContext; payload: WingsServerConfiguration }> {
+  const context = await buildProvisioningContext(config)
+
+  const environment = buildEnvironmentVariables(context, config.environment)
+  const allocations = buildAllocationsConfig(context)
+  const mounts = buildMountsConfig(context)
+
+  const wingsConfig: WingsServerConfiguration = {
+    uuid: config.serverUuid,
+    meta: {
+      name: context.server.name,
+      description: context.server.description || '',
+    },
+    suspended: Boolean(context.server.suspended),
+    invocation: context.egg.startup || '',
+    skip_egg_scripts: Boolean(context.server.skipScripts),
+    environment,
+    labels: {},
+    allocations,
+    build: {
+      memory_limit: context.limits.memory ?? 512,
+      swap: context.limits.swap ?? 0,
+      io_weight: context.limits.io ?? 500,
+      cpu_limit: context.limits.cpu ?? 100,
+      threads: context.limits.threads || '',
+      disk_space: context.limits.disk ?? 1024,
+      oom_disabled: Boolean(context.limits.oomDisabled ?? true),
+    },
+    feature_limits: {
+      databases: context.server.databaseLimit ?? 0,
+      backups: context.server.backupLimit ?? 0,
+      allocations: context.server.allocationLimit ?? 0,
+    },
+    crash_detection_enabled: true,
+    mounts,
+    egg: {
+      id: context.egg.id,
+      file_denylist: [],
+    },
+    container: {
+      image: config.dockerImageOverride || context.server.dockerImage || context.egg.dockerImage || 'ghcr.io/pterodactyl/yolks:latest',
+      registry: config.dockerCredentials?.registry,
+      username: config.dockerCredentials?.username,
+      password: config.dockerCredentials?.password,
+      image_pull_policy: config.dockerCredentials?.imagePullPolicy,
+    },
+  }
+
+  return { context, payload: wingsConfig }
+}
+
+export async function provisionServerOnWings(
+  config: ServerProvisioningConfig
+): Promise<void> {
+  const db = useDrizzle()
+
+  const { context, payload } = await buildWingsServerConfig(config)
+
+  const client = getWingsClient(context.wingsNode)
+
+  const now = new Date()
 
   await db
     .update(tables.servers)
     .set({
       status: 'installing',
-      updatedAt: new Date(),
+      installedAt: null,
+      updatedAt: now,
     })
     .where(eq(tables.servers.id, config.serverId))
     .run()
+
+  try {
+    await client.createServer(config.serverUuid, payload as unknown as Record<string, unknown>)
+
+    await waitForServerInstall(client, config.serverUuid)
+
+    await db
+      .update(tables.servers)
+      .set({
+        status: 'installed',
+        installedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.servers.id, config.serverId))
+      .run()
+  } catch (error) {
+    await db
+      .update(tables.servers)
+      .set({
+        status: 'install_failed',
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.servers.id, config.serverId))
+      .run()
+
+    try {
+      await client.deleteServer(config.serverUuid)
+    } catch (cleanupError) {
+      const cleanupMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      if (!cleanupMessage.includes('404')) {
+        console.warn('Failed to clean up failed Wings server provisioning:', cleanupMessage)
+      }
+    }
+
+    throw error
+  }
 }
 
 export async function triggerServerInstallation(serverUuid: string): Promise<void> {

@@ -2,12 +2,12 @@ import { eq, and } from 'drizzle-orm'
 import { getServerSession } from '#auth'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import type {
+  UpdateServerSubuserPayload,
+  UpdateServerSubuserResponse,
+} from '#shared/types/server-subusers'
 
-interface UpdateSubuserPayload {
-  permissions: string[]
-}
-
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<UpdateServerSubuserResponse> => {
   const session = await getServerSession(event)
   const user = resolveSessionUser(session)
 
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'IDs are required' })
   }
 
-  const body = await readBody<UpdateSubuserPayload>(event)
+  const body = await readBody<UpdateServerSubuserPayload>(event)
 
   if (!body.permissions || body.permissions.length === 0) {
     throw createError({
@@ -72,7 +72,10 @@ export default defineEventHandler(async (event) => {
     .where(eq(tables.users.id, subuser.userId))
     .get()
 
+  const updatedAt = new Date()
+
   return {
+    success: true,
     data: {
       id: subuser.id,
       serverId: subuser.serverId,
@@ -81,7 +84,7 @@ export default defineEventHandler(async (event) => {
       email: targetUser?.email || '',
       permissions: body.permissions,
       createdAt: new Date(subuser.createdAt).toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedAt: updatedAt.toISOString(),
     },
   }
 })

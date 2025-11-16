@@ -1,11 +1,31 @@
 import { getServerSession } from '#auth'
-import { getWingsClientForServer } from '~~/server/utils/wings-client'
+import { getSessionUser } from '~~/server/utils/session'
+import { getWingsClientForServer, WingsConnectionError, WingsAuthError } from '~~/server/utils/wings-client'
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB limit for viewing
+const BINARY_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.exe', '.bin']
+
+function isBinaryFile(filename: string): boolean {
+  const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
+  return BINARY_EXTENSIONS.includes(ext)
+}
+
+function sanitizeFilePath(path: string): string {
+  // Remove path traversal attempts and normalize
+  return path.replace(/\.\./g, '').replace(/\/+/g, '/')
+}
 
 export default defineEventHandler(async (event) => {
-  await getServerSession(event)
+  const session = await getServerSession(event)
+  const user = getSessionUser(session)
+  
+  if (!user) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
   const serverId = getRouterParam(event, 'server')
   const query = getQuery(event)
-  const file = query.file as string
+  const file = sanitizeFilePath(query.file as string)
 
   if (!serverId) {
     throw createError({
@@ -22,16 +42,67 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-
     const { client, server } = await getWingsClientForServer(serverId)
+    
+    // Check if file is binary
+    if (isBinaryFile(file)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Cannot view binary file',
+        data: { isBinary: true },
+      })
+    }
+    
+    // Get file info first to check size
+    const directory = file.substring(0, file.lastIndexOf('/')) || '/'
+    const filename = file.substring(file.lastIndexOf('/') + 1)
+    const files = await client.listFiles(server.uuid as string, directory)
+    const fileInfo = files.find(f => f.name === filename)
+    
+    if (fileInfo && fileInfo.size > MAX_FILE_SIZE) {
+      throw createError({
+        statusCode: 413,
+        statusMessage: 'File too large to view',
+        data: { size: fileInfo.size, maxSize: MAX_FILE_SIZE },
+      })
+    }
+    
     const content = await client.getFileContents(server.uuid as string, file)
 
-    return content
+    return {
+      data: {
+        content,
+        file,
+        size: fileInfo?.size || content.length,
+        lastModified: fileInfo?.modified_at,
+      },
+    }
   } catch (error) {
     console.error('Failed to read file from Wings:', error)
+    
+    if (error instanceof WingsAuthError) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Wings authentication failed',
+      })
+    }
+    
+    if (error instanceof WingsConnectionError) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Wings daemon unavailable',
+      })
+    }
+    
+    // Re-throw our custom errors
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      throw error
+    }
+    
     throw createError({
       statusCode: 500,
-      message: 'Failed to read file',
+      statusMessage: 'Failed to read file',
+      data: { error: error instanceof Error ? error.message : 'Unknown error' },
     })
   }
 })

@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
   const ports = body.ports as number[]
   const ipAlias = body.ipAlias as string | undefined
 
-  const allocationsToCreate = []
+  const allocationsToCreate: Array<typeof tables.serverAllocations.$inferInsert> = []
 
   for (const ip of ipAddresses) {
     for (const port of ports) {
@@ -59,6 +59,8 @@ export default defineEventHandler(async (event) => {
         continue
       }
 
+      const timestamp = new Date()
+
       allocationsToCreate.push({
         id: randomUUID(),
         nodeId,
@@ -68,8 +70,8 @@ export default defineEventHandler(async (event) => {
         isPrimary: false,
         serverId: null,
         notes: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
     }
   }

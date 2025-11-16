@@ -7,11 +7,21 @@ const props = defineProps<{
 
 const isRefreshing = ref(false)
 
-const { data: systemData, refresh, error } = await useFetch<{ data: WingsSystemInformation }>(`/api/admin/wings/nodes/${props.nodeId}/system`, {
-  key: `node-system-${props.nodeId}`,
-})
+const requestFetch = useRequestFetch()
 
-const systemInfo = computed(() => systemData.value?.data)
+const {
+  data: systemData,
+  refresh,
+  error,
+} = await useAsyncData<{ data: WingsSystemInformation }>(
+  `node-system-${props.nodeId}`,
+  () => requestFetch<{ data: WingsSystemInformation }>(`/api/admin/wings/nodes/${props.nodeId}/system`),
+  {
+    default: () => ({ data: {} as WingsSystemInformation }),
+  },
+)
+
+const systemInfo = computed<WingsSystemInformation | null>(() => systemData.value?.data ?? null)
 
 async function handleRefresh() {
   isRefreshing.value = true

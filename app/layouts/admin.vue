@@ -1,210 +1,197 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import type { SessionUser } from '#shared/types/auth'
 import type { SecuritySettings } from '#shared/types/admin-settings'
+import type { AdminNavItem } from '#shared/types/admin-navigation'
+
+const ADMIN_NAV_ITEMS: AdminNavItem[] = [
+  {
+    id: 'admin-dashboard',
+    label: 'Dashboard',
+    to: '/admin',
+    order: 0,
+  },
+  {
+    id: 'admin-users',
+    label: 'Users',
+    to: '/admin/users',
+    order: 10,
+    permission: 'admin.users.read',
+  },
+  {
+    id: 'admin-servers',
+    label: 'Servers',
+    to: '/admin/servers',
+    order: 20,
+    permission: 'admin.servers.read',
+  },
+  {
+    id: 'admin-api-keys',
+    label: 'API Keys',
+    to: '/admin/api',
+    order: 25,
+    permission: 'admin.api.read',
+  },
+  {
+    id: 'admin-nodes',
+    label: 'Nodes',
+    to: '/admin/nodes',
+    order: 30,
+    permission: 'admin.nodes.read',
+  },
+  {
+    id: 'admin-locations',
+    label: 'Locations',
+    to: '/admin/locations',
+    order: 40,
+    permission: 'admin.locations.read',
+  },
+  {
+    id: 'admin-service-packs',
+    label: 'Service Packs',
+    to: '/admin/nests',
+    order: 50,
+    permission: ['admin.nests.read', 'admin.eggs.read'],
+  },
+  {
+    id: 'admin-mounts',
+    label: 'Mounts',
+    to: '/admin/mounts',
+    order: 60,
+    permission: 'admin.mounts.read',
+  },
+  {
+    id: 'admin-database-hosts',
+    label: 'Database Hosts',
+    to: '/admin/database-hosts',
+    order: 70,
+    permission: 'admin.database-hosts.read',
+  },
+  {
+    id: 'admin-activity',
+    label: 'Audit Log',
+    to: '/admin/activity',
+    order: 80,
+    permission: 'admin.activity.read',
+  },
+  {
+    id: 'admin-schedules',
+    label: 'Schedules',
+    to: '/admin/schedules',
+    order: 85,
+    permission: 'admin.schedules.read',
+  },
+  {
+    id: 'admin-settings',
+    label: 'Settings',
+    to: '/admin/settings',
+    order: 90,
+    permission: 'admin.settings.read',
+  },
+]
 
 const route = useRoute()
 const router = useRouter()
-const { data: sessionData, status, getSession, signOut } = useAuth()
+const { data: session, status, getSession, signOut } = useAuth()
+
+const createDefaultSecuritySettings = (): SecuritySettings => ({
+  enforceTwoFactor: false,
+  maintenanceMode: false,
+  maintenanceMessage: '',
+  announcementEnabled: false,
+  announcementMessage: '',
+})
+
 const { data: securitySettings } = await useFetch<SecuritySettings>('/api/admin/settings/security', {
   key: 'admin-layout-security-settings',
-  default: (): SecuritySettings => ({
-    enforceTwoFactor: false,
-    maintenanceMode: false,
-    maintenanceMessage: '',
-    announcementEnabled: false,
-    announcementMessage: '',
-  }),
+  default: () => createDefaultSecuritySettings(),
 })
 
-const announcement = computed(() => securitySettings.value?.announcementEnabled ? securitySettings.value?.announcementMessage?.trim() : '')
-const maintenanceMessage = computed(() => securitySettings.value?.maintenanceMessage?.trim() || 'The panel is currently undergoing maintenance. Please check back soon.')
-
-const isMaintenanceGateActive = computed(() => {
-  if (!securitySettings.value?.maintenanceMode)
-    return false
-
-  const user = sessionData.value?.user as SessionUser | undefined
-  return !user || user.role !== 'admin'
-})
-
-const requiresTwoFactor = computed(() => Boolean(securitySettings.value?.enforceTwoFactor))
-const hasTwoFactor = computed(() => {
-  const user = sessionData.value?.user
-  return Boolean(user && typeof user === 'object' && 'useTotp' in user && (user as { useTotp?: boolean }).useTotp)
-})
-const showTwoFactorPrompt = computed(() => requiresTwoFactor.value && !hasTwoFactor.value)
-
-function navigateToSecuritySettings() {
-  router.push('/account/security')
-}
+const rawSessionUser = computed<SessionUser | null>(() => (session.value?.user as SessionUser | undefined) ?? null)
 
 const sessionUser = computed<SessionUser | null>(() => {
-  const candidate = sessionData.value?.user as SessionUser | undefined
-  if (!candidate) {
+  const user = rawSessionUser.value
+  if (!user) {
     return null
   }
 
   return {
-    id: candidate.id ?? null,
-    name: candidate.name ?? null,
-    email: candidate.email ?? null,
-    username: candidate.username ?? candidate.email ?? null,
-    role: candidate.role ?? null,
-    image: candidate.image ?? null,
-    permissions: candidate.permissions ?? [],
+    id: user.id ?? null,
+    name: user.name ?? null,
+    email: user.email ?? null,
+    username: user.username ?? user.email ?? null,
+    role: user.role ?? null,
+    image: user.image ?? null,
+    permissions: user.permissions ?? [],
   }
 })
+
+const permissions = computed(() => rawSessionUser.value?.permissions ?? [])
+const isSuperUser = computed(() => rawSessionUser.value?.role === 'admin' || Boolean(rawSessionUser.value?.remember))
+
+const announcement = computed(() => (securitySettings.value?.announcementEnabled ? securitySettings.value?.announcementMessage?.trim() : ''))
+const maintenanceMessage = computed(() => securitySettings.value?.maintenanceMessage?.trim() || 'The panel is currently undergoing maintenance. Please check back soon.')
+
+const isMaintenanceGateActive = computed(() => {
+  if (!securitySettings.value?.maintenanceMode) {
+    return false
+  }
+
+  return !rawSessionUser.value || rawSessionUser.value.role !== 'admin'
+})
+
+const requiresTwoFactor = computed(() => Boolean(securitySettings.value?.enforceTwoFactor))
+const hasTwoFactor = computed(() => Boolean(rawSessionUser.value && 'useTotp' in rawSessionUser.value && rawSessionUser.value.useTotp))
+const showTwoFactorPrompt = computed(() => requiresTwoFactor.value && !hasTwoFactor.value)
+
 const isAuthenticating = computed(() => status.value === 'loading')
 
 watch(status, async (value) => {
   if (value === 'authenticated') {
     await getSession()
-    return
   }
-
-  if (value === 'unauthenticated') {
-    router.replace({ path: '/auth/login', query: { redirect: route.fullPath } })
+  else if (value === 'unauthenticated') {
+    await router.replace({ path: '/auth/login', query: { redirect: route.fullPath } })
   }
 }, { immediate: true })
 
-async function handleSignOut() {
-  await signOut({ callbackUrl: '/auth/login' })
-}
-
 const adminTitle = computed(() => {
   const title = route.meta.adminTitle
-  if (typeof title === 'string' && title.length > 0)
-    return title
-  return 'Admin'
+  return typeof title === 'string' && title.length > 0 ? title : 'Admin'
 })
 
 const adminSubtitle = computed(() => {
   const subtitle = route.meta.adminSubtitle
-  if (typeof subtitle === 'string' && subtitle.length > 0)
-    return subtitle
-  return 'Infrastructure overview and controls'
+  return typeof subtitle === 'string' && subtitle.length > 0 ? subtitle : 'Infrastructure overview and controls'
 })
 
 const navItems = computed(() => {
-  const user = sessionUser.value
-  const permissions = user?.permissions ?? []
-  const isAdmin = user?.role === 'admin'
-  const isSuperUser = isAdmin || Boolean((sessionData.value?.user as SessionUser | undefined)?.remember)
-  const hasPermission = (permission?: string | string[]) => {
+  const canAccess = (permission?: string | string[]) => {
     if (!permission) {
       return true
     }
 
+    const userPermissions = permissions.value
+
     if (Array.isArray(permission)) {
-      return permission.some(entry => permissions.includes(entry))
+      return permission.some(value => userPermissions.includes(value))
     }
 
-    return permissions.includes(permission)
+    return userPermissions.includes(permission)
   }
-  const items = [
-    {
-      id: 'admin-dashboard',
-      label: 'Dashboard',
-      icon: 'i-lucide-layout-dashboard',
-      to: '/admin',
-      order: 0,
-      permission: undefined,
-    },
-    {
-      id: 'admin-users',
-      label: 'Users',
-      icon: 'i-lucide-users',
-      to: '/admin/users',
-      order: 10,
-      permission: 'admin.users.read',
-    },
-    {
-      id: 'admin-servers',
-      label: 'Servers',
-      icon: 'i-lucide-server',
-      to: '/admin/servers',
-      order: 20,
-      permission: 'admin.servers.read',
-    },
-    {
-      id: 'admin-api-keys',
-      label: 'API Keys',
-      icon: 'i-lucide-key-round',
-      to: '/admin/api',
-      order: 25,
-      permission: 'admin.api.read',
-    },
-    {
-      id: 'admin-nodes',
-      label: 'Nodes',
-      icon: 'i-lucide-cpu',
-      to: '/admin/nodes',
-      order: 30,
-      permission: 'admin.nodes.read',
-    },
-    {
-      id: 'admin-locations',
-      label: 'Locations',
-      icon: 'i-lucide-map-pin',
-      to: '/admin/locations',
-      order: 40,
-      permission: 'admin.locations.read',
-    },
-    {
-      id: 'admin-service-packs',
-      label: 'Service Packs',
-      icon: 'i-lucide-layers',
-      to: '/admin/nests',
-      order: 50,
-      permission: ['admin.nests.read', 'admin.eggs.read'],
-    },
-    {
-      id: 'admin-mounts',
-      label: 'Mounts',
-      icon: 'i-lucide-folder-tree',
-      to: '/admin/mounts',
-      order: 60,
-      permission: 'admin.mounts.read',
-    },
-    {
-      id: 'admin-database-hosts',
-      label: 'Database Hosts',
-      icon: 'i-lucide-database',
-      to: '/admin/database-hosts',
-      order: 70,
-      permission: 'admin.database-hosts.read',
-    },
-    {
-      id: 'admin-activity',
-      label: 'Audit Log',
-      icon: 'i-lucide-activity',
-      to: '/admin/activity',
-      order: 80,
-      permission: 'admin.activity.read',
-    },
-    {
-      id: 'admin-schedules',
-      label: 'Schedules',
-      icon: 'i-lucide-calendar-clock',
-      to: '/admin/schedules',
-      order: 85,
-      permission: 'admin.schedules.read',
-    },
-    {
-      id: 'admin-settings',
-      label: 'Settings',
-      icon: 'i-lucide-settings',
-      to: '/admin/settings',
-      order: 90,
-      permission: 'admin.settings.read',
-    },
-  ]
 
-  return items
-    .filter(item => isSuperUser || hasPermission(item.permission))
+  return ADMIN_NAV_ITEMS
+    .filter(item => isSuperUser.value || canAccess(item.permission))
     .sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
 })
+
+const navigateToSecuritySettings = () => {
+  router.push('/account/security')
+}
+
+const handleSignOut = async () => {
+  await signOut({ callbackUrl: '/auth/login' })
+}
 </script>
 
 <template>

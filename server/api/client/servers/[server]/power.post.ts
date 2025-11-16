@@ -1,19 +1,19 @@
-import { getServerSession } from '#auth'
-import { getSessionUser } from '~~/server/utils/session'
-import { getWingsClientForServer } from '~~/server/utils/wings-client'
+import { serverManager } from '~~/server/utils/server-manager'
+import { WingsConnectionError, WingsAuthError } from '~~/server/utils/wings-client'
+import { requireServerPermission } from '~~/server/utils/permission-middleware'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
-  const user = getSessionUser(session)
-
-  if (!user) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
-
   const serverIdentifier = getRouterParam(event, 'server')
+
   if (!serverIdentifier) {
     throw createError({ statusCode: 400, statusMessage: 'Server identifier required' })
   }
+
+  // Check permissions - user must have power control access
+  const { userId } = await requireServerPermission(event, {
+    serverId: serverIdentifier,
+    requiredPermissions: ['server.power'],
+  })
 
   const body = await readBody<{ action: 'start' | 'stop' | 'restart' | 'kill' }>(event)
 
@@ -27,17 +27,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-
-    const { client, server } = await getWingsClientForServer(serverIdentifier)
-    await client.sendPowerAction(server.uuid as string, body.action)
-
-    await recordAuditEvent({
-      actor: user.email || 'unknown',
-      actorType: 'user',
-      action: `server.power.${body.action}`,
-      targetType: 'server',
-      targetId: serverIdentifier,
-      metadata: { action: body.action },
+    await serverManager.powerAction(serverIdentifier, body.action, {
+      userId,
     })
 
     return {
@@ -46,6 +37,23 @@ export default defineEventHandler(async (event) => {
     }
   } catch (error) {
     console.error('Wings power action failed:', error)
+    
+    if (error instanceof WingsAuthError) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Wings authentication failed',
+        data: { error: error.message },
+      })
+    }
+    
+    if (error instanceof WingsConnectionError) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Wings daemon unavailable',
+        data: { error: error.message },
+      })
+    }
+    
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to send power action to Wings',

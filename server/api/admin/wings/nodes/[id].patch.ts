@@ -3,33 +3,16 @@ import { getServerSession } from '#auth'
 import { isAdmin } from '~~/server/utils/session'
 import { updateWingsNode } from '~~/server/utils/wings/nodesStore'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
-
-interface UpdateNodePayload {
-  name?: string
-  description?: string
-  fqdn?: string
-  scheme?: string
-  public?: boolean
-  maintenanceMode?: boolean
-  behindProxy?: boolean
-  memory?: number
-  memoryOverallocate?: number
-  disk?: number
-  diskOverallocate?: number
-  uploadSize?: number
-  daemonListen?: number
-  daemonSftp?: number
-  daemonBase?: string
-}
+import type { UpdateWingsNodePayload, UpdateWingsNodeResponse } from '#shared/types/admin-wings-node'
 
 const MAX_BODY_SIZE = 32 * 1024
 
-function validatePayload(payload: unknown): payload is UpdateNodePayload {
+function validatePayload(payload: unknown): payload is UpdateWingsNodePayload {
   if (!payload || typeof payload !== 'object') {
     return false
   }
 
-  const allowedKeys = new Set<keyof UpdateNodePayload>([
+  const allowedKeys = new Set<keyof UpdateWingsNodePayload>([
     'name',
     'description',
     'fqdn',
@@ -52,10 +35,10 @@ function validatePayload(payload: unknown): payload is UpdateNodePayload {
     return false
   }
 
-  return entries.every(([key, value]) => allowedKeys.has(key as keyof UpdateNodePayload) && value !== undefined)
+  return entries.every(([key, value]) => allowedKeys.has(key as keyof UpdateWingsNodePayload) && value !== undefined)
 }
 
-async function readUpdatePayload(event: H3Event): Promise<UpdateNodePayload> {
+async function readUpdatePayload(event: H3Event): Promise<UpdateWingsNodePayload> {
   const raw = await readRawBody(event, 'utf8')
 
   if (raw && raw.length > MAX_BODY_SIZE) {
@@ -76,7 +59,7 @@ async function readUpdatePayload(event: H3Event): Promise<UpdateNodePayload> {
   return parsed
 }
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<UpdateWingsNodeResponse> => {
   assertMethod(event, 'PATCH')
 
   const session = await getServerSession(event)

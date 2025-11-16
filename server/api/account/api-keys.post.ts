@@ -5,19 +5,7 @@ import { generateIdentifier, generateApiToken, hashApiToken } from '~~/server/ut
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { validateBody } from '~~/server/utils/validation'
 import { createApiKeySchema } from '~~/server/schemas/account'
-
-interface ApiKeyResponse {
-  data: {
-    identifier: string
-    description: string | null
-    allowed_ips: string[]
-    last_used_at: string | null
-    created_at: string
-  }
-  meta: {
-    secret_token: string
-  }
-}
+import type { ApiKeyResponse } from '#shared/types/api-responses'
 
 export default defineEventHandler(async (event): Promise<ApiKeyResponse> => {
   const session = await getServerSession(event)

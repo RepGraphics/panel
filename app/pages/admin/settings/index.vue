@@ -48,7 +48,7 @@ const availableTabs = computed(() => {
 
   return baseTabs
     .filter(tab => !tab.permission || permissions.includes(tab.permission))
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 })
 
 const tabItems = computed(() => availableTabs.value.map(tab => ({

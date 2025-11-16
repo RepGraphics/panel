@@ -28,6 +28,24 @@ export interface ServerWithLimits extends Server {
   limits: ServerLimits | null
 }
 
+export type ServerInfo = Pick<Server, 'id' | 'uuid' | 'identifier' | 'name' | 'description' | 'suspended'>
+
+export interface ServerListEntry
+  extends Pick<Server, 'uuid' | 'identifier' | 'name' | 'description' | 'suspended'> {
+  nodeId: string
+  nodeName: string
+  limits: Record<string, unknown> | null
+  featureLimits: Record<string, unknown> | null
+  status: string
+  ownership: 'mine' | 'shared'
+  isTransferring?: boolean
+}
+
+export interface ServersResponse {
+  data: ServerListEntry[]
+  generatedAt: string
+}
+
 export interface ServerLimits {
   cpu: number | null
   memory: number | null

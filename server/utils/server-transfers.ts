@@ -1,22 +1,8 @@
-
-
 import { useDrizzle, tables, eq } from './drizzle'
 import { getWingsClient } from './wings-client'
 import type { WingsNode } from './wings-client'
 import { randomUUID } from 'crypto'
-
-export interface ServerTransferConfig {
-  serverId: string
-  targetNodeId: string
-  targetAllocationId: string
-}
-
-export interface TransferStatus {
-  id: string
-  status: 'pending' | 'processing' | 'completed' | 'failed'
-  progress: number
-  message: string
-}
+import type { ServerTransferConfig, TransferStatus } from '#shared/types/server-transfers'
 
 async function _initiateServerTransfer(
   config: ServerTransferConfig

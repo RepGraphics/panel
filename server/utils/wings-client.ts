@@ -47,9 +47,31 @@ export interface WingsBackup {
   completed_at: string | null
 }
 
+export interface WingsError {
+  code: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+export class WingsConnectionError extends Error {
+  constructor(message: string, public override cause?: Error) {
+    super(message)
+    this.name = 'WingsConnectionError'
+  }
+}
+
+export class WingsAuthError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'WingsAuthError'
+  }
+}
+
 export class WingsClient {
   private baseUrl: string
   private token: string
+  private timeout: number = 30000 // 30 seconds
+  private maxRetries = 3
 
   constructor(node: WingsNode) {
     this.baseUrl = `${node.scheme}://${node.fqdn}:${node.daemonListen}`
@@ -60,28 +82,96 @@ export class WingsClient {
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
+    let lastError: Error | null = null
     const url = `${this.baseUrl}${path}`
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': this.token,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    if (!response.ok) {
-      const error = await response.text().catch(() => 'Unknown error')
-      throw new Error(`Wings request failed: ${response.status} - ${error}`)
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'Authorization': this.token,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            throw new WingsAuthError(`Authentication failed: ${response.status}`)
+          }
+
+          let errorMessage = `Wings request failed: ${response.status}`
+          try {
+            const errorBody = await response.text()
+            if (errorBody) {
+              errorMessage += ` - ${errorBody}`
+            }
+          } catch {
+            // Ignore error parsing response body
+          }
+
+          throw new WingsConnectionError(errorMessage)
+        }
+
+        if (response.status === 204) {
+          return {} as T
+        }
+
+        return response.json()
+      } catch (error) {
+        clearTimeout(timeoutId)
+
+        if (error instanceof WingsAuthError) {
+          throw error
+        }
+
+        if (error instanceof WingsConnectionError) {
+          lastError = error
+        } else if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            lastError = new WingsConnectionError(`Request timeout after ${this.timeout}ms`, error)
+          } else if (error.message.includes('fetch')) {
+            lastError = new WingsConnectionError(`Failed to connect to Wings daemon at ${this.baseUrl}`, error)
+          } else {
+            lastError = new WingsConnectionError('Unknown Wings communication error', error)
+          }
+        } else {
+          lastError = new WingsConnectionError('Unknown Wings communication error')
+        }
+
+        if (attempt < this.maxRetries) {
+          const backoff = Math.pow(2, attempt) * 200
+          await new Promise(resolve => setTimeout(resolve, backoff))
+          continue
+        }
+
+        throw lastError
+      }
     }
 
-    if (response.status === 204) {
-      return {} as T
-    }
+    throw lastError ?? new WingsConnectionError('Unknown Wings communication error')
+  }
 
-    return response.json()
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.request('/api/system')
+      return true
+    } catch (error) {
+      console.error('Wings connection test failed:', error)
+      return false
+    }
+  }
+
+  async getSystemInfo(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>('/api/system')
   }
 
   async getServerDetails(serverUuid: string): Promise<WingsServerDetails> {
@@ -259,15 +349,42 @@ export class WingsClient {
     })
   }
 
-  getFileDownloadUrl(serverUuid: string, filePath: string): string {
+  async getFileDownloadUrl(serverUuid: string, filePath: string): Promise<string> {
     const params = new URLSearchParams({ file: filePath })
-    return `${this.baseUrl}/api/servers/${serverUuid}/files/download?${params}`
+    const response = await this.request<{ url: string }>(
+      `/api/servers/${serverUuid}/files/download?${params}`
+    )
+    return response.url
   }
 
-  async getFileUploadUrl(serverUuid: string): Promise<string> {
-    const response = await this.request<{ url: string }>(
-      `/api/servers/${serverUuid}/files/upload`
-    )
+  async downloadFileStream(serverUuid: string, filePath: string): Promise<Response> {
+    const signedUrl = await this.getFileDownloadUrl(serverUuid, filePath)
+    const response = await fetch(signedUrl, {
+      method: 'GET',
+    })
+
+    if (!response.ok) {
+      throw new WingsConnectionError(`Failed to download file contents: ${response.status}`)
+    }
+
+    if (!response.body) {
+      throw new WingsConnectionError('Wings responded without a stream body for file download')
+    }
+
+    return response
+  }
+
+  async getFileUploadUrl(serverUuid: string, directory?: string): Promise<string> {
+    const params = new URLSearchParams()
+    if (directory) {
+      params.set('directory', directory)
+    }
+
+    const path = params.size > 0
+      ? `/api/servers/${serverUuid}/files/upload?${params.toString()}`
+      : `/api/servers/${serverUuid}/files/upload`
+
+    const response = await this.request<{ url: string }>(path)
     return response.url
   }
 

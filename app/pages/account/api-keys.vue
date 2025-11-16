@@ -118,8 +118,124 @@ function formatDate(date: Date | string | number | null | undefined) {
       </template>
     </UPageHeader>
 
+    <UModal
+      v-model:open="showCreateModal"
+      title="Create API Key"
+      description="Generate a personal API key for programmatic access"
+      :ui="{ body: 'space-y-4' }"
+    >
+      <template #body>
+        <div v-if="newKeyToken" class="space-y-4">
+          <UAlert color="warning" variant="soft" icon="i-lucide-alert-triangle">
+            <template #title>Save this token now!</template>
+            <template #description>
+              You won't be able to see it again after closing this dialog.
+            </template>
+          </UAlert>
+
+          <div class="space-y-2">
+            <label class="text-sm font-medium">Your API Key</label>
+            <div class="flex gap-2">
+              <UInput
+                :model-value="newKeyToken"
+                readonly
+                icon="i-lucide-key"
+                class="flex-1 font-mono text-sm"
+              />
+              <UButton
+                icon="i-lucide-copy"
+                variant="soft"
+                @click="copyToken"
+              >
+                Copy
+              </UButton>
+            </div>
+          </div>
+        </div>
+
+        <form v-else class="space-y-4" @submit.prevent="createApiKey">
+          <UFormField label="Description (optional)" name="memo">
+            <UInput
+              v-model="createForm.memo"
+              icon="i-lucide-file-text"
+              placeholder="My API Key"
+              class="w-full"
+            />
+            <template #help>
+              A friendly name to help identify this key
+            </template>
+          </UFormField>
+
+          <UFormField
+            label="Allowed IPs (optional)"
+            name="allowedIps"
+          >
+            <UInput
+              v-model="createForm.allowedIps"
+              icon="i-lucide-shield"
+              placeholder="192.168.1.1, 10.0.0.1"
+              class="w-full"
+            />
+            <template #help>
+              Comma-separated list of IP addresses. Leave empty to allow all IPs.
+            </template>
+          </UFormField>
+        </form>
+      </template>
+
+      <template #footer="{ close }">
+        <div v-if="!newKeyToken" class="flex justify-end gap-2">
+          <UButton
+            variant="ghost"
+            :disabled="isCreating"
+            @click="() => {
+              showCreateModal = false
+              newKeyToken = null
+              close()
+            }"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            icon="i-lucide-plus"
+            color="primary"
+            :loading="isCreating"
+            :disabled="isCreating"
+            @click="createApiKey"
+          >
+            Create Key
+          </UButton>
+        </div>
+        <div v-else class="flex justify-end">
+          <UButton @click="() => {
+            showCreateModal = false
+            newKeyToken = null
+            close()
+          }">
+            Done
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
     <UPageBody>
-      <UCard>
+      <UCard :ui="{ body: 'space-y-3' }">
+        <template #header>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold">Active API Keys</h2>
+              <p class="text-sm text-muted-foreground">Manage existing keys or create new ones for API access.</p>
+            </div>
+            <UButton
+              icon="i-lucide-plus"
+              color="primary"
+              variant="soft"
+              @click="showCreateModal = true"
+            >
+              Create API Key
+            </UButton>
+          </div>
+        </template>
         <UEmpty
           v-if="apiKeys.length === 0"
           icon="i-lucide-key"
@@ -169,94 +285,6 @@ function formatDate(date: Date | string | number | null | undefined) {
         </div>
       </UCard>
     </UPageBody>
-
-    <UModal v-model:open="showCreateModal" title="Create API Key">
-      <template #body>
-        <div v-if="newKeyToken" class="space-y-4">
-          <UAlert color="warning" variant="soft" icon="i-lucide-alert-triangle">
-            <template #title>Save this token now!</template>
-            <template #description>
-              You won't be able to see it again after closing this dialog.
-            </template>
-          </UAlert>
-
-          <div class="space-y-2">
-            <label class="text-sm font-medium">Your API Key</label>
-            <div class="flex gap-2">
-              <UInput
-                :model-value="newKeyToken"
-                readonly
-                icon="i-lucide-key"
-                class="flex-1 font-mono text-sm w-full"
-              />
-              <UButton
-                icon="i-lucide-copy"
-                variant="soft"
-                @click="copyToken"
-              >
-                Copy
-              </UButton>
-            </div>
-          </div>
-        </div>
-
-        <form v-else class="space-y-4" @submit.prevent="createApiKey">
-          <UFormField label="Description (optional)" name="memo">
-            <UInput
-              v-model="createForm.memo"
-              icon="i-lucide-file-text"
-              placeholder="My API Key"
-              class="w-full"
-            />
-            <template #help>
-              A friendly name to help identify this key
-            </template>
-          </UFormField>
-
-          <UFormField
-            label="Allowed IPs (optional)"
-            name="allowedIps"
-          >
-            <UInput
-              v-model="createForm.allowedIps"
-              icon="i-lucide-shield"
-              placeholder="192.168.1.1, 10.0.0.1"
-              class="w-full"
-            />
-            <template #help>
-              Comma-separated list of IP addresses. Leave empty to allow all IPs.
-            </template>
-          </UFormField>
-        </form>
-      </template>
-
-      <template #footer>
-        <div v-if="!newKeyToken" class="flex justify-end gap-2">
-          <UButton
-            variant="ghost"
-            :disabled="isCreating"
-            @click="showCreateModal = false"
-          >
-            Cancel
-          </UButton>
-          <UButton
-            icon="i-lucide-plus"
-            color="primary"
-            :loading="isCreating"
-            :disabled="isCreating"
-            @click="createApiKey"
-          >
-            Create Key
-          </UButton>
-        </div>
-        <div v-else class="flex justify-end">
-          <UButton
-            @click="() => { showCreateModal = false; newKeyToken = null }"
-          >
-            Done
-          </UButton>
-        </div>
-      </template>
-    </UModal>
   </UPage>
 </template>
+
