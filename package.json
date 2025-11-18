@@ -34,6 +34,7 @@
     "@nuxt/eslint": "1.10.0",
     "@nuxt/scripts": "0.13.0",
     "@nuxt/ui": "4.1.0",
+    "@nuxtjs/robots": "5.5.6",
     "@sidebase/nuxt-auth": "1.1.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/nodemailer": "^7.0.3",

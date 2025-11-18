@@ -46,6 +46,7 @@ export default defineNuxtConfig({
     '@nuxt/hints',
     'nuxt-charts',
     '@vite-pwa/nuxt',
+    '@nuxtjs/robots',
   ],
 
   auth: {
@@ -157,7 +158,10 @@ export default defineNuxtConfig({
       link: [{ rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }],
     },
   },
-
+  site: { indexable: false },
+  robots: {
+    blockAiBots: true,
+  },
   nitro: {
     preset: 'node-server',
     experimental: {
