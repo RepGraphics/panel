@@ -93,27 +93,19 @@ const currentTabComponent = computed(() => {
 <template>
   <UPage>
     <UPageBody>
-      <section class="space-y-6">
-        <header>
-          <h1 class="text-xl font-semibold">Settings</h1>
-          <p class="text-xs text-muted-foreground">Configure panel settings and preferences</p>
-        </header>
-
-        <div class="space-y-4">
-          <UTabs v-model="activeTab" :items="tabItems" class="w-full" />
-
-          <div v-if="currentTabComponent" key="settings-tab">
-            <component :is="currentTabComponent" />
-          </div>
-
-          <UAlert v-else color="warning" variant="soft" icon="i-lucide-alert-triangle">
-            <template #title>No settings available</template>
-            <template #description>
-              There are no settings sections available for your account. Contact an administrator if you believe this is an error.
-            </template>
-          </UAlert>
+      <div class="space-y-4">
+        <UTabs v-model="activeTab" variant="link" :items="tabItems" class="w-full" />
+        <div v-if="currentTabComponent" key="settings-tab">
+          <component :is="currentTabComponent" />
         </div>
-      </section>
+        <UAlert v-else color="warning" variant="soft" icon="i-lucide-alert-triangle">
+          <template #title>No settings available</template>
+          <template #description>
+            There are no settings sections available for your account. Contact an administrator if you believe this is
+            an error.
+          </template>
+        </UAlert>
+      </div>
     </UPageBody>
   </UPage>
 </template>

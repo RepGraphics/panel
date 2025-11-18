@@ -109,63 +109,38 @@ function copyToClipboard(text: string) {
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">API Keys</h1>
-            <p class="text-xs text-muted-foreground">Manage application API keys for external integrations</p>
-          </div>
-          <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="showCreateModal = true">
-            Create API Key
-          </UButton>
-        </header>
-
         <UCard>
           <template #header>
-            <h2 class="text-lg font-semibold">Active API Keys</h2>
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-semibold">Active API Keys</h2>
+              <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="showCreateModal = true">
+                Create API Key
+              </UButton>
+            </div>
           </template>
 
-          <UEmpty
-            v-if="apiKeys.length === 0"
-            icon="i-lucide-key"
-            title="No API keys"
-            description="Create an API key for external integrations"
-            variant="subtle"
-          />
+          <UEmpty v-if="apiKeys.length === 0" icon="i-lucide-key" title="No API keys"
+            description="Create an API key for external integrations" variant="subtle" />
 
           <div v-else class="divide-y divide-default">
             <div v-for="key in apiKeys" :key="key.id" class="flex items-center justify-between gap-4 py-4">
               <div class="flex-1 space-y-1">
                 <div class="flex items-center gap-2">
                   <code class="text-sm font-mono">{{ key.identifier }}</code>
-                  <UBadge
-                    v-if="key.expiresAt"
-                    :color="new Date(key.expiresAt) < new Date() ? 'error' : 'neutral'"
-                    size="xs"
-                    variant="soft"
-                  >
-                    {{ new Date(key.expiresAt) < new Date() ? 'Expired' : 'Active' }}
-                  </UBadge>
+                  <UBadge v-if="key.expiresAt" :color="new Date(key.expiresAt) < new Date() ? 'error' : 'neutral'"
+                    size="xs" variant="soft">
+                    {{ new Date(key.expiresAt) < new Date() ? 'Expired' : 'Active' }} </UBadge>
                 </div>
                 <p v-if="key.memo" class="text-sm text-muted-foreground">{{ key.memo }}</p>
                 <div class="flex items-center gap-4 text-xs text-muted-foreground">
                   <span>
                     Created:
-                    <NuxtTime
-                      v-if="key.createdAt"
-                      :datetime="key.createdAt"
-                      relative
-                      class="font-medium"
-                    />
+                    <NuxtTime v-if="key.createdAt" :datetime="key.createdAt" relative class="font-medium" />
                     <span v-else>Unknown</span>
                   </span>
                   <span>
                     Last used:
-                    <NuxtTime
-                      v-if="key.lastUsedAt"
-                      :datetime="key.lastUsedAt"
-                      relative
-                      class="font-medium"
-                    />
+                    <NuxtTime v-if="key.lastUsedAt" :datetime="key.lastUsedAt" relative class="font-medium" />
                     <span v-else>Never used</span>
                   </span>
                   <span v-if="key.expiresAt">
@@ -195,7 +170,8 @@ function copyToClipboard(text: string) {
           </UFormField>
 
           <UFormField label="Allowed IPs" name="allowedIps">
-            <UInput v-model="form.allowedIps" placeholder="192.168.1.1, 10.0.0.1" :disabled="isSubmitting" class="w-full" />
+            <UInput v-model="form.allowedIps" placeholder="192.168.1.1, 10.0.0.1" :disabled="isSubmitting"
+              class="w-full" />
             <template #help>
               Comma-separated list of IP addresses. Leave empty to allow all IPs.
             </template>

@@ -25,13 +25,6 @@ function statusColor(enabled: boolean) {
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Scheduled automation</h1>
-            <p class="text-xs text-muted-foreground">Keep recurring tasks aligned with daemon jobs.</p>
-          </div>
-        </header>
-
         <UCard :ui="{ body: 'space-y-3' }">
           <template #header>
             <div class="flex items-center justify-between">

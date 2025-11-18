@@ -56,7 +56,7 @@ function formatDate(date: string | Date | null) {
             </div>
           </header>
 
-          <UTabs v-model="tab" :items="[
+          <UTabs v-model="tab" variant="link" :items="[
             { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
             { label: 'Build', value: 'build', icon: 'i-lucide-wrench' },
             { label: 'Startup', value: 'startup', icon: 'i-lucide-rocket' },

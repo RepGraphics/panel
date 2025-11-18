@@ -110,23 +110,13 @@ async function handleDelete(location: LocationWithNodeCount) {
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Locations</h1>
-            <p class="text-xs text-muted-foreground">Organize nodes by geographic location</p>
-          </div>
-          <div class="flex gap-2">
-            <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="openCreateModal">
-              Create Location
-            </UButton>
-          </div>
-        </header>
-
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
               <h2 class="text-lg font-semibold">All Locations</h2>
-              <UBadge color="neutral" variant="ghost">{{ locations.length }} total</UBadge>
+              <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="openCreateModal">
+                Create Location
+              </UButton>
             </div>
           </template>
 

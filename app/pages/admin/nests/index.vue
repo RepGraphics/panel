@@ -95,23 +95,13 @@ function viewNest(nest: NestWithEggCount) {
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Nests & Eggs</h1>
-            <p class="text-xs text-muted-foreground">Manage game server types and configurations</p>
-          </div>
-          <div class="flex gap-2">
-            <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="openCreateModal">
-              Create Nest
-            </UButton>
-          </div>
-        </header>
-
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
               <h2 class="text-lg font-semibold">All Nests</h2>
-              <UBadge color="neutral" variant="ghost">{{ nests.length }} total</UBadge>
+              <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="openCreateModal">
+                Create Nest
+              </UButton>
             </div>
           </template>
 

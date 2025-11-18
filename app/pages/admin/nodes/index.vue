@@ -248,24 +248,13 @@ watch(
     <UPage>
       <UPageBody>
         <section class="space-y-6">
-          <header class="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 class="text-xl font-semibold">Registered nodes</h1>
-              <p class="text-xs text-muted-foreground">Link Wings daemons to manage infrastructure.</p>
-            </div>
-            <UButton icon="i-lucide-plus" color="primary" variant="soft" @click="showCreate = true">
-              Add node
-            </UButton>
-          </header>
-
           <UCard :ui="{ body: 'space-y-3' }">
             <template #header>
               <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold">Node inventory</h2>
-                <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                  <UIcon name="i-lucide-server" />
-                  <span>{{ nodes.length }} linked</span>
-                </div>
+                <UButton icon="i-lucide-plus" color="primary" variant="soft" @click="showCreate = true">
+                  Add node
+                </UButton>
               </div>
             </template>
 

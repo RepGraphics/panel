@@ -29,16 +29,6 @@ const hasMore = computed(() => Boolean(pagination.value?.hasMore))
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Audit events</h1>
-            <p class="text-xs text-muted-foreground">Consolidate actions executed through panel and Wings.</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <UButton icon="i-lucide-download" color="primary" variant="subtle">Export CSV</UButton>
-          </div>
-        </header>
-
         <UCard :ui="{ body: 'space-y-3' }">
           <template #header>
             <div class="flex items-center justify-between">
@@ -50,6 +40,7 @@ const hasMore = computed(() => Boolean(pagination.value?.hasMore))
                 </p>
               </div>
               <UBadge v-if="pending" color="primary" variant="soft">Loading</UBadge>
+              <UButton icon="i-lucide-download" color="primary" variant="subtle">Export CSV</UButton>
             </div>
           </template>
 

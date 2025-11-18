@@ -106,7 +106,7 @@ const isAdminUser = computed(() => authUser.value?.role === 'admin')
       <header class="border-b border-default bg-background/80 backdrop-blur">
         <div class="mx-auto flex w-full max-w-6xl items-center justify-end gap-4 px-6 py-4">
           <div class="flex items-center gap-2">
-            <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="neutral" to="/admin">
+            <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="error" to="/admin">
               Admin
             </UButton>
             <UButton icon="i-lucide-log-out" color="primary" variant="subtle" :loading="signOutLoading"

@@ -22,22 +22,13 @@ const servers = computed(() => serversResponse.value?.data ?? [])
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Servers registry</h1>
-            <p class="text-xs text-muted-foreground">Manage lifecycle and sync state across nodes.</p>
-          </div>
-          <div class="flex gap-2">
-            <UButton icon="i-lucide-plus" color="primary" variant="subtle" to="/admin/servers/create">
-              Create Server
-            </UButton>
-          </div>
-        </header>
-
         <UCard :ui="{ body: 'space-y-3' }">
           <template #header>
             <div class="flex items-center justify-between">
               <h2 class="text-lg font-semibold">Server inventory</h2>
+                          <UButton icon="i-lucide-plus" color="primary" variant="subtle" to="/admin/servers/create">
+              Create Server
+            </UButton>
             </div>
           </template>
 

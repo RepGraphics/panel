@@ -157,26 +157,13 @@ async function handleDelete(user: AdminUserResponse) {
   <UPage>
     <UPageBody>
       <section class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">Panel users</h1>
-            <p class="text-xs text-muted-foreground">Manage access to Wings-managed infrastructure.</p>
-          </div>
-          <div class="flex gap-2">
-            <UButton icon="i-lucide-user-plus" color="primary" variant="subtle" @click="openCreateModal">
-              Create User
-            </UButton>
-          </div>
-        </header>
-
         <UCard :ui="{ body: 'space-y-3' }">
           <template #header>
             <div class="flex items-center justify-between">
               <h2 class="text-lg font-semibold">Accounts</h2>
-              <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                <USkeleton v-if="loading" class="h-4 w-20" />
-                <span v-else>{{ users.length }} users</span>
-              </div>
+              <UButton icon="i-lucide-user-plus" color="primary" variant="subtle" @click="openCreateModal">
+                Create User
+              </UButton>
             </div>
           </template>
 
@@ -213,7 +200,7 @@ async function handleDelete(user: AdminUserResponse) {
                   </UBadge>
                 </div>
                 <span class="col-span-3 text-xs text-muted-foreground">{{ new Date(user.createdAt).toLocaleString()
-                  }}</span>
+                }}</span>
                 <div class="col-span-1 flex gap-1">
                   <UButton icon="i-lucide-user-circle" size="xs" variant="ghost" :to="`/admin/users/${user.id}`" />
                   <UButton icon="i-lucide-pencil" size="xs" variant="ghost" @click="openEditModal(user)" />

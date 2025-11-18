@@ -504,7 +504,7 @@ async function handleTransferServers() {
             </div>
           </header>
 
-          <UTabs v-model="tab" :items="[
+          <UTabs v-model="tab" variant="link" :items="[
             { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
             { label: 'Servers', value: 'servers', icon: 'i-lucide-server' },
             { label: 'Allocations', value: 'allocations', icon: 'i-lucide-network' },
