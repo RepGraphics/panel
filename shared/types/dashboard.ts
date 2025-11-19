@@ -16,6 +16,16 @@ export interface ClientDashboardActivity {
   serverUuid?: string | null
   nodeId?: string | null
   target?: string | null
+  action?: string | null
+  metadata?: Record<string, unknown>
+  host?: string | null
+  protocol?: string | null
+  url?: string | null
+  method?: string | null
+  userAgent?: string | null
+  name?: string | null
+  fqdn?: string | null
+  baseUrl?: string | null
 }
 
 export interface ClientDashboardQuickLink {

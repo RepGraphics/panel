@@ -65,7 +65,7 @@ const hasMore = computed(() => Boolean(pagination.value?.hasMore))
               <div class="space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="text-sm font-semibold">{{ entry.actor }}</span>
-                  <UBadge size="xs" color="primary">{{ entry.action }}</UBadge>
+                  <UBadge size="sm" color="primary" variant="subtle">{{ entry.action }}</UBadge>
                 </div>
                 <p class="text-xs text-muted-foreground">{{ entry.target }}</p>
                 <details v-if="Object.keys(entry.details ?? {}).length" class="text-xs text-muted-foreground">

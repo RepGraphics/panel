@@ -95,7 +95,7 @@ function formatDate(date: Date | string | number | null | undefined) {
   <UPage>
     <UPageHeader title="SSH Keys" description="Manage SSH keys for SFTP access to your servers">
       <template #links>
-        <UButton icon="i-lucide-plus" @click="showCreateModal = true">
+        <UButton variant="subtle" icon="i-lucide-plus" @click="showCreateModal = true">
           Add SSH Key
         </UButton>
       </template>
