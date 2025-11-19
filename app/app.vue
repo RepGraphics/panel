@@ -1,7 +1,7 @@
 <template>
   <UApp>
     <NuxtPwaManifest/>
-    <NuxtLoadingIndicator color="#16a34a" :height="3" />
+    <NuxtLoadingIndicator color="#16a34a" error-color="#ef4444" :height="3" />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

@@ -3,6 +3,7 @@ import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { isAdmin } from '~~/server/utils/session'
 import { createWingsClient } from '~~/server/utils/wings/client'
+import { serverStartupSchema } from '#shared/schema/admin/server'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -21,7 +22,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readBody(event)
+  const body = await readValidatedBody(event, payload => serverStartupSchema.partial().parse(payload))
   const { startup, dockerImage, environment } = body
 
   const db = useDrizzle()

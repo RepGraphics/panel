@@ -34,7 +34,6 @@ const navigationItems = computed<NavigationMenuItem[]>(() => {
     },
     {
       label: 'Account',
-      to: '/account',
       children: [
         { label: 'Profile', to: '/account/profile' },
         { label: 'Security', to: '/account/security' },
@@ -60,8 +59,12 @@ const authUser = computed<Partial<SanitizedUser> | null>(() => {
 
 const userLabel = computed(() => authUser.value?.username || authUser.value?.email || 'Account')
 const userAvatar = computed(() => {
-  const candidate = (authUser.value as { image?: string } | null)?.image
-  return candidate ? { src: candidate } : undefined
+  const user = authUser.value
+  const fallback = user?.username || user?.email || 'User'
+  return {
+    alt: fallback,
+    text: fallback.slice(0, 2).toUpperCase(),
+  }
 })
 
 const isAdminUser = computed(() => authUser.value?.role === 'admin')
@@ -93,11 +96,22 @@ const isAdminUser = computed(() => authUser.value?.role === 'admin')
             { label: 'Sessions', to: '/account/sessions' },
             { label: 'Activity', to: '/account/activity' }
           ], [
-            { label: 'Sign out', click: handleSignOut }
+            { label: 'Sign out', click: handleSignOut, color: 'error' }
           ]]"
         >
-          <UButton :avatar="userAvatar" :label="collapsed ? undefined : userLabel" color="neutral" variant="ghost"
-            class="w-full" :block="collapsed" />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            class="w-full"
+            :block="collapsed"
+            type="button"
+            @click.prevent
+          >
+            <template #leading>
+              <UAvatar v-bind="userAvatar" size="sm" />
+            </template>
+            <span v-if="!collapsed">{{ userLabel }}</span>
+          </UButton>
         </UDropdownMenu>
       </template>
     </UDashboardSidebar>

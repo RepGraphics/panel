@@ -62,6 +62,7 @@ export default defineEventHandler(async (event) => {
         { from: file.substring(file.lastIndexOf('/') + 1), to: backupPath.substring(backupPath.lastIndexOf('/') + 1) }
       ])
     } catch {
+      // File does not exist yet so no backup is created
     }
     
     await client.writeFileContents(server.uuid as string, file, content)

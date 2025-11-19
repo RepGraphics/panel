@@ -9,11 +9,32 @@ const toast = useToast()
 const isGenerating = ref(false)
 const showConfig = ref(false)
 
-const { data: configData, refresh } = await useFetch<{ data: WingsNodeConfiguration }>(`/api/admin/wings/nodes/${props.nodeId}/configuration`, {
-  key: `node-config-${props.nodeId}`,
-})
+const {
+  data: configData,
+  pending: configPending,
+  refresh,
+} = await useAsyncData<WingsNodeConfiguration | null>(
+  `node-config-${props.nodeId}`,
+  async () => {
+    try {
+      const response = await $fetch<{ data: WingsNodeConfiguration }>(`/api/admin/wings/nodes/${props.nodeId}/configuration`)
+      return response.data
+    }
+    catch {
+      return null
+    }
+  },
+  {
+    default: () => null,
+  },
+)
 
-const configuration = computed(() => configData.value?.data)
+const configuration = computed(() => configData.value)
+
+watch(configuration, (value) => {
+  if (value)
+    showConfig.value = true
+})
 
 async function generateToken() {
   if (!confirm('Generate a new deployment token? The previous token will be invalidated and Wings will need to be reconfigured.')) {
@@ -58,10 +79,12 @@ async function copyToClipboard(text: string) {
         description: 'Configuration copied to clipboard',
         color: 'success',
       })
-    } else {
+    }
+    else {
       throw new Error('Clipboard API not available')
     }
-  } catch (error) {
+  }
+  catch (error) {
     toast.add({
       title: 'Copy failed',
       description: error instanceof Error ? error.message : 'Unable to copy to clipboard',
@@ -70,33 +93,73 @@ async function copyToClipboard(text: string) {
   }
 }
 
-const configYaml = computed(() => {
-  if (!configuration.value) return ''
+async function downloadConfigFile() {
+  if (!configuration.value) {
+    toast.add({
+      title: 'Nothing to download',
+      description: 'Generate a token to create a configuration file first.',
+      color: 'error',
+    })
+    return
+  }
 
-  return `debug: ${configuration.value.debug}
-uuid: ${configuration.value.uuid}
-token_id: ${configuration.value.token_id}
-token: ${configuration.value.token}
-api:
-  host: ${configuration.value.api.host}
-  port: ${configuration.value.api.port}
-  ssl:
-    enabled: ${configuration.value.api.ssl.enabled}
-    cert: ${configuration.value.api.ssl.cert}
-    key: ${configuration.value.api.ssl.key}
-  upload_limit: ${configuration.value.api.upload_limit}
-system:
-  data: ${configuration.value.system.data}
-  sftp:
-    bind_port: ${configuration.value.system.sftp.bind_port}
-allowed_mounts: ${JSON.stringify(configuration.value.allowed_mounts)}
-remote: ${configuration.value.remote}`
+  if (typeof window === 'undefined')
+    return
+
+  const blob = new Blob([configYaml.value], { type: 'text/yaml' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'config.yml'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+
+  toast.add({
+    title: 'Download started',
+    description: 'Saved as config.yml',
+    color: 'success',
+  })
+}
+
+const configYaml = computed(() => {
+  const value = configuration.value as WingsNodeConfiguration | null
+  if (!value)
+    return ''
+
+  const allowedMounts = value.allowed_mounts ?? []
+  const allowedMountLines = Array.isArray(allowedMounts) && allowedMounts.length > 0
+    ? allowedMounts.map((mount: string) => `  - ${mount}`)
+    : ['  []']
+
+  return [
+    `debug: ${value.debug}`,
+    `uuid: ${value.uuid}`,
+    `token_id: ${value.token_id}`,
+    `token: ${value.token}`,
+    'api:',
+    `  host: ${value.api.host}`,
+    `  port: ${value.api.port}`,
+    '  ssl:',
+    `    enabled: ${value.api.ssl.enabled}`,
+    `    cert: ${value.api.ssl.cert}`,
+    `    key: ${value.api.ssl.key}`,
+    `  upload_limit: ${value.api.upload_limit}`,
+    'system:',
+    `  data: ${value.system.data}`,
+    '  sftp:',
+    `    bind_port: ${value.system.sftp.bind_port}`,
+    'allowed_mounts:',
+    ...allowedMountLines,
+    `remote: ${value.remote ?? ''}`,
+  ].join('\n')
 })
 </script>
 
 <template>
   <div class="space-y-6">
-    <UAlert icon="i-lucide-info">
+    <UAlert icon="i-lucide-info" variant="subtle">
       <template #title>Auto-Deploy Configuration</template>
       <template #description>
         Generate a configuration file for Wings to automatically connect to this panel.
@@ -111,25 +174,35 @@ remote: ${configuration.value.remote}`
           Create a new auto-deploy configuration for Wings
         </div>
       </div>
-      <UButton icon="i-lucide-key" color="primary" :loading="isGenerating" @click="generateToken">
+      <UButton icon="i-lucide-key" color="primary" variant="subtle" :loading="isGenerating" :disabled="configPending" @click="generateToken">
         Generate Token
       </UButton>
     </div>
 
-    <div v-if="configuration && showConfig" class="space-y-4">
+    <div v-if="configPending" class="space-y-4">
+      <USkeleton class="h-16 w-full" />
+      <USkeleton class="h-48 w-full" />
+    </div>
+
+    <div v-else-if="configuration && showConfig" class="space-y-4">
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <label class="text-sm font-medium">Configuration File (config.yml)</label>
-          <UButton icon="i-lucide-copy" variant="soft" size="sm" @click="copyToClipboard(configYaml)">
-            Copy
-          </UButton>
+          <div class="flex gap-2">
+            <UButton icon="i-lucide-copy" variant="soft" size="sm" @click="copyToClipboard(configYaml)">
+              Copy
+            </UButton>
+            <UButton icon="i-lucide-download" variant="soft" size="sm" @click="downloadConfigFile">
+              Download
+            </UButton>
+          </div>
         </div>
         <div class="rounded-lg border border-default bg-muted/30 p-4">
           <pre class="overflow-x-auto text-xs"><code>{{ configYaml }}</code></pre>
         </div>
       </div>
 
-      <UAlert color="warning" icon="i-lucide-alert-triangle">
+      <UAlert color="warning" variant="subtle" icon="i-lucide-alert-triangle">
         <template #title>Save this configuration now!</template>
         <template #description>
           This token will only be shown once. Save it to your Wings config.yml file before closing this page.
@@ -149,7 +222,7 @@ remote: ${configuration.value.remote}`
       </div>
     </div>
 
-    <div v-else-if="!configuration" class="rounded-lg border border-default p-8 text-center">
+    <div v-else class="rounded-lg border border-default p-8 text-center">
       <UIcon name="i-lucide-file-code" class="mx-auto size-8 text-muted-foreground" />
       <p class="mt-2 text-sm text-muted-foreground">
         No configuration available. Generate a token to get started.

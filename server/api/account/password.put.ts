@@ -4,8 +4,7 @@ import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import bcrypt from 'bcryptjs'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
-
-import type { UpdatePasswordPayload } from '#shared/types/auth'
+import { accountPasswordUpdateSchema } from '#shared/schema/account'
 
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PUT')
@@ -17,27 +16,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const body = await readValidatedBody(event, (payload) => {
-    if (!payload || typeof payload !== 'object') {
-      throw createError({ statusCode: 400, statusMessage: 'Invalid payload' })
-    }
-
-    const candidate = payload as UpdatePasswordPayload
-
-    if (!candidate.currentPassword || !candidate.newPassword) {
-      throw createError({ statusCode: 400, statusMessage: 'Current and new password are required' })
-    }
-
-    if (candidate.confirmPassword && candidate.confirmPassword !== candidate.newPassword) {
-      throw createError({ statusCode: 400, statusMessage: 'Password confirmation does not match' })
-    }
-
-    if (candidate.currentPassword === candidate.newPassword) {
-      throw createError({ statusCode: 400, statusMessage: 'Choose a password different from the current one' })
-    }
-
-    return candidate
-  })
+  const body = await readValidatedBody(event, payload => accountPasswordUpdateSchema.parse(payload))
 
   const db = useDrizzle()
 

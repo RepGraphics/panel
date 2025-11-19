@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { MountUI as Mount } from '#shared/types/ui'
 
 const props = defineProps<{
@@ -9,40 +11,73 @@ const toast = useToast()
 const showAttachModal = ref(false)
 const isSubmitting = ref(false)
 
-const requestFetch = useRequestFetch()
+const requestFetch = useRequestFetch() as <T>(input: string, options?: Parameters<typeof $fetch>[1]) => Promise<T>
 
 const {
   data: mountsData,
+  pending: mountsPending,
   refresh,
-} = await useAsyncData<{ data: Mount[] }>(
+  error: mountsError,
+} = await useAsyncData<Mount[] | null>(
   `server-mounts-${props.serverId}`,
-  () => requestFetch<{ data: Mount[] }>(`/api/admin/servers/${props.serverId}/mounts`),
+  async () => {
+    try {
+      const response = await requestFetch<{ data: Mount[] }>(`/api/admin/servers/${props.serverId}/mounts`)
+      return response.data
+    }
+    catch (error) {
+      console.error('Failed to load server mounts', error)
+      return null
+    }
+  },
   {
-    default: () => ({ data: [] }),
+    default: () => null,
   },
 )
-const serverMounts = computed(() => mountsData.value?.data ?? [])
+const serverMounts = computed(() => mountsData.value ?? [])
 
-const { data: availableMountsData } = await useAsyncData<{ data: Mount[] }>(
+const {
+  data: availableMountsData,
+  pending: availablePending,
+  error: availableError,
+} = await useAsyncData<Mount[] | null>(
   'admin-mounts-list',
-  () => requestFetch<{ data: Mount[] }>('/api/admin/mounts'),
+  async () => {
+    try {
+      const response = await requestFetch<{ data: Mount[] }>('/api/admin/mounts')
+      return response.data
+    }
+    catch (error) {
+      console.error('Failed to load mounts', error)
+      return null
+    }
+  },
   {
-    default: () => ({ data: [] }),
+    default: () => null,
   },
 )
-const availableMounts = computed(() => availableMountsData.value?.data ?? [])
+const availableMounts = computed(() => availableMountsData.value ?? [])
 
-const selectedMountId = ref('')
+const attachSchema = z.object({
+  mountId: z.string({ required_error: 'Select a mount to attach' }).trim().min(1, 'Select a mount to attach'),
+})
 
-async function handleAttach() {
-  if (!selectedMountId.value) return
+type AttachFormSchema = z.infer<typeof attachSchema>
+
+const form = reactive<AttachFormSchema>({
+  mountId: '',
+})
+
+async function handleAttach(event: FormSubmitEvent<AttachFormSchema>) {
+  if (isSubmitting.value)
+    return
 
   isSubmitting.value = true
 
   try {
     await $fetch<unknown>(`/api/admin/servers/${props.serverId}/mounts`, {
       method: 'POST',
-      body: { mountId: selectedMountId.value },
+      body: { mountId: event.data.mountId },
     })
 
     toast.add({
@@ -52,7 +87,7 @@ async function handleAttach() {
     })
 
     showAttachModal.value = false
-    selectedMountId.value = ''
+    form.mountId = ''
     await refresh()
   }
   catch (error) {
@@ -108,7 +143,19 @@ async function handleDetach(mountId: string, mountName: string) {
       </UButton>
     </div>
 
-    <div v-if="serverMounts.length === 0" class="rounded-lg border border-default p-8 text-center">
+    <div v-if="mountsPending" class="space-y-3">
+      <UCard v-for="i in 3" :key="`mount-skeleton-${i}`" class="space-y-2">
+        <USkeleton class="h-4 w-1/3" />
+        <USkeleton class="h-3 w-2/3" />
+      </UCard>
+    </div>
+
+    <UAlert v-else-if="mountsError" color="error" icon="i-lucide-alert-triangle">
+      <template #title>Unable to load mounts</template>
+      <template #description>{{ (mountsError as Error).message }}</template>
+    </UAlert>
+
+    <div v-else-if="serverMounts.length === 0" class="rounded-lg border border-default p-8 text-center">
       <UIcon name="i-lucide-folder-tree" class="mx-auto size-8 text-muted-foreground" />
       <p class="mt-2 text-sm text-muted-foreground">
         No mounts attached to this server
@@ -140,22 +187,37 @@ async function handleDetach(mountId: string, mountName: string) {
           <h3 class="text-lg font-semibold">Attach Mount</h3>
         </template>
 
-        <form class="space-y-4" @submit.prevent="handleAttach">
+        <UForm
+          :schema="attachSchema"
+          :state="form"
+          class="space-y-4"
+          :disabled="isSubmitting || availablePending"
+          @submit="handleAttach"
+        >
           <UFormField label="Select Mount" name="mountId" required>
-            <USelect v-model="selectedMountId" :items="availableMounts.map((m: any) => ({ label: m.name, value: m.id }))"
-              value-key="value" placeholder="Choose a mount" :disabled="isSubmitting" />
+            <USelect
+              v-model="form.mountId"
+              :items="availableMounts.map((m: Mount) => ({ label: m.name, value: m.id }))"
+              value-key="value"
+              placeholder="Choose a mount"
+            />
             <template #help>
               Select a mount to attach to this server
             </template>
           </UFormField>
-        </form>
+
+          <UAlert v-if="availableError" color="error" icon="i-lucide-alert-triangle">
+            <template #title>Failed to load available mounts</template>
+            <template #description>{{ (availableError as Error).message }}</template>
+          </UAlert>
+        </UForm>
 
         <template #footer>
           <div class="flex justify-end gap-2">
             <UButton variant="ghost" :disabled="isSubmitting" @click="showAttachModal = false">
               Cancel
             </UButton>
-            <UButton color="primary" :loading="isSubmitting" :disabled="!selectedMountId" @click="handleAttach">
+            <UButton type="submit" color="primary" :loading="isSubmitting" :disabled="isSubmitting">
               Attach Mount
             </UButton>
           </div>

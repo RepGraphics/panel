@@ -192,6 +192,29 @@ const navigateToSecuritySettings = () => {
 const handleSignOut = async () => {
   await signOut({ callbackUrl: '/auth/login' })
 }
+
+const userLabel = computed(() => sessionUser.value?.username || sessionUser.value?.email || 'Administrator')
+const userAvatar = computed(() => {
+  const fallback = sessionUser.value?.username || sessionUser.value?.email || 'Administrator'
+  return {
+    alt: fallback,
+    text: fallback.slice(0, 2).toUpperCase(),
+  }
+})
+
+const accountMenuItems = computed(() => [
+  [
+    { label: 'Profile', to: '/account/profile' },
+    { label: 'Security', to: '/account/security' },
+    { label: 'API Keys', to: '/account/api-keys' },
+    { label: 'SSH Keys', to: '/account/ssh-keys' },
+    { label: 'Sessions', to: '/account/sessions' },
+    { label: 'Activity', to: '/account/activity' },
+  ],
+  [
+    { label: 'Sign out', click: handleSignOut, color: 'error' },
+  ],
+])
 </script>
 
 <template>
@@ -215,10 +238,26 @@ const handleSignOut = async () => {
       </template>
 
       <template #footer="{ collapsed }">
-        <div v-if="!collapsed" class="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-          <p>© {{ new Date().getFullYear() }} <ULink href="https://xyrapanel.com" target="_blank">XyraPanel</ULink></p>
+        <div class="flex w-full flex-col gap-2">
+          <UDropdownMenu :items="accountMenuItems">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              class="w-full"
+              :block="collapsed"
+            >
+              <template #leading>
+                <UAvatar v-bind="userAvatar" size="sm" />
+              </template>
+              <span v-if="!collapsed">{{ userLabel }}</span>
+            </UButton>
+          </UDropdownMenu>
+
+          <div v-if="!collapsed" class="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+            <p>© {{ new Date().getFullYear() }} <ULink href="https://xyrapanel.com" target="_blank">XyraPanel</ULink></p>
+          </div>
+          <UIcon v-else name="i-lucide-copyright" class="mx-auto size-3 text-muted-foreground/50" />
         </div>
-        <UIcon v-else name="i-lucide-copyright" class="mx-auto size-3 text-muted-foreground/50" />
       </template>
     </UDashboardSidebar>
 

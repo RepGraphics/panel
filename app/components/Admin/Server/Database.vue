@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { AdminServerDatabaseListResponse, AdminServerDatabase } from '#shared/types/admin-servers'
 
 const props = defineProps<{
@@ -9,12 +11,20 @@ const toast = useToast()
 const showCreateModal = ref(false)
 const isSubmitting = ref(false)
 
-const { data: databasesData, refresh } = await useFetch<AdminServerDatabaseListResponse>(`/api/admin/servers/${props.serverId}/databases`, {
-  key: `server-databases-${props.serverId}`,
-})
+const { data: databasesData, refresh, pending: databasesPending } = await useAsyncData<AdminServerDatabaseListResponse>(
+  `server-databases-${props.serverId}`,
+  () => $fetch<AdminServerDatabaseListResponse>(`/api/admin/servers/${props.serverId}/databases`),
+)
 const databases = computed<AdminServerDatabase[]>(() => databasesData.value?.data ?? [])
 
-const form = reactive({
+const createSchema = z.object({
+  database: z.string().trim().min(1, 'Database name is required').max(100, 'Database name must be under 100 characters'),
+  remote: z.string().trim().min(1, 'Remote host is required').max(255, 'Remote value is too long'),
+})
+
+type CreateFormSchema = z.infer<typeof createSchema>
+
+const form = reactive<CreateFormSchema>({
   database: '',
   remote: '%',
 })
@@ -24,13 +34,16 @@ function resetForm() {
   form.remote = '%'
 }
 
-async function handleCreate() {
+async function handleCreate(event: FormSubmitEvent<CreateFormSchema>) {
+  if (isSubmitting.value)
+    return
+
   isSubmitting.value = true
 
   try {
     await $fetch<unknown>(`/api/admin/servers/${props.serverId}/databases`, {
       method: 'POST',
-      body: form,
+      body: event.data,
     })
 
     toast.add({
@@ -120,7 +133,14 @@ async function rotatePassword(databaseId: string) {
       </UButton>
     </div>
 
-    <div v-if="databases.length === 0" class="rounded-lg border border-default p-8 text-center">
+    <div v-if="databasesPending" class="space-y-3">
+      <UCard v-for="i in 3" :key="`database-skeleton-${i}`" class="space-y-2">
+        <USkeleton class="h-4 w-1/3" />
+        <USkeleton class="h-3 w-1/2" />
+      </UCard>
+    </div>
+
+    <div v-else-if="databases.length === 0" class="rounded-lg border border-default p-8 text-center">
       <UIcon name="i-lucide-database" class="mx-auto size-8 text-muted-foreground" />
       <p class="mt-2 text-sm text-muted-foreground">
         No databases created yet
@@ -156,28 +176,34 @@ async function rotatePassword(databaseId: string) {
           <h3 class="text-lg font-semibold">Create Database</h3>
         </template>
 
-        <form class="space-y-4" @submit.prevent="handleCreate">
+        <UForm
+          :schema="createSchema"
+          :state="form"
+          class="space-y-4"
+          :disabled="isSubmitting"
+          @submit="handleCreate"
+        >
           <UFormField label="Database Name" name="database" required>
-            <UInput v-model="form.database" placeholder="s1_minecraft" :disabled="isSubmitting" class="w-full" />
+            <UInput v-model="form.database" placeholder="s1_minecraft" class="w-full" />
             <template #help>
               Database name will be prefixed with server identifier
             </template>
           </UFormField>
 
           <UFormField label="Remote Connections" name="remote" required>
-            <UInput v-model="form.remote" placeholder="%" :disabled="isSubmitting" class="w-full" />
+            <UInput v-model="form.remote" placeholder="%" class="w-full" />
             <template #help>
               % = allow from anywhere, or specify IP address
             </template>
           </UFormField>
-        </form>
+        </UForm>
 
         <template #footer>
           <div class="flex justify-end gap-2">
             <UButton variant="ghost" :disabled="isSubmitting" @click="showCreateModal = false">
               Cancel
             </UButton>
-            <UButton color="primary" :loading="isSubmitting" @click="handleCreate">
+            <UButton type="submit" color="primary" :loading="isSubmitting" :disabled="isSubmitting">
               Create Database
             </UButton>
           </div>

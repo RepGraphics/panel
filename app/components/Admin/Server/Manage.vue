@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Server } from '#shared/types/server'
 
 const props = defineProps<{
@@ -7,12 +9,20 @@ const props = defineProps<{
 
 const toast = useToast()
 const router = useRouter()
+const suspendedSubmitting = ref(false)
+const reinstallSubmitting = ref(false)
+const deleteSubmitting = ref(false)
+const transferSubmitting = ref(false)
 
 async function handleSuspend() {
   if (!confirm(`Are you sure you want to ${props.server.suspended ? 'unsuspend' : 'suspend'} this server?`)) {
     return
   }
 
+  if (suspendedSubmitting.value)
+    return
+
+  suspendedSubmitting.value = true
   try {
     const endpoint = props.server.suspended ? 'unsuspend' : 'suspend'
     await $fetch(`/api/admin/servers/${props.server.id}/${endpoint}`, {
@@ -35,6 +45,9 @@ async function handleSuspend() {
       color: 'error',
     })
   }
+  finally {
+    suspendedSubmitting.value = false
+  }
 }
 
 async function handleReinstall() {
@@ -42,6 +55,10 @@ async function handleReinstall() {
     return
   }
 
+  if (reinstallSubmitting.value)
+    return
+
+  reinstallSubmitting.value = true
   try {
     await $fetch(`/api/admin/servers/${props.server.id}/reinstall`, {
       method: 'POST',
@@ -61,25 +78,42 @@ async function handleReinstall() {
       color: 'error',
     })
   }
+  finally {
+    reinstallSubmitting.value = false
+  }
 }
 
 const showTransferModal = ref(false)
-const transferNodeId = ref('')
-const transferAllocationId = ref('')
-const transferAdditionalAllocations = ref('')
-const transferStartOnCompletion = ref(true)
 
-async function handleTransfer() {
-  if (!transferNodeId.value) return
+const transferSchema = z.object({
+  nodeId: z.string().trim().min(1, 'Target node ID is required'),
+  allocationId: z.string().trim().optional().or(z.literal('')),
+  additionalAllocationIds: z.string().trim().optional().or(z.literal('')),
+  startOnCompletion: z.boolean(),
+})
 
+type TransferFormSchema = z.infer<typeof transferSchema>
+
+const transferForm = reactive<TransferFormSchema>({
+  nodeId: '',
+  allocationId: '',
+  additionalAllocationIds: '',
+  startOnCompletion: true,
+})
+
+async function handleTransfer(event: FormSubmitEvent<TransferFormSchema>) {
+  if (transferSubmitting.value)
+    return
+
+  transferSubmitting.value = true
   try {
     await $fetch(`/api/admin/servers/${props.server.id}/transfer`, {
       method: 'POST',
       body: {
-        nodeId: transferNodeId.value,
-        allocationId: transferAllocationId.value || undefined,
-        additionalAllocationIds: transferAdditionalAllocations.value,
-        startOnCompletion: transferStartOnCompletion.value,
+        nodeId: event.data.nodeId,
+        allocationId: event.data.allocationId || undefined,
+        additionalAllocationIds: event.data.additionalAllocationIds || undefined,
+        startOnCompletion: event.data.startOnCompletion,
       },
     })
 
@@ -90,10 +124,12 @@ async function handleTransfer() {
     })
 
     showTransferModal.value = false
-    transferNodeId.value = ''
-    transferAllocationId.value = ''
-    transferAdditionalAllocations.value = ''
-    transferStartOnCompletion.value = true
+    Object.assign(transferForm, {
+      nodeId: '',
+      allocationId: '',
+      additionalAllocationIds: '',
+      startOnCompletion: true,
+    })
   }
   catch (error) {
     const err = error as { data?: { message?: string } }
@@ -103,9 +139,15 @@ async function handleTransfer() {
       color: 'error',
     })
   }
+  finally {
+    transferSubmitting.value = false
+  }
 }
 
 async function handleDelete() {
+  if (deleteSubmitting.value)
+    return
+
   if (!confirm('Are you sure you want to DELETE this server? This action CANNOT be undone!')) {
     return
   }
@@ -114,6 +156,7 @@ async function handleDelete() {
     return
   }
 
+  deleteSubmitting.value = true
   try {
     await $fetch(`/api/admin/servers/${props.server.id}`, {
       method: 'DELETE',
@@ -134,6 +177,9 @@ async function handleDelete() {
       description: err.data?.message || 'Failed to delete server',
       color: 'error',
     })
+  }
+  finally {
+    deleteSubmitting.value = false
   }
 }
 </script>
@@ -159,6 +205,8 @@ async function handleDelete() {
         <UButton
           :icon="server.suspended ? 'i-lucide-play' : 'i-lucide-pause'"
           :color="server.suspended ? 'primary' : 'warning'"
+          :loading="suspendedSubmitting"
+          :disabled="suspendedSubmitting"
           @click="handleSuspend"
         >
           {{ server.suspended ? 'Unsuspend' : 'Suspend' }}
@@ -175,6 +223,8 @@ async function handleDelete() {
         <UButton
           icon="i-lucide-refresh-cw"
           color="warning"
+          :loading="reinstallSubmitting"
+          :disabled="reinstallSubmitting"
           @click="handleReinstall"
         >
           Reinstall
@@ -208,6 +258,8 @@ async function handleDelete() {
         <UButton
           icon="i-lucide-trash-2"
           color="error"
+          :loading="deleteSubmitting"
+          :disabled="deleteSubmitting"
           @click="handleDelete"
         >
           Delete
@@ -221,8 +273,13 @@ async function handleDelete() {
           <h3 class="text-lg font-semibold">Transfer Server</h3>
         </template>
 
-        <form class="space-y-4" @submit.prevent="handleTransfer">
-          <UAlert icon="i-lucide-info">
+        <UForm
+          :schema="transferSchema"
+          :state="transferForm"
+          class="space-y-4"
+          @submit="handleTransfer"
+        >
+          <UAlert icon="i-lucide-info" variant="subtle">
             <template #title>Server Transfer</template>
             <template #description>
               The server will be stopped, transferred to the new node, and started automatically.
@@ -231,7 +288,7 @@ async function handleDelete() {
 
           <UFormField label="Target Node" name="nodeId" required>
             <UInput
-              v-model="transferNodeId"
+              v-model="transferForm.nodeId"
               placeholder="node-id"
               class="w-full"
             />
@@ -242,7 +299,7 @@ async function handleDelete() {
 
           <UFormField label="Primary Allocation" name="allocationId">
             <UInput
-              v-model="transferAllocationId"
+              v-model="transferForm.allocationId"
               placeholder="allocation-id (optional)"
               class="w-full"
             />
@@ -251,9 +308,9 @@ async function handleDelete() {
             </template>
           </UFormField>
 
-          <UFormField label="Additional Allocations" name="additionalAllocations">
+          <UFormField label="Additional Allocations" name="additionalAllocationIds">
             <UInput
-              v-model="transferAdditionalAllocations"
+              v-model="transferForm.additionalAllocationIds"
               placeholder="allocation-id-1, allocation-id-2"
               class="w-full"
             />
@@ -262,18 +319,14 @@ async function handleDelete() {
             </template>
           </UFormField>
 
-          <UFormField label="Start server after transfer" name="startOnCompletion">
-            <div class="flex items-center gap-2">
-              <input
-                id="start-on-completion"
-                v-model="transferStartOnCompletion"
-                type="checkbox"
-                class="h-4 w-4 rounded border-default"
-              >
-              <label for="start-on-completion" class="text-sm text-muted-foreground">Automatically start the server once the transfer finishes.</label>
-            </div>
+          <UFormField name="startOnCompletion">
+            <USwitch
+              v-model="transferForm.startOnCompletion"
+              label="Start server after transfer"
+              description="Automatically start the server once the transfer finishes"
+            />
           </UFormField>
-        </form>
+        </UForm>
 
         <template #footer>
           <div class="flex justify-end gap-2">
@@ -284,9 +337,10 @@ async function handleDelete() {
               Cancel
             </UButton>
             <UButton
+              type="submit"
               color="primary"
-              :disabled="!transferNodeId"
-              @click="handleTransfer"
+              :loading="transferSubmitting"
+              :disabled="transferSubmitting"
             >
               Start Transfer
             </UButton>

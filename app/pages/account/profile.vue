@@ -1,101 +1,145 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import type { FormSubmitEvent } from '@nuxt/ui'
+import { accountProfileFormSchema, type AccountProfileFormInput } from '#shared/schema/account'
 import type { AccountProfileResponse, SanitizedUser } from '#shared/types/auth'
 
 definePageMeta({
   auth: true,
 })
 
-const profile = ref<SanitizedUser | null>(null)
-const savingProfile = ref(false)
-const profileError = ref<string | null>(null)
-
 const toast = useToast()
-const { status } = useAuth()
+const { status, getSession } = useAuth()
 
 const {
   data: profileResponse,
   pending: profilePending,
-  error: profileFetchError,
-  execute: fetchProfile,
-} = useLazyFetch<AccountProfileResponse>('/api/account/profile', {
+  error: profileError,
+  refresh: refreshProfile,
+} = await useAsyncData<AccountProfileResponse>('account-profile', () => $fetch('/api/account/profile', {
+  method: 'GET',
+  cache: 'no-cache',
+}), {
   server: false,
   immediate: false,
-  cache: 'no-cache',
-  retry: 0,
 })
 
-const isSaving = computed(() => savingProfile.value)
-const isLoading = computed(() => profilePending.value)
-const errorMessage = computed(() => profileError.value)
+const profile = computed<SanitizedUser | null>(() => profileResponse.value?.data ?? null)
 
-const profileForm = reactive({
-  username: '',
-  email: '',
-})
+const transientError = ref<string | null>(null)
+const isSaving = ref(false)
 
-const hasChanges = computed(() => (
-  profileForm.username !== profile.value?.username
-  || profileForm.email !== profile.value?.email
-))
+const schema = accountProfileFormSchema
 
-watch(profileResponse, (response) => {
-  if (!response?.data)
-    return
+type ProfileFormSchema = AccountProfileFormInput
 
-  profile.value = response.data
-  profileForm.username = response.data.username
-  profileForm.email = response.data.email
-})
-
-watch(profileFetchError, (err) => {
-  if (!err) {
-    profileError.value = null
-    return
+function createFormState(user: SanitizedUser | null): ProfileFormSchema {
+  return {
+    username: user?.username ?? '',
+    email: user?.email ?? '',
   }
+}
 
-  const message = err instanceof Error ? err.message : 'Unable to load profile details.'
-  profileError.value = message
+const form = reactive<ProfileFormSchema>(createFormState(profile.value))
+
+watch(profile, (value) => {
+  Object.assign(form, createFormState(value))
+}, { immediate: true })
+
+const normalizedForm = computed(() => ({
+  username: form.username.trim(),
+  email: form.email.trim(),
+}))
+
+const hasChanges = computed(() => {
+  const current = profile.value
+  if (!current)
+    return false
+
+  return normalizedForm.value.username !== current.username
+    || normalizedForm.value.email !== current.email
 })
 
-watch(status, (value, previous) => {
+const loadError = computed(() => {
+  if (transientError.value)
+    return transientError.value
+
+  const err = profileError.value
+  if (!err)
+    return null
+
+  if (err instanceof Error)
+    return err.message
+
+  return 'Unable to load profile details.'
+})
+
+const showSkeleton = computed(() => profilePending.value && !profile.value)
+const disableSubmit = computed(() => !hasChanges.value || isSaving.value)
+
+watch(() => status.value, (value, previous) => {
   if (value === 'authenticated') {
-    fetchProfile()
-    return
+    transientError.value = null
+    refreshProfile().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unable to load profile details.'
+      transientError.value = message
+    })
   }
-
-  if (value === 'unauthenticated' && previous === 'authenticated') {
-    profile.value = null
-    profileError.value = 'You need to sign in to view profile details.'
+  else if (value === 'unauthenticated' && previous === 'authenticated') {
+    profileResponse.value = null
+    transientError.value = 'You need to sign in to view profile details.'
+    Object.assign(form, createFormState(null))
   }
 }, { immediate: true })
 
-async function handleSubmit() {
-  if (isSaving.value || !hasChanges.value) {
+async function handleSubmit(event: FormSubmitEvent<ProfileFormSchema>) {
+  if (isSaving.value || !profile.value)
+    return
+
+  if (!hasChanges.value) {
+    toast.add({
+      title: 'No changes detected',
+      description: 'Update your profile details before saving.',
+      color: 'neutral',
+    })
     return
   }
 
-  savingProfile.value = true
-  profileError.value = null
+  isSaving.value = true
+  transientError.value = null
+
   try {
-    const response = await $fetch<AccountProfileResponse>('/api/account/profile', {
+    const payload = event.data
+
+    const updated = await $fetch<AccountProfileResponse>('/api/account/profile', {
       method: 'PUT',
-      body: {
-        username: profileForm.username,
-        email: profileForm.email,
-      },
+      body: payload,
     })
-    profile.value = response.data
-    toast.add({ title: 'Profile updated', color: 'success' })
-  } catch (error) {
-    profileError.value = error instanceof Error ? error.message : 'Unable to update profile information.'
+
+    profileResponse.value = updated
+    Object.assign(form, createFormState(updated.data))
+
+    await getSession({ force: true })
+    await refreshProfile()
+
+    toast.add({
+      title: 'Profile updated',
+      description: 'Your account information is up to date.',
+      color: 'success',
+    })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to update profile information.'
+    transientError.value = message
+
     toast.add({
       title: 'Failed to update profile',
-      description: profileError.value || 'An error occurred',
+      description: message,
       color: 'error',
     })
-  } finally {
-    savingProfile.value = false
+  }
+  finally {
+    isSaving.value = false
   }
 }
 
@@ -110,38 +154,48 @@ async function handleSubmit() {
 
     <UPageBody>
       <UCard :ui="{ body: 'space-y-4' }">
-      <template #header>
-        <div>
-          <h2 class="text-lg font-semibold">Profile details</h2>
-          <p class="text-sm text-muted-foreground">Keep your account information up to date.</p>
-        </div>
-      </template>
-
-      <div v-if="isLoading" class="space-y-3">
-        <USkeleton class="h-10 w-full" />
-        <USkeleton class="h-10 w-full" />
-        <USkeleton class="h-10 w-44" />
-      </div>
-      <template v-else>
-        <UAlert v-if="errorMessage" color="error" icon="i-lucide-alert-triangle" :title="errorMessage" />
-
-        <UForm :state="profileForm" class="grid gap-4 md:grid-cols-2" @submit.prevent="handleSubmit">
-          <UFormField label="Username" name="username" required>
-            <UInput v-model="profileForm.username" placeholder="Username" class="w-full" />
-          </UFormField>
-
-          <UFormField label="Email" name="email" required>
-            <UInput v-model="profileForm.email" type="email" placeholder="name@example.com" class="w-full" />
-          </UFormField>
-
-          <div class="md:col-span-2">
-            <UButton type="submit" variant="subtle" color="primary" :loading="isSaving" :disabled="!hasChanges">
-              Save changes
-            </UButton>
+        <template #header>
+          <div>
+            <h2 class="text-lg font-semibold">Profile details</h2>
+            <p class="text-sm text-muted-foreground">Keep your account information up to date.</p>
           </div>
-        </UForm>
-      </template>
-    </UCard>
+        </template>
+
+        <div v-if="showSkeleton" class="space-y-3">
+          <USkeleton class="h-10 w-full" />
+          <USkeleton class="h-10 w-full" />
+          <USkeleton class="h-10 w-44" />
+        </div>
+        <template v-else>
+          <UAlert v-if="loadError" color="error" icon="i-lucide-alert-triangle">
+            <template #title>Profile unavailable</template>
+            <template #description>{{ loadError }}</template>
+          </UAlert>
+
+          <UForm
+            :schema="schema"
+            :state="form"
+            class="grid gap-4 md:grid-cols-2"
+            :disabled="isSaving"
+            @submit="handleSubmit"
+          >
+            <UFormField label="Username" name="username" required>
+              <UInput v-model="form.username" placeholder="Username" class="w-full" />
+            </UFormField>
+
+            <UFormField label="Email" name="email" required>
+              <UInput v-model="form.email" type="email" placeholder="name@example.com" class="w-full" />
+            </UFormField>
+
+            <div class="md:col-span-2">
+              <UButton type="submit" variant="subtle" color="primary" :loading="isSaving" :disabled="disableSubmit">
+                Save changes
+              </UButton>
+            </div>
+          </UForm>
+        </template>
+      </UCard>
     </UPageBody>
   </UPage>
 </template>
+

@@ -6,11 +6,10 @@
         header: 'text-center space-y-2',
       }">
         <slot />
+        <p class="text-center text-xs text-muted-foreground">
+          Copyright © 2025 <ULink to="https://xyrapanel.com/" target="_blank">XyraPanel</ULink>
+        </p>
       </UCard>
-
-      <p class="text-center text-xs text-muted-foreground">
-        Copyright © 2025 XyraPanel
-      </p>
     </div>
   </UContainer>
 </template>

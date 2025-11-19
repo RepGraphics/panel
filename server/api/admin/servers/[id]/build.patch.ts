@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { isAdmin } from '~~/server/utils/session'
+import { serverBuildSchema } from '#shared/schema/admin/server'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -20,7 +21,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readBody(event)
+  const body = await readValidatedBody(event, payload => serverBuildSchema.parse(payload))
   const { cpu, memory, swap, disk, io, threads, oomDisabled, databaseLimit, allocationLimit, backupLimit } = body
 
   const db = useDrizzle()
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const updateData: Record<string, number> = {}
+  const updateData: Record<string, number | string | null> = {}
   if (cpu !== undefined) updateData.cpu = cpu
   if (memory !== undefined) updateData.memory = memory
   if (swap !== undefined) updateData.swap = swap

@@ -190,13 +190,17 @@ export const servers = sqliteTable(
 
 export const serverLimits = sqliteTable('server_limits', {
   serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
-  cpu: integer('cpu'),
   memory: integer('memory'),
+  memoryOverallocate: integer('memory_overallocate'),
   disk: integer('disk'),
-  swap: integer('swap'),
+  diskOverallocate: integer('disk_overallocate'),
   io: integer('io'),
+  cpu: integer('cpu'),
   threads: text('threads'),
   oomDisabled: integer('oom_disabled', { mode: 'boolean' }).notNull().default(true),
+  databaseLimit: integer('database_limit'),
+  allocationLimit: integer('allocation_limit'),
+  backupLimit: integer('backup_limit'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 })

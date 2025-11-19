@@ -52,10 +52,12 @@ const fields = computed<AuthFormField[]>(() =>
   requiresToken.value ? [...baseFields, tokenField] : baseFields,
 )
 
+const tokenSchema = z.string().trim().max(64, 'Authenticator codes are short.')
+
 const schema = z.object({
-  identity: z.string().min(1, 'Enter your username or email'),
-  password: z.string().min(1, 'Enter your password'),
-  token: z.string().trim().max(64, 'Authenticator codes are short.').optional(),
+  identity: z.string().trim().min(1, 'Enter your username or email'),
+  password: z.string().trim().min(1, 'Enter your password'),
+  token: tokenSchema.optional().transform(value => (value && value.length > 0 ? value : undefined)),
 })
 
 type Schema = z.output<typeof schema>
@@ -81,9 +83,9 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
   loading.value = true
   try {
     const { identity, password, token } = payload.data
-    const submittedToken = token?.trim() ?? ''
+    const submittedToken = token ?? ''
 
-    if (requiresToken.value && (!token || token.trim().length === 0)) {
+    if (requiresToken.value && !token) {
       throw new Error('Two-factor authentication token required.')
     }
 
@@ -91,7 +93,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
       redirect: false,
       identity,
       password,
-      token: token && token.length > 0 ? token : undefined,
+      token,
     })
 
     if (result?.error) {
@@ -131,7 +133,7 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
   }
   catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to sign in with those credentials.'
-    const submittedToken = payload.data.token?.trim() ?? ''
+    const submittedToken = payload.data.token ?? ''
     if (typeof message === 'string') {
       const lowered = message.toLowerCase()
       const indicatesTwoFactor = lowered.includes('two-factor') || lowered.includes('recovery token')
@@ -164,13 +166,12 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 <template>
   <div class="space-y-6">
     <UAuthForm class="space-y-6" :schema="schema" :fields="fields" :submit="submitProps" @submit="onSubmit">
-      <template #description>
-        <h1 class="text-3xl font-semibold text-white">
-          {{ appName }}
-        </h1>
-        <p class="text-sm text-muted">
-          Enter your panel credentials to continue.
-        </p>
+      <template #title>
+        <div class="space-y-2">
+          <h1 class="text-3xl font-semibold text-white">
+            {{ appName }}
+          </h1>
+        </div>
       </template>
     </UAuthForm>
   </div>

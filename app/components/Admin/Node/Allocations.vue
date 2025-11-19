@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Allocation } from '#shared/types/allocation'
 
 const props = defineProps<{
@@ -9,6 +11,7 @@ const toast = useToast()
 const page = ref(1)
 const pageSize = ref(50)
 const filter = ref<'all' | 'assigned' | 'unassigned'>('all')
+const isCreating = ref(false)
 
 type SimpleRequestFetch = <T = unknown>(
   input: string,
@@ -60,75 +63,86 @@ const paginatedAllocations = computed(() => {
 
 const _totalPages = computed(() => Math.ceil(filteredAllocations.value.length / pageSize.value))
 
+const createSchema = z.object({
+  ip: z.string().trim().min(1, 'IP address is required').max(255),
+  ports: z.string().trim().min(1, 'Provide at least one port'),
+  ipAlias: z.string().trim().max(255).optional(),
+})
+
+type CreateFormSchema = z.infer<typeof createSchema>
+
 const showCreateModal = ref(false)
-const createForm = reactive({
+const createForm = reactive<CreateFormSchema>({
   ip: '',
   ports: '',
   ipAlias: '',
 })
 
-async function createAllocations() {
-  try {
-
+function parsePorts(input: string): number[] {
+  const normalized = input.replace(/\s+/g, '')
+  if (normalized.includes('-')) {
+    const [startRaw, endRaw] = normalized.split('-', 2)
+    const start = Number.parseInt(startRaw, 10)
+    const end = Number.parseInt(endRaw, 10)
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end <= 0 || start > end)
+      throw new Error('Provide a valid port range (e.g. 25565-25600)')
     const ports: number[] = []
-    const portsInput = createForm.ports.trim()
-
-    if (portsInput.includes('-')) {
-
-      const parts = portsInput.split('-')
-      const start = Number(parts[0])
-      const end = Number(parts[1])
-      if (isNaN(start) || isNaN(end) || start >= end) {
-        throw new Error('Invalid port range')
-      }
-      for (let port = start; port <= end; port++) {
-        ports.push(port)
-      }
-    } else if (portsInput.includes(',')) {
-
-      const portList = portsInput.split(',').map(p => Number(p.trim()))
-      if (portList.some(isNaN)) {
-        throw new Error('Invalid port list')
-      }
-      ports.push(...portList)
-    } else {
-
-      const port = Number(portsInput)
-      if (isNaN(port)) {
-        throw new Error('Invalid port')
-      }
+    for (let port = start; port <= end; port++) {
       ports.push(port)
     }
+    return ports
+  }
+
+  const segments = normalized.split(',')
+  const ports = segments.map(segment => {
+    const port = Number.parseInt(segment, 10)
+    if (!Number.isFinite(port) || port <= 0)
+      throw new Error('Ports must be positive integers')
+    return port
+  })
+
+  return ports
+}
+
+async function createAllocations(event: FormSubmitEvent<CreateFormSchema>) {
+  if (isCreating.value)
+    return
+
+  isCreating.value = true
+
+  try {
+    const ports = parsePorts(event.data.ports)
 
     await requestFetch(`/api/admin/nodes/${props.nodeId}/allocations`, {
       method: 'POST',
       body: {
-        ip: createForm.ip,
+        ip: event.data.ip,
         ports,
-        ipAlias: createForm.ipAlias || undefined,
+        ipAlias: event.data.ipAlias ? event.data.ipAlias : undefined,
       },
     })
 
-    await refresh()
-
     toast.add({
       title: 'Allocations created',
-      description: `Created ${ports.length} allocations`,
+      description: `Created ${ports.length} allocation${ports.length === 1 ? '' : 's'}`,
       color: 'success',
     })
 
     showCreateModal.value = false
-    createForm.ip = ''
-    createForm.ports = ''
-    createForm.ipAlias = ''
+    Object.assign(createForm, { ip: '', ports: '', ipAlias: '' })
+
     await refresh()
-  } catch (error) {
+  }
+  catch (error) {
     const err = error as { data?: { message?: string } }
     toast.add({
       title: 'Error',
-      description: err.data?.message || 'Failed to create allocations',
+      description: err.data?.message || (error instanceof Error ? error.message : 'Failed to create allocations'),
       color: 'error',
     })
+  }
+  finally {
+    isCreating.value = false
   }
 }
 
@@ -262,7 +276,14 @@ const columns: Array<{ key: string, label: string }> = [
           <h3 class="text-lg font-semibold">Create Allocations</h3>
         </template>
 
-        <form class="space-y-4" @submit.prevent="createAllocations">
+        <UForm
+          :schema="createSchema"
+          :state="createForm"
+          class="space-y-4"
+          :disabled="isCreating"
+          validate-on="input"
+          @submit="createAllocations"
+        >
           <UAlert icon="i-lucide-info">
             <template #title>Bulk Creation</template>
             <template #description>
@@ -291,14 +312,14 @@ const columns: Array<{ key: string, label: string }> = [
               Optional DNS alias for this IP address
             </template>
           </UFormField>
-        </form>
+        </UForm>
 
         <template #footer>
           <div class="flex justify-end gap-2">
-            <UButton variant="ghost" @click="showCreateModal = false">
+            <UButton variant="ghost" :disabled="isCreating" @click="showCreateModal = false">
               Cancel
             </UButton>
-            <UButton color="primary" @click="createAllocations">
+            <UButton color="primary" :loading="isCreating" :disabled="isCreating" @click="createAllocations">
               Create Allocations
             </UButton>
           </div>

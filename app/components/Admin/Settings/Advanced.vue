@@ -1,50 +1,97 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { AdvancedSettings } from '#shared/types/admin-settings'
 
 const toast = useToast()
 const isSubmitting = ref(false)
 
+const schema = z.object({
+  telemetryEnabled: z.boolean(),
+  debugMode: z.boolean(),
+  recaptchaEnabled: z.boolean(),
+  recaptchaSiteKey: z.string().trim().max(255),
+  recaptchaSecretKey: z.string().trim().max(255),
+  sessionTimeoutMinutes: z.number({ invalid_type_error: 'Session timeout is required' })
+    .int('Session timeout must be a whole number')
+    .min(5, 'Minimum 5 minutes')
+    .max(1440, 'Maximum 1440 minutes (24 hours)'),
+  queueConcurrency: z.number({ invalid_type_error: 'Queue concurrency is required' })
+    .int('Concurrency must be a whole number')
+    .min(1, 'Minimum 1 worker')
+    .max(32, 'Maximum 32 workers'),
+  queueRetryLimit: z.number({ invalid_type_error: 'Queue retry limit is required' })
+    .int('Retry limit must be a whole number')
+    .min(1, 'Minimum 1 retry')
+    .max(50, 'Maximum 50 retries'),
+}).superRefine((data, ctx) => {
+  if (data.recaptchaEnabled) {
+    if (data.recaptchaSiteKey.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recaptchaSiteKey'],
+        message: 'Site key required when reCAPTCHA is enabled',
+      })
+    }
+    if (data.recaptchaSecretKey.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recaptchaSecretKey'],
+        message: 'Secret key required when reCAPTCHA is enabled',
+      })
+    }
+  }
+})
+
+type FormSchema = z.infer<typeof schema>
+
+function createFormState(source?: AdvancedSettings | null): FormSchema {
+  return {
+    telemetryEnabled: source?.telemetryEnabled ?? true,
+    debugMode: source?.debugMode ?? false,
+    recaptchaEnabled: source?.recaptchaEnabled ?? false,
+    recaptchaSiteKey: source?.recaptchaSiteKey ?? '',
+    recaptchaSecretKey: source?.recaptchaSecretKey ?? '',
+    sessionTimeoutMinutes: source?.sessionTimeoutMinutes ?? 60,
+    queueConcurrency: source?.queueConcurrency ?? 4,
+    queueRetryLimit: source?.queueRetryLimit ?? 5,
+  }
+}
+
 const { data: settings, refresh } = await useFetch<AdvancedSettings>('/api/admin/settings/advanced', {
   key: 'admin-settings-advanced',
 })
 
-const form = reactive({
-  telemetryEnabled: settings.value?.telemetryEnabled ?? true,
-  debugMode: settings.value?.debugMode ?? false,
-  recaptchaEnabled: settings.value?.recaptchaEnabled ?? false,
-  recaptchaSiteKey: settings.value?.recaptchaSiteKey || '',
-  recaptchaSecretKey: settings.value?.recaptchaSecretKey || '',
-  sessionTimeoutMinutes: settings.value?.sessionTimeoutMinutes ?? 60,
-  queueConcurrency: settings.value?.queueConcurrency ?? 4,
-  queueRetryLimit: settings.value?.queueRetryLimit ?? 5,
-})
+const form = reactive<FormSchema>(createFormState(settings.value))
+
+const showRecaptchaFields = computed(() => form.recaptchaEnabled)
 
 watch(settings, (newSettings) => {
-  if (newSettings) {
-    Object.assign(form, newSettings)
-    form.sessionTimeoutMinutes = newSettings.sessionTimeoutMinutes
-    form.queueConcurrency = newSettings.queueConcurrency
-    form.queueRetryLimit = newSettings.queueRetryLimit
-  }
+  if (!newSettings)
+    return
+
+  Object.assign(form, createFormState(newSettings))
 })
 
-async function handleSubmit() {
+async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
+  if (isSubmitting.value)
+    return
+
   isSubmitting.value = true
+
+  const payload: FormSchema = {
+    ...event.data,
+    recaptchaSiteKey: event.data.recaptchaEnabled ? event.data.recaptchaSiteKey : '',
+    recaptchaSecretKey: event.data.recaptchaEnabled ? event.data.recaptchaSecretKey : '',
+  }
 
   try {
     await $fetch('/api/admin/settings/advanced', {
       method: 'PATCH',
-      body: {
-        telemetryEnabled: form.telemetryEnabled,
-        debugMode: form.debugMode,
-        recaptchaEnabled: form.recaptchaEnabled,
-        recaptchaSiteKey: form.recaptchaSiteKey,
-        recaptchaSecretKey: form.recaptchaSecretKey,
-        sessionTimeoutMinutes: Number(form.sessionTimeoutMinutes),
-        queueConcurrency: Number(form.queueConcurrency),
-        queueRetryLimit: Number(form.queueRetryLimit),
-      },
+      body: payload,
     })
+
+    Object.assign(form, payload)
 
     toast.add({
       title: 'Settings updated',
@@ -75,52 +122,40 @@ async function handleSubmit() {
       <p class="text-sm text-muted-foreground">Configure advanced panel features and integrations</p>
     </template>
 
-    <form class="space-y-6" @submit.prevent="handleSubmit">
+    <UForm
+      :schema="schema"
+      :state="form"
+      class="space-y-6"
+      :disabled="isSubmitting"
+      :validate-on="['input']"
+      @submit="handleSubmit"
+    >
 
       <div class="space-y-4">
         <h3 class="text-sm font-semibold">System</h3>
 
-        <UFormField label="Telemetry" name="telemetryEnabled">
-          <div class="flex items-center justify-between rounded-lg border border-default p-4">
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium">Enable Telemetry</div>
-              <div class="text-xs text-muted-foreground">
-                Help improve XyraPanel by sending anonymous usage statistics
-              </div>
-            </div>
-            <UToggle v-model="form.telemetryEnabled" :disabled="isSubmitting" />
-          </div>
+        <UFormField name="telemetryEnabled">
+          <USwitch v-model="form.telemetryEnabled" label="Enable anonymous telemetry" :disabled="isSubmitting" />
         </UFormField>
 
-        <UFormField label="Debug Mode" name="debugMode">
-          <div class="flex items-center justify-between rounded-lg border border-default p-4">
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium">Debug Mode</div>
-              <div class="text-xs text-muted-foreground">
-                Enable detailed error messages and logging (not recommended for production)
-              </div>
-            </div>
-            <UToggle v-model="form.debugMode" :disabled="isSubmitting" />
-          </div>
+        <UFormField name="debugMode">
+          <USwitch v-model="form.debugMode" label="Enable debug mode" description="Shows verbose logs and stack traces" :disabled="isSubmitting" />
         </UFormField>
       </div>
 
       <div class="space-y-4">
         <h3 class="text-sm font-semibold">reCAPTCHA</h3>
 
-        <UFormField label="Enable reCAPTCHA" name="recaptchaEnabled">
-          <div class="flex items-center justify-between rounded-lg border border-default p-4">
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium">Enable reCAPTCHA</div>
-              <div class="text-xs text-muted-foreground">
-                Protect login and registration forms with Google reCAPTCHA
-              </div>
-            </div>
-            <UToggle v-model="form.recaptchaEnabled" :disabled="isSubmitting" />
-          </div>
+        <UFormField name="recaptchaEnabled">
+          <USwitch
+            v-model="form.recaptchaEnabled"
+            label="Enable Google reCAPTCHA"
+            description="Protect login and registration forms"
+            :disabled="isSubmitting"
+          />
         </UFormField>
 
-        <div v-if="form.recaptchaEnabled" class="space-y-4">
+        <div v-if="showRecaptchaFields" class="space-y-4">
           <UFormField label="Site Key" name="recaptchaSiteKey" required>
             <UInput v-model="form.recaptchaSiteKey" placeholder="6Lc..." :disabled="isSubmitting" class="w-full" />
             <template #help>
@@ -167,6 +202,6 @@ async function handleSubmit() {
           Save Changes
         </UButton>
       </div>
-    </form>
+    </UForm>
   </UCard>
 </template>

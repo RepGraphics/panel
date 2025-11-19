@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import type { UpdatePasswordPayload } from '#shared/types/auth'
+import type { FormSubmitEvent } from '@nuxt/ui'
+import { accountPasswordFormSchema, type AccountPasswordFormInput } from '#shared/schema/account'
 import type { TotpSetupResponse, TotpVerifyRequest, TotpDisableRequest } from '#shared/types/2fa'
 
 definePageMeta({
@@ -11,36 +12,41 @@ const toast = useToast()
 
 const { data: authData, status, getSession } = useAuth()
 
-const passwordSaving = ref(false)
 const passwordError = ref<string | null>(null)
+const isSavingPassword = ref(false)
 
-const securityForm = reactive({
+const passwordSchema = accountPasswordFormSchema
+
+type PasswordFormSchema = AccountPasswordFormInput
+
+const passwordForm = reactive<PasswordFormSchema>({
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
 })
 
-const isSaving = computed(() => passwordSaving.value)
-const errorMessage = computed(() => passwordError.value)
-const canSubmit = computed(() => (
-  securityForm.currentPassword.length >= 8
-  && securityForm.newPassword.length >= 12
-  && securityForm.newPassword === securityForm.confirmPassword
-))
+const passwordStrengthHint = computed(() => {
+  if (!passwordForm.newPassword)
+    return 'Use at least 12 characters with a mix of letters, numbers, and symbols.'
 
-async function handleSubmit() {
-  if (!canSubmit.value || isSaving.value)
+  if (passwordForm.newPassword.length < 12)
+    return 'Password must be at least 12 characters.'
+
+  return 'Looks good! Make sure it is unique to XyraPanel.'
+})
+
+const passwordIsValid = computed(() => passwordSchema.safeParse(passwordForm).success)
+const passwordErrorMessage = computed(() => passwordError.value)
+
+async function handlePasswordSubmit(event: FormSubmitEvent<PasswordFormSchema>) {
+  if (isSavingPassword.value || !passwordIsValid.value)
     return
 
-  passwordSaving.value = true
+  isSavingPassword.value = true
   passwordError.value = null
 
   try {
-    const payload: UpdatePasswordPayload = {
-      currentPassword: securityForm.currentPassword,
-      newPassword: securityForm.newPassword,
-      confirmPassword: securityForm.confirmPassword,
-    }
+    const payload = event.data
 
     const response = await $fetch<{ success: boolean, revokedSessions: number }>('/api/account/password', {
       method: 'PUT',
@@ -52,30 +58,29 @@ async function handleSubmit() {
       description: response.revokedSessions > 0
         ? `Signed out ${response.revokedSessions} other session${response.revokedSessions === 1 ? '' : 's'}.`
         : 'Your password has been changed.',
+      color: 'success',
     })
 
-    securityForm.currentPassword = ''
-    securityForm.newPassword = ''
-    securityForm.confirmPassword = ''
+    Object.assign(passwordForm, {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    })
   }
   catch (error) {
-    passwordError.value = error instanceof Error ? error.message : 'Unable to update password.'
-    console.error('Failed to update password', error)
+    const message = error instanceof Error ? error.message : 'Unable to update password.'
+    passwordError.value = message
+
+    toast.add({
+      title: 'Failed to update password',
+      description: message,
+      color: 'error',
+    })
   }
   finally {
-    passwordSaving.value = false
+    isSavingPassword.value = false
   }
 }
-
-const passwordStrengthHint = computed(() => {
-  if (!securityForm.newPassword)
-    return 'Use at least 12 characters with a mix of letters, numbers, and symbols.'
-
-  if (securityForm.newPassword.length < 12)
-    return 'Password must be at least 12 characters.'
-
-  return 'Looks good! Make sure it is unique to XyraPanel.'
-})
 
 const twoFactorError = ref<string | null>(null)
 const totpSetup = ref<TotpSetupResponse | null>(null)
@@ -254,12 +259,18 @@ async function disableTotp() {
             <h2 class="text-lg font-semibold">Password</h2>
           </template>
 
-          <UAlert v-if="errorMessage" icon="i-lucide-alert-triangle" color="error" :title="errorMessage" />
+          <UAlert v-if="passwordErrorMessage" icon="i-lucide-alert-triangle" color="error" :title="passwordErrorMessage" />
 
-          <UForm :state="securityForm" class="space-y-4" @submit.prevent="handleSubmit">
+          <UForm
+            :schema="passwordSchema"
+            :state="passwordForm"
+            class="space-y-4"
+            :disabled="isSavingPassword"
+            @submit="handlePasswordSubmit"
+          >
             <UFormField label="Current password" name="currentPassword" required>
               <UInput
-                v-model="securityForm.currentPassword"
+                v-model="passwordForm.currentPassword"
                 type="password"
                 autocomplete="current-password"
                 icon="i-lucide-lock"
@@ -269,7 +280,7 @@ async function disableTotp() {
             </UFormField>
             <UFormField label="New password" name="newPassword" required>
               <UInput
-                v-model="securityForm.newPassword"
+                v-model="passwordForm.newPassword"
                 type="password"
                 autocomplete="new-password"
                 icon="i-lucide-key"
@@ -282,7 +293,7 @@ async function disableTotp() {
             </UFormField>
             <UFormField label="Confirm password" name="confirmPassword" required>
               <UInput
-                v-model="securityForm.confirmPassword"
+                v-model="passwordForm.confirmPassword"
                 type="password"
                 autocomplete="new-password"
                 icon="i-lucide-shield-check"
@@ -296,8 +307,8 @@ async function disableTotp() {
                 color="primary"
                 variant="subtle"
                 icon="i-lucide-save"
-                :loading="isSaving"
-                :disabled="!canSubmit"
+                :loading="isSavingPassword"
+                :disabled="isSavingPassword || !passwordIsValid"
               >
                 Update password
               </UButton>

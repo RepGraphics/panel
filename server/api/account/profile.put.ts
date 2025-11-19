@@ -1,7 +1,8 @@
-import { createError, readBody } from 'h3'
+import { createError } from 'h3'
 import { getServerSession } from '#auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
+import { accountProfileUpdateSchema } from '#shared/schema/account'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -11,28 +12,42 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const body = await readBody<{ username?: string, email?: string }>(event)
-  if (!body || (!body.username && !body.email)) {
-    throw createError({ statusCode: 400, statusMessage: 'Provide username or email to update' })
-  }
+  const body = await readValidatedBody(event, payload => accountProfileUpdateSchema.parse(payload))
 
   const db = useDrizzle()
 
   try {
+    const updates: Partial<typeof tables.users.$inferInsert> = {
+      updatedAt: new Date(),
+    }
+
+    if (body.username !== undefined)
+      updates.username = body.username
+
+    if (body.email !== undefined)
+      updates.email = body.email
+
     await db.update(tables.users)
-      .set({
-        username: body.username ?? undefined,
-        email: body.email ?? undefined,
-      })
+      .set(updates)
       .where(eq(tables.users.id, user.id))
       .run()
 
+    const updatedUser = db
+      .select({
+        id: tables.users.id,
+        username: tables.users.username,
+        email: tables.users.email,
+        role: tables.users.role,
+      })
+      .from(tables.users)
+      .where(eq(tables.users.id, user.id))
+      .get()
+
+    if (!updatedUser)
+      throw createError({ statusCode: 404, statusMessage: 'User not found after update' })
+
     return {
-      data: {
-        ...user,
-        username: body.username ?? user.username,
-        email: body.email ?? user.email,
-      },
+      data: updatedUser,
     }
   }
   catch (error: unknown) {

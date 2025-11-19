@@ -1,38 +1,90 @@
 <script setup lang="ts">
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { GeneralSettings } from '#shared/types/admin-settings'
 
 const toast = useToast()
 const isSubmitting = ref(false)
 
+const localeEnumValues = ['en', 'de', 'fr', 'es'] as const
+type LocaleValue = (typeof localeEnumValues)[number]
+const localeOptions = [
+  { label: 'English', value: localeEnumValues[0] },
+  { label: 'German', value: localeEnumValues[1] },
+  { label: 'French', value: localeEnumValues[2] },
+  { label: 'Spanish', value: localeEnumValues[3] },
+] satisfies { label: string; value: LocaleValue }[]
+
+const timezoneEnumValues = [
+  'UTC',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Tokyo',
+] as const
+type TimezoneValue = (typeof timezoneEnumValues)[number]
+const timezoneOptions = [
+  { label: 'UTC', value: timezoneEnumValues[0] },
+  { label: 'America/New_York', value: timezoneEnumValues[1] },
+  { label: 'America/Los_Angeles', value: timezoneEnumValues[2] },
+  { label: 'Europe/London', value: timezoneEnumValues[3] },
+  { label: 'Europe/Paris', value: timezoneEnumValues[4] },
+  { label: 'Asia/Tokyo', value: timezoneEnumValues[5] },
+] satisfies { label: string; value: TimezoneValue }[]
+
+const schema = z.object({
+  name: z.string().trim().min(2, 'Panel name must be at least 2 characters'),
+  url: z.string().trim().url('Enter a valid URL'),
+  locale: z.enum(localeEnumValues, { required_error: 'Select a default language' }),
+  timezone: z.enum(timezoneEnumValues, { required_error: 'Select a timezone' }),
+  brandText: z.string().trim().max(80, 'Brand text must be 80 characters or less'),
+  showBrandText: z.boolean(),
+  showBrandLogo: z.boolean(),
+  brandLogoUrl: z.preprocess(
+    (value) => {
+      if (value === '' || value === undefined)
+        return null
+      return value
+    },
+    z.string().trim().url('Provide a valid logo URL').nullable(),
+  ),
+})
+
+type FormSchema = z.infer<typeof schema>
+
 const { data: settings, refresh } = await useFetch<GeneralSettings>('/api/admin/settings/general', {
   key: 'admin-settings-general',
 })
 
-const form = reactive({
-  name: settings.value?.name || '',
-  url: settings.value?.url || '',
-  locale: settings.value?.locale || 'en',
-  timezone: settings.value?.timezone || 'UTC',
-  brandText: settings.value?.brandText || settings.value?.name || 'XyraPanel',
-  showBrandText: settings.value?.showBrandText ?? true,
-  showBrandLogo: settings.value?.showBrandLogo ?? false,
-  brandLogoUrl: settings.value?.brandLogoUrl ?? null,
-})
+function resolveLocale(value: string | null | undefined): LocaleValue {
+  return (localeEnumValues.includes(value as LocaleValue) ? value : localeEnumValues[0]) as LocaleValue
+}
+
+function resolveTimezone(value: string | null | undefined): TimezoneValue {
+  return (timezoneEnumValues.includes(value as TimezoneValue) ? value : timezoneEnumValues[0]) as TimezoneValue
+}
+
+function createFormState(source?: GeneralSettings | null): FormSchema {
+  return {
+    name: source?.name ?? '',
+    url: source?.url ?? '',
+    locale: resolveLocale(source?.locale),
+    timezone: resolveTimezone(source?.timezone),
+    brandText: source?.brandText ?? source?.name ?? '',
+    showBrandText: source?.showBrandText ?? true,
+    showBrandLogo: source?.showBrandLogo ?? false,
+    brandLogoUrl: source?.brandLogoUrl ?? null,
+  }
+}
+
+const form = reactive<FormSchema>(createFormState(settings.value))
 
 const logoFile = ref<File | null>(null)
 const logoUploading = ref(false)
 
 watch(settings, (newSettings) => {
-  if (newSettings) {
-    form.name = newSettings.name
-    form.url = newSettings.url
-    form.locale = newSettings.locale
-    form.timezone = newSettings.timezone
-    form.brandText = newSettings.brandText
-    form.showBrandText = newSettings.showBrandText
-    form.showBrandLogo = newSettings.showBrandLogo
-    form.brandLogoUrl = newSettings.brandLogoUrl
-  }
+  Object.assign(form, createFormState(newSettings ?? null))
 })
 
 watch(logoFile, async (file) => {
@@ -105,14 +157,24 @@ async function removeLogo() {
   }
 }
 
-async function handleSubmit() {
+async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
+  if (isSubmitting.value)
+    return
+
   isSubmitting.value = true
 
   try {
+    const payload = {
+      ...event.data,
+      brandLogoUrl: event.data.brandLogoUrl ?? null,
+    }
+
     await $fetch('/api/admin/settings/general', {
       method: 'PATCH',
-      body: form,
+      body: payload,
     })
+
+    Object.assign(form, payload)
 
     toast.add({
       title: 'Settings updated',
@@ -143,7 +205,15 @@ async function handleSubmit() {
       <p class="text-sm text-muted-foreground">Configure basic panel information</p>
     </template>
 
-    <form class="space-y-4" @submit.prevent="handleSubmit">
+    <UForm
+      ref="generalSettingsForm"
+      :schema="schema"
+      :state="form"
+      class="space-y-4"
+      :disabled="isSubmitting"
+      validate-on="input"
+      @submit="handleSubmit"
+    >
       <UFormField label="Panel Name" name="name" required>
         <UInput v-model="form.name" placeholder="XyraPanel" :disabled="isSubmitting" class="w-full" />
       </UFormField>
@@ -153,23 +223,11 @@ async function handleSubmit() {
       </UFormField>
 
       <UFormField label="Language" name="locale" required>
-        <USelect v-model="form.locale" :items="[
-          { label: 'English', value: 'en' },
-          { label: 'German', value: 'de' },
-          { label: 'French', value: 'fr' },
-          { label: 'Spanish', value: 'es' },
-        ]" value-key="value" :disabled="isSubmitting" />
+        <USelect v-model="form.locale" :items="localeOptions" value-key="value" :disabled="isSubmitting" />
       </UFormField>
 
       <UFormField label="Timezone" name="timezone" required>
-        <USelect v-model="form.timezone" :items="[
-          { label: 'UTC', value: 'UTC' },
-          { label: 'America/New_York', value: 'America/New_York' },
-          { label: 'America/Los_Angeles', value: 'America/Los_Angeles' },
-          { label: 'Europe/London', value: 'Europe/London' },
-          { label: 'Europe/Paris', value: 'Europe/Paris' },
-          { label: 'Asia/Tokyo', value: 'Asia/Tokyo' },
-        ]" value-key="value" :disabled="isSubmitting" />
+        <USelect v-model="form.timezone" :items="timezoneOptions" value-key="value" :disabled="isSubmitting" />
       </UFormField>
 
       <USeparator />
@@ -230,6 +288,6 @@ async function handleSubmit() {
           Save Changes
         </UButton>
       </div>
-    </form>
+    </UForm>
   </UCard>
 </template>

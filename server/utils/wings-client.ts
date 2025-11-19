@@ -62,6 +62,7 @@ export class WingsClient {
               errorMessage += ` - ${errorBody}`
             }
           } catch {
+            // Ignore body parsing failures rely on status code instead
           }
 
           throw new WingsConnectionError(errorMessage)

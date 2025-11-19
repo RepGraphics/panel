@@ -301,6 +301,16 @@ async function handleMaintenanceAction(action: string) {
   }
 }
 
+function setTransferServerChecked(serverId: string, checked: boolean) {
+  if (checked) {
+    if (!transferForm.serverIds.includes(serverId))
+      transferForm.serverIds.push(serverId)
+  }
+  else {
+    transferForm.serverIds = transferForm.serverIds.filter(id => id !== serverId)
+  }
+}
+
 function handleViewServer(row: AdminWingsNodeServerSummary) {
   navigateTo(`/admin/servers/${row.id}`)
 }
@@ -311,7 +321,7 @@ async function handleUnlinkServer(row: AdminWingsNodeServerSummary) {
   }
 
   try {
-    // For now, we'll show a warning
+    // For now we'll show a warning
     toast.add({
       title: 'Unlink server',
       description: 'To unlink a server, please transfer it to another node using the server management page.',
@@ -765,58 +775,56 @@ async function handleTransferServers() {
         </template>
       </section>
     </UPageBody>
-  </UPage>
 
-  <UModal v-model:open="showTransferModal" title="Transfer Servers" description="Select servers to transfer to another node">
-    <template #body>
-      <div class="space-y-4">
-        <UAlert icon="i-lucide-info">
-          <template #title>Server Transfer</template>
-          <template #description>
-            Select servers from this node to transfer to another node. This action will move the servers and their allocations.
-          </template>
-        </UAlert>
-        <UFormField label="Target Node" name="targetNodeId" required>
-          <USelect
-            v-model="transferForm.targetNodeId"
-            :options="nodeOptions"
-            placeholder="Select target node"
-            searchable
-          />
-          <template #help>
-            Choose the node to transfer servers to
-          </template>
-        </UFormField>
-        <UFormField label="Servers to Transfer" name="serverIds">
-          <div class="space-y-2">
-            <div v-for="server in serverRows" :key="server.id" class="flex items-center gap-2">
-              <UCheckbox
-                :model-value="transferForm.serverIds.includes(server.id)"
-                @update:model-value="(checked) => {
-                  if (checked) {
-                    transferForm.serverIds.push(server.id)
-                  } else {
-                    transferForm.serverIds = transferForm.serverIds.filter(id => id !== server.id)
-                  }
-                }"
-              />
-              <label class="text-sm">{{ server.name }}</label>
+    <UModal
+      v-model:open="showTransferModal"
+      title="Transfer Servers"
+      description="Select servers to transfer to another node"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UAlert icon="i-lucide-info">
+            <template #title>Server Transfer</template>
+            <template #description>
+              Select servers from this node to transfer to another node. This action will move the servers and their allocations.
+            </template>
+          </UAlert>
+          <UFormField label="Target Node" name="targetNodeId" required>
+            <USelect
+              v-model="transferForm.targetNodeId"
+              :options="nodeOptions"
+              placeholder="Select target node"
+              searchable
+            />
+            <template #help>
+              Choose the node to transfer servers to
+            </template>
+          </UFormField>
+          <UFormField label="Servers to Transfer" name="serverIds">
+            <div class="space-y-2">
+              <div v-for="server in serverRows" :key="server.id" class="flex items-center gap-2">
+                <UCheckbox
+                  :model-value="transferForm.serverIds.includes(server.id)"
+                  @update:model-value="(checked: boolean) => setTransferServerChecked(server.id, checked)"
+                />
+                <label class="text-sm">{{ server.name }}</label>
+              </div>
             </div>
-          </div>
-        </UFormField>
-      </div>
-    </template>
-    <template #footer>
-      <div class="flex justify-end gap-2">
-        <UButton variant="ghost" @click="showTransferModal = false">Cancel</UButton>
-        <UButton
-          color="primary"
-          :disabled="!transferForm.targetNodeId || transferForm.serverIds.length === 0"
-          @click="handleTransferServers"
-        >
-          Transfer Servers
-        </UButton>
-      </div>
-    </template>
-  </UModal>
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton variant="ghost" @click="showTransferModal = false">Cancel</UButton>
+          <UButton
+            color="primary"
+            :disabled="!transferForm.targetNodeId || transferForm.serverIds.length === 0"
+            @click="handleTransferServers"
+          >
+            Transfer Servers
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+  </UPage>
 </template>

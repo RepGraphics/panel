@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
 definePageMeta({
   auth: true,
@@ -7,54 +9,113 @@ definePageMeta({
 })
 
 const toast = useToast()
-const isCreating = ref(false)
 const showCreateModal = ref(false)
 const newKeyToken = ref<string | null>(null)
+const isCreating = ref(false)
+const copySuccess = ref(false)
+const createError = ref<string | null>(null)
 
-const createForm = reactive({
-  memo: '',
-  allowedIps: '',
+const keySchema = z.object({
+  memo: z.string().trim().max(255, 'Memo must be under 255 characters').optional().default(''),
+  allowedIps: z.string().trim().optional().default('')
+    .refine(value => {
+      if (!value)
+        return true
+
+      return value.split(',').every((ip) => {
+        const trimmed = ip.trim()
+        if (!trimmed)
+          return false
+
+        const ipv4Regex = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/
+        return ipv4Regex.test(trimmed)
+      })
+    }, 'Enter valid IPv4 addresses separated by commas.'),
 })
 
-const { data: keysData, refresh } = await useFetch('/api/account/api-keys', {
-  key: 'account-api-keys',
+type KeyFormSchema = z.output<typeof keySchema>
+
+const createForm = reactive<KeyFormSchema>(keySchema.parse({}))
+
+const {
+  data: keysData,
+  pending: keysPending,
+  refresh: refreshKeys,
+  error: keysError,
+} = await useAsyncData('account-api-keys', () => $fetch('/api/account/api-keys'), {
+  server: false,
 })
 
-const apiKeys = computed(() => keysData.value?.data || [])
+const apiKeys = computed(() => keysData.value?.data ?? [])
+const showSkeleton = computed(() => keysPending.value && apiKeys.value.length === 0)
+const loadError = computed(() => {
+  const err = keysError.value
+  if (!err)
+    return null
 
-async function createApiKey() {
+  if (err instanceof Error)
+    return err.message
+
+  return 'Unable to load API keys. Try refreshing the page.'
+})
+
+function resetCreateState() {
+  createError.value = null
+  copySuccess.value = false
+  newKeyToken.value = null
+  Object.assign(createForm, keySchema.parse({}))
+}
+
+watch(showCreateModal, (open) => {
+  if (!open)
+    resetCreateState()
+})
+
+async function createApiKey(event: FormSubmitEvent<KeyFormSchema>) {
+  if (isCreating.value)
+    return
+
   isCreating.value = true
+  createError.value = null
+  newKeyToken.value = null
+  copySuccess.value = false
+
   try {
-    const allowedIps = createForm.allowedIps
+    const payload = event.data
+    const allowedIps = payload.allowedIps
       .split(',')
       .map(ip => ip.trim())
       .filter(Boolean)
 
+    const formattedIps = allowedIps.length > 0 ? allowedIps : null
+
     const response = await $fetch('/api/account/api-keys', {
       method: 'POST',
       body: {
-        memo: createForm.memo || null,
-        allowedIps: allowedIps.length > 0 ? allowedIps : null,
+        memo: payload.memo && payload.memo.length > 0 ? payload.memo : null,
+        allowedIps: formattedIps,
       },
     })
 
     newKeyToken.value = response.meta.secret_token
-    createForm.memo = ''
-    createForm.allowedIps = ''
+    Object.assign(createForm, keySchema.parse({}))
 
-    await refresh()
+    await refreshKeys()
 
     toast.add({
       title: 'API Key Created',
-      description: 'Copy your API key now - it will not be shown again',
+      description: 'Copy your API key now – it will not be shown again.',
       color: 'success',
     })
   }
   catch (error) {
     const err = error as { data?: { message?: string } }
+    const message = err.data?.message || 'Failed to create API key'
+    createError.value = message
+
     toast.add({
       title: 'Error',
-      description: err.data?.message || 'Failed to create API key',
+      description: message,
       color: 'error',
     })
   }
@@ -73,7 +134,7 @@ async function deleteKey(identifier: string) {
       method: 'DELETE',
     })
 
-    await refresh()
+    await refreshKeys()
 
     toast.add({
       title: 'API Key Deleted',
@@ -91,13 +152,25 @@ async function deleteKey(identifier: string) {
   }
 }
 
-function copyToken() {
-  if (newKeyToken.value) {
-    navigator.clipboard.writeText(newKeyToken.value)
+async function copyToken() {
+  if (!newKeyToken.value)
+    return
+
+  try {
+    await navigator.clipboard.writeText(newKeyToken.value)
+    copySuccess.value = true
     toast.add({
       title: 'Copied',
       description: 'API key copied to clipboard',
       color: 'success',
+    })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to copy token'
+    toast.add({
+      title: 'Copy failed',
+      description: message,
+      color: 'error',
     })
   }
 }
@@ -122,7 +195,7 @@ function formatDate(date: Date | string | number | null | undefined) {
       v-model:open="showCreateModal"
       title="Create API Key"
       description="Generate a personal API key for programmatic access"
-      :ui="{ body: 'space-y-4' }"
+      :ui="{ body: 'space-y-4', footer: 'flex justify-end gap-2' }"
     >
       <template #body>
         <div v-if="newKeyToken" class="space-y-4">
@@ -153,70 +226,84 @@ function formatDate(date: Date | string | number | null | undefined) {
           </div>
         </div>
 
-        <form v-else class="space-y-4" @submit.prevent="createApiKey">
-          <UFormField label="Description (optional)" name="memo">
-            <UInput
-              v-model="createForm.memo"
-              icon="i-lucide-file-text"
-              placeholder="My API Key"
-              class="w-full"
-            />
-            <template #help>
-              A friendly name to help identify this key
-            </template>
-          </UFormField>
+        <div v-else class="space-y-4">
+          <UAlert v-if="createError" color="error" icon="i-lucide-alert-triangle">
+            <template #title>Unable to create key</template>
+            <template #description>{{ createError }}</template>
+          </UAlert>
 
-          <UFormField
-            label="Allowed IPs (optional)"
-            name="allowedIps"
+          <UForm
+            :schema="keySchema"
+            :state="createForm"
+            class="space-y-4"
+            :disabled="isCreating"
+            @submit="createApiKey"
           >
-            <UInput
-              v-model="createForm.allowedIps"
-              icon="i-lucide-shield"
-              placeholder="192.168.1.1, 10.0.0.1"
-              class="w-full"
-            />
-            <template #help>
-              Comma-separated list of IP addresses. Leave empty to allow all IPs.
-            </template>
-          </UFormField>
-        </form>
+            <UFormField label="Description (optional)" name="memo">
+              <UInput
+                v-model="createForm.memo"
+                icon="i-lucide-file-text"
+                placeholder="My API Key"
+                class="w-full"
+              />
+              <template #help>
+                A friendly name to help identify this key
+              </template>
+            </UFormField>
+
+            <UFormField
+              label="Allowed IPs (optional)"
+              name="allowedIps"
+            >
+              <UTextarea
+                v-model="createForm.allowedIps"
+                icon="i-lucide-shield"
+                placeholder="192.168.1.1, 10.0.0.1"
+                class="w-full"
+                :rows="3"
+              />
+              <template #help>
+                Comma-separated list of IPv4 addresses. Leave empty to allow all IPs.
+              </template>
+            </UFormField>
+          </UForm>
+        </div>
       </template>
 
       <template #footer="{ close }">
-        <div v-if="!newKeyToken" class="flex justify-end gap-2">
+        <template v-if="!newKeyToken">
           <UButton
             variant="ghost"
-            color="error"
+            color="neutral"
             :disabled="isCreating"
             @click="() => {
               showCreateModal = false
-              newKeyToken = null
               close()
             }"
           >
             Cancel
           </UButton>
           <UButton
+            type="submit"
+            form=""
             icon="i-lucide-plus"
             color="primary"
             variant="subtle"
             :loading="isCreating"
             :disabled="isCreating"
-            @click="createApiKey"
+            @click="() => createApiKey({ data: createForm } as unknown as FormSubmitEvent<KeyFormSchema>)"
           >
             Create Key
           </UButton>
-        </div>
-        <div v-else class="flex justify-end">
+        </template>
+        <template v-else>
           <UButton @click="() => {
             showCreateModal = false
-            newKeyToken = null
             close()
           }">
             Done
           </UButton>
-        </div>
+        </template>
       </template>
     </UModal>
 
@@ -228,8 +315,18 @@ function formatDate(date: Date | string | number | null | undefined) {
             <p class="text-sm text-muted-foreground">Manage existing keys or create new ones for API access.</p>
           </div>
         </template>
+        <UAlert v-if="loadError" color="error" icon="i-lucide-alert-triangle" class="mb-4">
+          <template #title>Unable to load keys</template>
+          <template #description>{{ loadError }}</template>
+        </UAlert>
+
+        <div v-if="showSkeleton" class="space-y-3">
+          <USkeleton class="h-16 w-full rounded-md" />
+          <USkeleton class="h-16 w-full rounded-md" />
+        </div>
+
         <UEmpty
-          v-if="apiKeys.length === 0"
+          v-else-if="apiKeys.length === 0"
           icon="i-lucide-key"
           title="No API keys yet"
           description="Create an API key to access the panel programmatically"

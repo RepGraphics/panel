@@ -56,11 +56,10 @@ const handleReset = () => clearError({ redirect: '/' })
 
 <template>
   <UPage>
-    <UPageBody>
-      <section class="mx-auto flex max-w-3xl flex-col gap-6 text-center">
+    <UContainer class="min-h-screen flex items-center justify-center py-12">
+      <section class="mx-auto max-w-xl text-center">
         <UCard :ui="{ body: 'space-y-4' }">
           <div class="flex flex-col items-center gap-2">
-            <UBadge size="xs" color="neutral">{{ props.error.statusCode || 'ERR' }}</UBadge>
             <h1 class="text-2xl font-semibold">{{ headline }}</h1>
             <p class="text-sm text-muted-foreground">{{ description }}</p>
           </div>
@@ -69,7 +68,7 @@ const handleReset = () => clearError({ redirect: '/' })
           </div>
           <div class="flex flex-wrap justify-center gap-2">
             <UButton v-for="link in quickLinks" :key="link.label" :icon="link.icon" :to="link.to" color="primary"
-              variant="soft" @click="link.action ? link.action() : undefined">
+              variant="subtle" @click="link.action ? link.action() : undefined">
               {{ link.label }}
             </UButton>
             <UButton icon="i-lucide-refresh-ccw" variant="ghost" color="neutral" @click="handleReset">
@@ -78,6 +77,6 @@ const handleReset = () => clearError({ redirect: '/' })
           </div>
         </UCard>
       </section>
-    </UPageBody>
+    </UContainer>
   </UPage>
 </template>

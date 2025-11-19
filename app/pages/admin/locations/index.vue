@@ -183,7 +183,7 @@ async function handleDelete(location: LocationWithNodeCount) {
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <UButton variant="ghost" color="warning" :disabled="isSubmitting" @click="showCreateModal = false">
+          <UButton variant="ghost" color="error" :disabled="isSubmitting" @click="showCreateModal = false">
             Cancel
           </UButton>
           <UButton color="primary" variant="subtle" :loading="isSubmitting" @click="handleSubmit">

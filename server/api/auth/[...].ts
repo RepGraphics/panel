@@ -63,6 +63,48 @@ function upsertSessionRecord(params: { sessionToken: string; userId: string; exp
     .run()
 }
 
+function getSessionUserSnapshot(userId: string) {
+  const db = useDrizzle()
+  const dbUser = db
+    .select({
+      id: tables.users.id,
+      username: tables.users.username,
+      email: tables.users.email,
+      nameFirst: tables.users.nameFirst,
+      nameLast: tables.users.nameLast,
+      image: tables.users.image,
+      role: tables.users.role,
+      rootAdmin: tables.users.rootAdmin,
+      useTotp: tables.users.useTotp,
+      totpAuthenticatedAt: tables.users.totpAuthenticatedAt,
+    })
+    .from(tables.users)
+    .where(eq(tables.users.id, userId))
+    .get()
+
+  if (!dbUser) {
+    return null
+  }
+
+  const derivedRole: Role = dbUser.rootAdmin || dbUser.role === 'admin' ? 'admin' : 'user'
+  const permissions = derivedRole === 'admin' ? ADMIN_PANEL_PERMISSIONS : []
+  const name = [dbUser.nameFirst, dbUser.nameLast].filter(Boolean).join(' ') || dbUser.username
+
+  return {
+    id: dbUser.id,
+    username: dbUser.username,
+    email: dbUser.email,
+    role: derivedRole,
+    permissions,
+    name,
+    image: dbUser.image ?? null,
+    useTotp: !!dbUser.useTotp,
+    totpAuthenticatedAt: dbUser.totpAuthenticatedAt
+      ? new Date(dbUser.totpAuthenticatedAt).toISOString()
+      : null,
+  }
+}
+
 const authHandler = NuxtAuthHandler({
   secret: runtimeConfig.authSecret,
   session: {
@@ -220,82 +262,72 @@ const authHandler = NuxtAuthHandler({
     },
 
     async jwt({ token, user }) {
-
       if (user) {
         const extendedUser = user as ExtendedUser
-        token.id = user.id
-        token.email = user.email
-
-        token.username = extendedUser.username
-
-        token.role = extendedUser.role
-
-        token.permissions = extendedUser.permissions || []
-
-        token.useTotp = !!extendedUser.useTotp
-
-        token.totpAuthenticatedAt = extendedUser.totpAuthenticatedAt
-          ? new Date(extendedUser.totpAuthenticatedAt).toISOString()
-          : null
+        token.id = extendedUser.id
         if (!token.sessionToken) {
           token.sessionToken = randomUUID()
         }
 
-        if (user.id) {
-          const expiresNumeric = typeof token.exp === 'number'
-            ? token.exp * 1000
-            : Date.now() + (30 * 24 * 60 * 60 * 1000)
+        const expiresNumeric = typeof token.exp === 'number'
+          ? token.exp * 1000
+          : Date.now() + (30 * 24 * 60 * 60 * 1000)
+
+        if (extendedUser.id) {
           upsertSessionRecord({
             sessionToken: token.sessionToken as string,
-            userId: user.id,
+            userId: extendedUser.id,
             expires: new Date(expiresNumeric),
           })
         }
-      } else if (token.id) {
-        const db = useDrizzle()
-        const dbUser = db
-          .select({
-            useTotp: tables.users.useTotp,
-            totpAuthenticatedAt: tables.users.totpAuthenticatedAt,
-          })
-          .from(tables.users)
-          .where(eq(tables.users.id, token.id as string))
-          .get()
-
-        if (dbUser) {
-          token.useTotp = !!dbUser.useTotp
-          token.totpAuthenticatedAt = dbUser.totpAuthenticatedAt
-            ? new Date(dbUser.totpAuthenticatedAt).toISOString()
-            : null
-        }
       }
+
+      if (token.id && !token.sessionToken) {
+        token.sessionToken = randomUUID()
+      }
+
       return token
     },
 
     async session({ session, token }) {
-
-      if (token && session.user) {
-        const tokenData = token as Record<string, unknown>
-        const sessionUser = session.user as Record<string, unknown>
-
-        sessionUser.id = token.id as string
-        sessionUser.username = token.username as string
-        sessionUser.role = token.role as string
-        sessionUser.permissions = token.permissions as string[]
-        sessionUser.useTotp = !!tokenData.useTotp
-        sessionUser.totpAuthenticatedAt = (tokenData.totpAuthenticatedAt as Date | string | null | undefined) ?? null
+      if (!token?.id) {
+        return null
       }
 
-      if (token?.sessionToken && typeof token.id === 'string') {
-        const expiresNumeric = typeof token.exp === 'number'
-          ? token.exp * 1000
-          : Date.now() + (30 * 24 * 60 * 60 * 1000)
+      const snapshot = getSessionUserSnapshot(token.id as string)
+      if (!snapshot) {
+        return null
+      }
+
+      const expiresNumeric = typeof token.exp === 'number'
+        ? token.exp * 1000
+        : Date.now() + (30 * 24 * 60 * 60 * 1000)
+
+      if (token.sessionToken) {
         upsertSessionRecord({
           sessionToken: token.sessionToken as string,
-          userId: token.id,
+          userId: snapshot.id,
           expires: new Date(expiresNumeric),
         })
       }
+
+      const sessionUser = session.user as Record<string, unknown> | undefined
+      const nextUser: Record<string, unknown> = {
+        ...(sessionUser ?? {}),
+        name: snapshot.name,
+        email: snapshot.email,
+        image: snapshot.image,
+      }
+
+      nextUser.id = snapshot.id
+      nextUser.username = snapshot.username
+      nextUser.role = snapshot.role
+      nextUser.permissions = snapshot.permissions
+      nextUser.useTotp = snapshot.useTotp
+      nextUser.totpAuthenticatedAt = snapshot.totpAuthenticatedAt
+
+      session.user = nextUser as typeof session.user
+
       return session
     },
   },

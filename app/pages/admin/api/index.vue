@@ -5,7 +5,7 @@ definePageMeta({
   auth: true,
   layout: 'admin',
   adminTitle: 'API Keys',
-  adminSubtitle: 'Manage application API keys for external integrations',
+  adminSubtitle: 'Manage existing keys or create new ones for API access.',
 })
 
 const toast = useToast()
@@ -112,9 +112,12 @@ function copyToClipboard(text: string) {
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
-              <h2 class="text-lg font-semibold">Active API Keys</h2>
+              <div>
+                <h2 class="text-lg font-semibold">Active keys</h2>
+                <p class="text-xs text-muted-foreground">Existing API keys issued for programmatic access.</p>
+              </div>
               <UButton icon="i-lucide-plus" color="primary" variant="subtle" @click="showCreateModal = true">
-                Create API Key
+                Create API key
               </UButton>
             </div>
           </template>
