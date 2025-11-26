@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { AuthFormField, FormSubmitEvent } from '@nuxt/ui'
 import type { FetchError } from 'ofetch'
-import { accountForcedPasswordSchema, type AccountForcedPasswordInput } from '#shared/schema/account'
+import { accountForcedPasswordSchema } from '#shared/schema/account'
+import type { PasswordForceBody } from '#shared/types/account'
 
 const authStore = useAuthStore()
 const { status, requiresPasswordReset } = storeToRefs(authStore)
@@ -62,13 +63,19 @@ watch(status, async (value) => {
     await navigateTo(redirectPath.value)
 }, { immediate: true })
 
-async function handleSubmit(event: FormSubmitEvent<AccountForcedPasswordInput>) {
+async function onSubmit(event: FormSubmitEvent<PasswordForceBody>) {
   loading.value = true
   errorMessage.value = null
   try {
+    const newPassword = String(event.data.newPassword)
+    const confirmPassword = event.data.confirmPassword ? String(event.data.confirmPassword) : undefined
+    const body: PasswordForceBody = {
+      newPassword,
+      confirmPassword,
+    }
     await $fetch<{ success: boolean }>('/api/account/password/force', {
       method: 'PUT',
-      body: event.data,
+      body,
     })
 
     await authStore.syncSession({ force: true })
@@ -99,32 +106,23 @@ async function handleSubmit(event: FormSubmitEvent<AccountForcedPasswordInput>) 
 </script>
 
 <template>
-  <div class="space-y-6">
-    <UAuthForm
-      class="space-y-6"
-      :schema="schema"
-      :fields="fields"
-      :submit="submitProps"
-      @submit="handleSubmit"
-    >
-      <template #title>
-        <div class="space-y-2 text-center">
-          <h1 class="text-3xl font-semibold text-white">Password reset required</h1>
-          <p class="text-sm text-neutral-300">
-            Choose a new password to continue to your account.
-          </p>
-        </div>
-      </template>
-      <template #description>
-        <div v-if="errorMessage" class="mt-4">
-          <UAlert
-            color="error"
-            variant="soft"
-            icon="i-lucide-alert-triangle"
-            :title="errorMessage"
-          />
-        </div>
-      </template>
-    </UAuthForm>
-  </div>
+  <UAuthForm
+    :schema="schema"
+    :fields="fields"
+    title="Password reset required"
+    description="Choose a new password to continue to your account."
+    icon="i-lucide-key-round"
+    :submit="submitProps"
+    @submit="onSubmit as any"
+  >
+    <template #validation>
+      <UAlert
+        v-if="errorMessage"
+        color="error"
+        variant="soft"
+        icon="i-lucide-alert-triangle"
+        :title="errorMessage"
+      />
+    </template>
+  </UAuthForm>
 </template>

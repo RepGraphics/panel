@@ -152,3 +152,36 @@ export const createSshKeySchema = z.object({
 export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>
 export type UpdateEmailInput = z.infer<typeof updateEmailSchema>
 export type CreateSshKeyInput = z.infer<typeof createSshKeySchema>
+
+export const passwordRequestSchema = z.object({
+  identity: z.string().trim().min(1, 'Enter your username or email address'),
+})
+
+export type PasswordRequestInput = z.output<typeof passwordRequestSchema>
+
+const passwordResetBaseSchema = z.object({
+  token: z.string().trim().min(1, 'Reset token is required'),
+  password: newPasswordSchema,
+  confirmPassword: newPasswordSchema,
+})
+
+type PasswordResetValidationInput = z.infer<typeof passwordResetBaseSchema>
+
+function validatePasswordReset(
+  data: PasswordResetValidationInput,
+  ctx: z.RefinementCtx
+) {
+  if (data.password !== data.confirmPassword) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirmPassword'],
+      message: 'Passwords do not match',
+    })
+  }
+}
+
+export const passwordResetSchema = passwordResetBaseSchema.superRefine(
+  validatePasswordReset
+)
+
+export type PasswordResetInput = z.output<typeof passwordResetSchema>

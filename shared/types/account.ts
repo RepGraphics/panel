@@ -60,3 +60,17 @@ export interface TotpResponse {
   success: boolean
   message: string
 }
+
+export interface PasswordRequestBody {
+  identity: string
+}
+
+export interface PasswordResetBody {
+  token: string
+  newPassword: string
+}
+
+export interface PasswordForceBody {
+  newPassword: string
+  confirmPassword?: string
+}

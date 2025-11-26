@@ -162,19 +162,17 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
 
 <template>
   <div class="space-y-6">
-    <UAuthForm class="space-y-6" :schema="schema" :fields="fields" :submit="submitProps" @submit="onSubmit">
+    <UAuthForm :schema="schema" :fields="fields" :submit="submitProps" @submit="onSubmit as any">
       <template #title>
-        <div class="space-y-2">
-          <h1 class="text-3xl font-semibold text-white">
-            {{ appName }}
-          </h1>
-        </div>
+        <h1 class="text-3xl font-semibold text-white">
+          {{ appName }}
+        </h1>
+      </template>
+      <template #password-hint>
+        <NuxtLink to="/auth/password/request" class="text-primary font-medium" tabindex="-1">
+          Forgot password?
+        </NuxtLink>
       </template>
     </UAuthForm>
-    <p class="text-center text-sm text-muted-foreground">
-      <NuxtLink to="/auth/password/request" class="text-primary underline-offset-4 hover:underline">
-        Forgot your password?
-      </NuxtLink>
-    </p>
   </div>
 </template>
