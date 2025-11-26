@@ -19,10 +19,10 @@ const appOrigin = process.env.NUXT_SECURITY_CORS_ORIGIN
   || authOrigin
 
 const allowedOrigins = process.env.NUXT_SECURITY_CORS_ORIGIN
-  ? [process.env.NUXT_SECURITY_CORS_ORIGIN]
+  ? process.env.NUXT_SECURITY_CORS_ORIGIN.split(',').map(origin => origin.trim()).filter(Boolean)
   : appOrigin === 'http://localhost:3000'
     ? ['*'] // Dev - allow all
-    : [appOrigin, 'http://localhost:3000'] // Production - allow panel URL and localhost
+    : [appOrigin] // Production - only allow configured origin (no localhost)
 
 const extraConnectSources = process.env.NUXT_SECURITY_CONNECT_SRC
   ? process.env.NUXT_SECURITY_CONNECT_SRC.split(',').map(entry => entry.trim()).filter(Boolean)
@@ -54,7 +54,7 @@ export default defineNuxtConfig({
     'nuxt-qrcode',
     '@nuxt/eslint',
     'nuxt-security',
-    '@nuxt/test-utils/module',
+    ...(isDev ? ['@nuxt/test-utils/module'] : []), // Only include test utils in development
     '@nuxt/hints',
     'nuxt-charts',
     '@vite-pwa/nuxt',
@@ -147,8 +147,15 @@ export default defineNuxtConfig({
         maxUploadFileRequestInBytes: maxUploadSize,
         throwError: true,
       },
-      rateLimiter: false,
-      csrf: false,
+      rateLimiter: {
+        tokensPerInterval: 150,
+        interval: 'hour',
+        headers: true,
+        driver: {
+          name: 'lruCache',
+        },
+      },
+      csrf: false, // Handled by BetterAuth
       nonce: true,
       hidePoweredBy: true,
       removeLoggers: true,

@@ -294,7 +294,7 @@ function createAuth() {
       defaultCookieAttributes: {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'lax',
+        sameSite: 'lax', // 'lax' is recommended for auth cookies; 'strict' can break legitimate flows
       },
     },
     onAPIError: {
