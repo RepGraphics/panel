@@ -25,7 +25,8 @@ const {
   `server-startup-${props.server.id}`,
   async () => {
     try {
-      return await $fetch<any>(`/api/admin/servers/${props.server.id}/startup`) as StartupResponse | null
+      const response = await $fetch<{ data: StartupResponse }>(`/api/admin/servers/${props.server.id}/startup`)
+      return response?.data ?? null
     }
     catch (error) {
       console.error('Failed to load startup configuration', error)
@@ -37,7 +38,10 @@ const {
   },
 )
 
-const startup = computed(() => (startupData.value as any)?.data ?? null)
+const startup = computed(() => {
+  const data = startupData.value
+  return data && typeof data === 'object' && 'data' in data ? data.data : null
+})
 
 const dockerImages = computed(() => {
   const images = startup.value?.dockerImages || {}

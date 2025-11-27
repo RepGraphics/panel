@@ -44,6 +44,8 @@ export interface AdminUserResponse {
   emailVerified: boolean
   twoFactorEnabled: boolean
   passwordResetRequired: boolean
+  serversOwned?: number
+  serversAccess?: number
 }
 
 export interface UsersResponse {

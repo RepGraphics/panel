@@ -1,65 +1,152 @@
-import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
-import { requireAuth, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
+import { createError, assertMethod } from 'h3'
+import { getServerSession, getSessionUser } from '~~/server/utils/session'
+import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
 import { accountProfileUpdateSchema } from '#shared/schema/account'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAuth(event)
-  const auth = getAuth()
+  assertMethod(event, 'PUT')
+
+  const session = await getServerSession(event)
+  const user = getSessionUser(session)
+
+  if (!user?.id) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
 
   const body = await readValidatedBodyWithLimit(
     event,
-    (payload) => accountProfileUpdateSchema.parse(payload),
+    accountProfileUpdateSchema,
     BODY_SIZE_LIMITS.SMALL,
   )
 
+  const db = useDrizzle()
+
+  const currentUser = db
+    .select({
+      id: tables.users.id,
+      username: tables.users.username,
+      email: tables.users.email,
+      role: tables.users.role,
+    })
+    .from(tables.users)
+    .where(eq(tables.users.id, user.id))
+    .get()
+
+  if (!currentUser) {
+    throw createError({ statusCode: 404, statusMessage: 'User not found' })
+  }
+
+  const oldUsername = currentUser.username
+  const oldEmail = currentUser.email
+
   try {
-    if (body.username !== undefined) {
-      await auth.api.updateUser({
-        body: {
+    if (body.username !== undefined && body.username !== oldUsername) {
+      const existingUser = db
+        .select({ id: tables.users.id })
+        .from(tables.users)
+        .where(eq(tables.users.username, body.username))
+        .get()
+
+      if (existingUser && existingUser.id !== user.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'Conflict',
+          message: 'Username already in use',
+        })
+      }
+
+      await db.update(tables.users)
+        .set({
           username: body.username,
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, user.id))
+        .run()
+
+      await recordAuditEventFromRequest(event, {
+        actor: user.id,
+        actorType: 'user',
+        action: 'account.username.update',
+        targetType: 'user',
+        targetId: user.id,
+        metadata: {
+          oldUsername: oldUsername || null,
+          newUsername: body.username,
         },
-        headers: event.req.headers,
       })
     }
 
-    if (body.email !== undefined && body.email !== session.user.email) {
-      await auth.api.changeEmail({
-        body: {
+    if (body.email !== undefined && body.email !== oldEmail) {
+      const existingUser = db
+        .select({ id: tables.users.id })
+        .from(tables.users)
+        .where(eq(tables.users.email, body.email))
+        .get()
+
+      if (existingUser && existingUser.id !== user.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'Conflict',
+          message: 'Email already in use',
+        })
+      }
+
+      await db.update(tables.users)
+        .set({
+          email: body.email,
+          emailVerified: null, 
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, user.id))
+        .run()
+
+      await recordAuditEventFromRequest(event, {
+        actor: user.id,
+        actorType: 'user',
+        action: 'account.email.update',
+        targetType: 'user',
+        targetId: user.id,
+        metadata: {
+          oldEmail: oldEmail || null,
           newEmail: body.email,
         },
-        headers: event.req.headers,
       })
     }
 
-    const updatedSession = await auth.api.getSession({
-      headers: event.req.headers,
-    })
+    const updatedUser = db
+      .select({
+        id: tables.users.id,
+        username: tables.users.username,
+        email: tables.users.email,
+        role: tables.users.role,
+      })
+      .from(tables.users)
+      .where(eq(tables.users.id, user.id))
+      .get()
 
-    if (!updatedSession?.user) {
+    if (!updatedUser) {
       throw createError({ statusCode: 404, statusMessage: 'User not found after update' })
     }
 
     return {
       data: {
-        id: updatedSession.user.id,
-        username: updatedSession.user.username || body.username,
-        email: updatedSession.user.email || body.email,
-        role: (updatedSession.user as { role?: string }).role || 'user',
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: updatedUser.role || 'user',
       },
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Unable to update profile',
-      })
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      throw error
     }
+    const message = error instanceof Error ? error.message : 'Unable to update profile'
     throw createError({
       statusCode: 400,
-      statusMessage: 'Unable to update profile',
+      statusMessage: message,
     })
   }
 })

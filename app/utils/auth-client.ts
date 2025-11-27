@@ -1,5 +1,5 @@
 import { createAuthClient } from 'better-auth/vue'
-import { usernameClient, twoFactorClient , customSessionClient , apiKeyClient , jwtClient , adminClient  } from 'better-auth/client/plugins'
+import { usernameClient, twoFactorClient , customSessionClient , apiKeyClient , adminClient , multiSessionClient  } from 'better-auth/client/plugins'
 import type { auth } from '~~/server/utils/auth'
 
 export const authClient = createAuthClient({
@@ -10,8 +10,8 @@ export const authClient = createAuthClient({
       },
     }),
     apiKeyClient(),
-    jwtClient(),
     adminClient(),
+    multiSessionClient(),
     customSessionClient<typeof auth>(),
   ],
 })

@@ -1,23 +1,11 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { count } from 'drizzle-orm'
+import { requireAdmin } from '~~/server/utils/security'
+import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  const auth = getAuth()
-  
-  const session = await auth.api.getSession({
-    headers: event.req.headers,
-  })
-
-  if (!session?.user?.id) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
-
-  const userRole = (session.user as { role?: string }).role
-  if (userRole !== 'admin') {
-    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: 'Admin access required' })
-  }
+  const session = await requireAdmin(event)
 
   const userId = getRouterParam(event, 'id')
   if (!userId) {
@@ -32,34 +20,52 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  try {
-    await auth.api.removeUser({
-      body: {
-        userId,
-      },
-      headers: event.req.headers,
-    })
+  const db = useDrizzle()
 
-    await recordAuditEventFromRequest(event, {
-      actor: session.user.email || session.user.id,
-      actorType: 'user',
-      action: 'admin.user.deleted',
-      targetType: 'user',
-      targetId: userId,
+  const user = db
+    .select({
+      id: tables.users.id,
+      username: tables.users.username,
+      email: tables.users.email,
     })
+    .from(tables.users)
+    .where(eq(tables.users.id, userId))
+    .get()
 
-    return { success: true }
+  if (!user) {
+    throw createError({ statusCode: 404, statusMessage: 'Not Found', message: 'User not found' })
   }
-  catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to remove user',
-      })
-    }
+
+  const serverCountResult = db
+    .select({ serversOwned: count() })
+    .from(tables.servers)
+    .where(eq(tables.servers.ownerId, userId))
+    .all()
+
+  const serversOwned = serverCountResult[0]?.serversOwned ?? 0
+
+  if (serversOwned > 0) {
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to remove user',
+      statusCode: 400,
+      statusMessage: 'Bad Request',
+      message: `Cannot delete user: owns ${serversOwned} server(s). Transfer or delete servers first.`,
     })
+  }
+
+  await db.delete(tables.users)
+    .where(eq(tables.users.id, userId))
+    .run()
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.user.deleted',
+    targetType: 'user',
+    targetId: userId,
+  })
+
+  return {
+    success: true,
+    message: 'User deleted successfully',
   }
 })

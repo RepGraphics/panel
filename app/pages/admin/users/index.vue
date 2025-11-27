@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import type { AdminUserResponse, UsersResponse } from '#shared/types/admin'
+import type { TableColumn, CommandPaletteItem  } from '@nuxt/ui'
+import type { AdminUserResponse, UsersResponse } from '#shared/types/api'
 
 definePageMeta({
   auth: true,
@@ -10,26 +10,107 @@ definePageMeta({
 })
 
 const toast = useToast()
+const router = useRouter()
+const route = useRoute()
+
+const page = ref(Number.parseInt(route.query.page as string ?? '1', 10) || 1)
+const itemsPerPage = ref(50)
+const showSearchModal = ref(false)
 
 const {
   data: usersData,
   pending: loading,
   error,
   refresh: refreshUsers,
-} = await useFetch<UsersResponse>('/api/admin/users', {
-  key: 'admin-users',
-  default: () => ({ data: [] }),
-})
+} = await useAsyncData<UsersResponse>(
+  'admin-users',
+  () => $fetch('/api/admin/users', {
+    query: {
+      page: page.value,
+      limit: itemsPerPage.value,
+    },
+  }),
+  {
+    default: () => ({ data: [], pagination: undefined }),
+    watch: [page, itemsPerPage],
+  },
+)
 
 const users = computed(() => usersData.value?.data ?? [])
+const pagination = computed(() => (usersData.value as { pagination?: { page: number; perPage: number; total: number; totalPages: number } })?.pagination)
+
+watch(() => route.query.page, (newPage) => {
+  const pageNum = Number.parseInt(newPage as string ?? '1', 10)
+  if (!Number.isNaN(pageNum) && pageNum > 0) {
+    page.value = pageNum
+  }
+})
+
+function handlePageChange(newPage: number) {
+  page.value = newPage
+  router.replace({
+    query: { ...route.query, page: newPage },
+  })
+}
+
+const {
+  data: allUsersData,
+  execute: executeAllUsersFetch,
+} = await useFetch<UsersResponse>('/api/admin/users', {
+  key: 'admin-users-all',
+  query: { limit: 1000, page: 1 },
+  default: () => ({ data: [] }),
+  lazy: true,
+})
+
+const allUsers = computed(() => allUsersData.value?.data ?? [])
+
+const commandPaletteGroups = computed(() => [{
+  id: 'users',
+  label: 'Users',
+  items: allUsers.value.map((user): CommandPaletteItem => {
+    const displayName = user.username || user.email
+    const fullName = user.name || undefined
+    return {
+      id: user.id,
+      label: displayName,
+      suffix: user.email !== displayName ? user.email : undefined,
+      prefix: fullName,
+      chip: user.role === 'admin' ? { color: 'primary' as const, text: 'Admin' } : undefined,
+      description: fullName ? `Name: ${fullName}` : undefined,
+      to: `/admin/users/${user.id}`,
+      onSelect: (e) => {
+        e.preventDefault()
+        router.push(`/admin/users/${user.id}`)
+        showSearchModal.value = false
+      },
+    }
+  }),
+}])
+
+async function openSearchModal() {
+  showSearchModal.value = true
+  await executeAllUsersFetch()
+}
 
 const columns = computed<TableColumn<AdminUserResponse>[]>(() => [
-  { accessorKey: 'username', header: 'Username' },
+  { accessorKey: 'username', header: 'User' },
   { accessorKey: 'email', header: 'Email' },
+  { accessorKey: 'twoFactorEnabled', header: '2FA' },
+  { accessorKey: 'serversOwned', header: 'Servers' },
   { accessorKey: 'role', header: 'Role' },
   { accessorKey: 'createdAt', header: 'Created' },
   { id: 'actions', header: 'Actions' },
 ])
+
+function getUserAvatar(user: AdminUserResponse) {
+  const name = user.name || user.username || user.email
+  if (!name) return undefined
+  return {
+    alt: name,
+    text: name.slice(0, 2).toUpperCase(),
+  }
+}
 
 const errorMessage = computed(() => {
   const err = error.value
@@ -166,9 +247,19 @@ function formatDate(value: string) {
             <template #header>
               <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold">Accounts</h2>
-                <UButton icon="i-lucide-user-plus" color="primary" variant="subtle" @click="openCreateModal">
-                  Create User
-                </UButton>
+                <div class="flex items-center gap-2">
+                  <UButton
+                    icon="i-lucide-search"
+                    color="neutral"
+                    variant="subtle"
+                    @click="openSearchModal"
+                  >
+                    Search
+                  </UButton>
+                  <UButton icon="i-lucide-user-plus" color="primary" variant="subtle" @click="openCreateModal">
+                    Create User
+                  </UButton>
+                </div>
               </div>
             </template>
 
@@ -202,11 +293,24 @@ function formatDate(value: string) {
                 </template>
 
                 <template #username-cell="{ row }">
-                  <div class="flex flex-col">
-                    <NuxtLink :to="`/admin/users/${row.original.id}`" class="font-semibold hover:text-primary">
-                      {{ row.original.username }}
-                    </NuxtLink>
-                    <p v-if="row.original.name" class="text-xs text-muted-foreground">{{ row.original.name }}</p>
+                  <div class="flex items-center gap-2">
+                    <UAvatar
+                      v-bind="getUserAvatar(row.original)"
+                      size="xs"
+                    />
+                    <div class="flex flex-col">
+                      <div class="flex items-center gap-1">
+                        <NuxtLink :to="`/admin/users/${row.original.id}`" class="font-semibold hover:text-primary">
+                          {{ row.original.username }}
+                        </NuxtLink>
+                        <UIcon
+                          v-if="row.original.rootAdmin"
+                          name="i-lucide-star"
+                          class="h-4 w-4 text-warning"
+                        />
+                      </div>
+                      <p v-if="row.original.name" class="text-xs text-muted-foreground">{{ row.original.name }}</p>
+                    </div>
                   </div>
                 </template>
 
@@ -214,9 +318,25 @@ function formatDate(value: string) {
                   <span class="text-xs text-muted-foreground">{{ row.original.email }}</span>
                 </template>
 
+                <template #twoFactorEnabled-cell="{ row }">
+                  <UIcon
+                    :name="row.original.twoFactorEnabled ? 'i-lucide-lock' : 'i-lucide-unlock'"
+                    :class="row.original.twoFactorEnabled ? 'text-success' : 'text-muted-foreground'"
+                    class="h-4 w-4"
+                  />
+                </template>
+
+                <template #serversOwned-cell="{ row }">
+                  <div class="flex items-center gap-2 text-sm">
+                    <span>{{ row.original.serversOwned ?? 0 }}</span>
+                    <span class="text-muted-foreground">/</span>
+                    <span class="text-muted-foreground">{{ row.original.serversAccess ?? 0 }}</span>
+                  </div>
+                </template>
+
                 <template #role-cell="{ row }">
-                  <UBadge :color="row.original.role === 'admin' ? 'primary' : 'neutral'" size="sm" variant="subtle">
-                    {{ row.original.role }}
+                  <UBadge :color="row.original.role === 'admin' ? 'error' : 'neutral'" size="sm" variant="subtle">
+                    {{ row.original.role.toUpperCase() }}
                   </UBadge>
                 </template>
 
@@ -242,6 +362,21 @@ function formatDate(value: string) {
                   </div>
                 </template>
               </UTable>
+
+              <div v-if="pagination" class="flex items-center justify-between border-t border-default pt-4">
+                <div class="text-sm text-muted-foreground">
+                  Showing {{ ((pagination.page - 1) * pagination.perPage) + 1 }} to
+                  {{ Math.min(pagination.page * pagination.perPage, pagination.total) }} of
+                  {{ pagination.total }} users
+                </div>
+                <UPagination
+                  v-model:page="page"
+                  :total="pagination.total"
+                  :items-per-page="pagination.perPage"
+                  size="sm"
+                  @update:page="handlePageChange"
+                />
+              </div>
             </div>
           </UCard>
         </section>
@@ -293,6 +428,27 @@ function formatDate(value: string) {
             {{ editingUser ? 'Update' : 'Create' }}
           </UButton>
         </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showSearchModal" :title="'Search Users'" :description="'Find users by name, email, or username'">
+      <template #content>
+        <UCommandPalette
+          :groups="commandPaletteGroups"
+          placeholder="Search users by name, email, or username..."
+          class="h-96"
+          close
+          :fuse="{
+            fuseOptions: {
+              ignoreLocation: true,
+              threshold: 0.3,
+              keys: ['label', 'suffix', 'prefix', 'description'],
+            },
+            resultLimit: 50,
+            matchAllWhenSearchEmpty: true,
+          }"
+          @update:open="showSearchModal = $event"
+        />
       </template>
     </UModal>
   </UPage>

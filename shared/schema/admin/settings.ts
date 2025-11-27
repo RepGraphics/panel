@@ -17,14 +17,14 @@ const nullableUrl = z.preprocess(
 
     return value
   },
-  z.string().trim().url('Provide a valid logo URL').nullable(),
+  z.string().trim().pipe(z.url('Provide a valid logo URL')).nullable(),
 )
 
 const adminGeneralSettingsBaseSchema = z.object({
   name: z.string().trim().min(2, 'Panel name must be at least 2 characters'),
-  url: z.string().trim().url('Enter a valid URL'),
-  locale: z.enum(localeEnumValues, { required_error: 'Select a default language' }),
-  timezone: z.enum(timezoneEnumValues, { required_error: 'Select a timezone' }),
+  url: z.string().trim().pipe(z.url('Enter a valid URL')),
+  locale: z.enum(localeEnumValues, 'Select a default language'),
+  timezone: z.enum(timezoneEnumValues, 'Select a timezone'),
   brandText: z.string().trim().max(80, 'Brand text must be 80 characters or less'),
   showBrandText: z.boolean(),
   showBrandLogo: z.boolean(),
@@ -49,7 +49,7 @@ const adminSecuritySettingsBaseSchema = z.object({
 function validateSecuritySettings(data: Partial<z.infer<typeof adminSecuritySettingsBaseSchema>>, ctx: z.RefinementCtx) {
   if (data.maintenanceMode && (data.maintenanceMessage ?? '').length === 0) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ['maintenanceMessage'],
       message: 'Provide a maintenance message to show users.',
     })
@@ -57,7 +57,7 @@ function validateSecuritySettings(data: Partial<z.infer<typeof adminSecuritySett
 
   if (data.announcementEnabled && (data.announcementMessage ?? '').length === 0) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ['announcementMessage'],
       message: 'Write the announcement content before enabling the banner.',
     })
@@ -76,13 +76,13 @@ export type AdminSecuritySettingsFormInput = z.infer<typeof adminSecuritySetting
 export type AdminSecuritySettingsUpdateInput = z.infer<typeof adminSecuritySettingsUpdateSchema>
 
 export const adminMailSettingsFormSchema = z.object({
-  driver: z.enum(['smtp', 'sendmail', 'mailgun'], { required_error: 'Select a mail driver' }),
+  driver: z.enum(['smtp', 'sendmail', 'mailgun'], 'Select a mail driver'),
   host: z.string().trim().optional(),
   port: z.string().trim().optional(),
   username: z.string().trim().optional(),
   password: z.string().trim().optional(),
   encryption: z.enum(['tls', 'ssl', 'none']).optional(),
-  fromAddress: z.string().trim().email('Provide a valid From address').optional(),
+  fromAddress: z.string().trim().refine((val) => !val || z.email().safeParse(val).success, 'Provide a valid From address').optional(),
   fromName: z.string().trim().optional(),
 })
 
@@ -97,9 +97,9 @@ export const adminAdvancedSettingsFormSchema = z.object({
   recaptchaEnabled: z.boolean(),
   recaptchaSiteKey: z.string().trim().optional(),
   recaptchaSecretKey: z.string().trim().optional(),
-  sessionTimeoutMinutes: z.number({ invalid_type_error: 'Session timeout must be a number' }).int().positive(),
-  queueConcurrency: z.number({ invalid_type_error: 'Queue concurrency must be a number' }).int().positive(),
-  queueRetryLimit: z.number({ invalid_type_error: 'Queue retry limit must be a number' }).int().min(0),
+  sessionTimeoutMinutes: z.number('Session timeout must be a number').int().positive(),
+  queueConcurrency: z.number('Queue concurrency must be a number').int().positive(),
+  queueRetryLimit: z.number('Queue retry limit must be a number').int().min(0),
 })
 
 export const adminAdvancedSettingsUpdateSchema = adminAdvancedSettingsFormSchema.partial()

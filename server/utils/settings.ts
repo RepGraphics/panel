@@ -35,6 +35,7 @@ export const SETTINGS_KEYS = {
   MAINTENANCE_MESSAGE: 'maintenance:message',
   ANNOUNCEMENT_ENABLED: 'announcement:enabled',
   ANNOUNCEMENT_MESSAGE: 'announcement:message',
+  PAGINATION_LIMIT: 'app:pagination:limit',
 } as const
 
 export type SettingKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]

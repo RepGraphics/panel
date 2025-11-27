@@ -20,5 +20,6 @@ export default defineEventHandler(async (event) => {
     sessionTimeoutMinutes: getNumericSetting(SETTINGS_KEYS.SESSION_TIMEOUT_MINUTES, 60),
     queueConcurrency: getNumericSetting(SETTINGS_KEYS.QUEUE_CONCURRENCY, 4),
     queueRetryLimit: getNumericSetting(SETTINGS_KEYS.QUEUE_RETRY_LIMIT, 5),
+    paginationLimit: getNumericSetting(SETTINGS_KEYS.PAGINATION_LIMIT, 25),
   }
 })

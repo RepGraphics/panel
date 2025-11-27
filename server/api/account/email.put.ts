@@ -54,6 +54,7 @@ export default defineEventHandler(async (event): Promise<UpdateEmailResponse> =>
   if (existing && existing.id !== user.id) {
     throw createError({ statusCode: 400, message: 'Email already in use' })
   }
+  const oldEmail = userRow.email
 
   db.update(tables.users)
     .set({
@@ -64,12 +65,13 @@ export default defineEventHandler(async (event): Promise<UpdateEmailResponse> =>
     .run()
 
   await recordAuditEventFromRequest(event, {
-    actor: user.email ?? user.id ?? 'user',
+    actor: user.id,
     actorType: 'user',
     action: 'account.email.update',
     targetType: 'user',
     targetId: user.id,
     metadata: {
+      oldEmail: oldEmail || null,
       newEmail: body.email,
     },
   })

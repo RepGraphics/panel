@@ -4,11 +4,45 @@ import { storeToRefs } from 'pinia'
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { authClient } from '~/utils/auth-client'
 
-await authClient.useSession(useFetch)
+const { data: session } = await authClient.useSession(useFetch)
+
+const route = useRoute()
+if (!session.value?.user) {
+  await navigateTo({
+    path: '/auth/login',
+    query: {
+      redirect: route.fullPath,
+    },
+  })
+}
 
 const authStore = useAuthStore()
-const { user, displayName, avatar, isAdmin: isAdminRef, isAuthenticated } = storeToRefs(authStore)
+const { user, isAdmin: isAdminRef } = storeToRefs(authStore)
 const signOutLoading = ref(false)
+
+const layoutUser = computed(() => {
+  const sessionData = session.value
+  if (!sessionData?.user) {
+    throw createError({
+      statusCode: 401,
+      message: 'Unauthorized',
+    })
+  }
+  return sessionData.user
+})
+
+const userLabel = computed(() => {
+  const user = layoutUser.value
+  return user.username || user.email || user.name || 'User'
+})
+
+const userAvatar = computed(() => {
+  const label = userLabel.value
+  return {
+    alt: label,
+    text: label.slice(0, 2).toUpperCase(),
+  }
+})
 
 async function handleSignOut() {
   if (signOutLoading.value) {
@@ -52,28 +86,6 @@ const navigationItems = computed<NavigationMenuItem[]>(() => {
   return items
 })
 
-const userLabel = computed(() => {
-  if (!isAuthenticated.value || !user.value) {
-    return null
-  }
-  
-  if (displayName.value && displayName.value.length > 0) {
-    return displayName.value
-  }
-  
-  if (user.value) {
-    return user.value.username || user.value.email || user.value.name || null
-  }
-  
-  return null
-})
-
-const userAvatar = computed(() => {
-  if (!isAuthenticated.value || !user.value) {
-    return null
-  }
-  return avatar.value
-})
 const isAdminUser = computed(() => {
   if (isAdminRef.value) return true
   if (user.value?.role === 'admin') return true
@@ -98,68 +110,61 @@ const isAdminUser = computed(() => {
       </template>
 
       <template #default="{ collapsed }">
-        <UNavigationMenu :collapsed="collapsed" :items="navigationItems" orientation="vertical" />
+        <ClientOnly>
+          <UNavigationMenu :collapsed="collapsed" :items="navigationItems" orientation="vertical" />
+          <template #fallback>
+            <nav class="relative flex gap-1.5 [&>div]:min-w-0 flex-col" aria-label="Main" data-orientation="vertical">
+              <ul class="isolate min-w-0">
+                <li v-for="item in navigationItems" :key="item.label" class="min-w-0">
+                  <NuxtLink
+                    v-if="!item.children"
+                    :to="item.to"
+                    class="group relative w-full flex items-center gap-1.5 font-medium text-sm px-2.5 py-1.5 text-muted hover:text-highlighted transition-colors"
+                  >
+                    <span class="truncate">{{ item.label }}</span>
+                  </NuxtLink>
+                  <div v-else class="min-w-0">
+                    <button
+                      type="button"
+                      class="group relative w-full flex items-center gap-1.5 font-medium text-sm px-2.5 py-1.5 text-muted hover:text-highlighted transition-colors"
+                    >
+                      <span class="truncate">{{ item.label }}</span>
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </nav>
+          </template>
+        </ClientOnly>
       </template>
 
       <template #footer="{ collapsed }">
-        <ClientOnly>
-          <template v-if="isAuthenticated && user && userLabel">
-            <UDropdownMenu
-              :items="[[
-                { label: 'Profile', to: '/account/profile' },
-                { label: 'Security', to: '/account/security' },
-                { label: 'API Keys', to: '/account/api-keys' },
-                { label: 'SSH Keys', to: '/account/ssh-keys' },
-                { label: 'Sessions', to: '/account/sessions' },
-                { label: 'Activity', to: '/account/activity' }
-              ], [
-                { label: 'Sign out', click: handleSignOut, color: 'error' }
-              ]]"
-            >
-              <UButton
-                color="neutral"
-                variant="ghost"
-                class="w-full"
-                :block="collapsed"
-                type="button"
-                @click.prevent
-              >
-                <template #leading>
-                  <UAvatar v-if="userAvatar" v-bind="userAvatar" size="sm" />
-                </template>
-                <span v-if="!collapsed && userLabel">{{ userLabel }}</span>
-              </UButton>
-            </UDropdownMenu>
-          </template>
-          <template v-else>
-            <UButton
-              color="error"
-              variant="ghost"
-              class="w-full"
-              :block="collapsed"
-              to="/auth/login"
-            >
-              <template #leading>
-                <UIcon name="i-lucide-log-in" class="size-4" />
-              </template>
-              <span v-if="!collapsed">Sign in</span>
-            </UButton>
-          </template>
-          <template #fallback>
-            <UButton
-              color="error"
-              variant="ghost"
-              class="w-full"
-              :block="collapsed"
-              to="/auth/login"
-            >
-              <template #leading>
-                <UIcon name="i-lucide-log-in" class="size-4" />
-              </template>
-              <span v-if="!collapsed">Sign in</span>
-            </UButton>
-          </template>
-        </ClientOnly>
+        <UDropdownMenu
+          :items="[[
+            { label: 'Profile', to: '/account/profile' },
+            { label: 'Security', to: '/account/security' },
+            { label: 'API Keys', to: '/account/api-keys' },
+            { label: 'SSH Keys', to: '/account/ssh-keys' },
+            { label: 'Sessions', to: '/account/sessions' },
+            { label: 'Activity', to: '/account/activity' }
+          ], [
+            { label: 'Sign out', click: handleSignOut, color: 'error' }
+          ]]"
+        >
+          <UButton
+            color="neutral"
+            variant="ghost"
+            class="w-full"
+            :block="collapsed"
+            type="button"
+            @click.prevent
+          >
+            <template #leading>
+              <UAvatar v-bind="userAvatar" size="sm" />
+            </template>
+            <span v-if="!collapsed">{{ userLabel }}</span>
+          </UButton>
+        </UDropdownMenu>
       </template>
     </UDashboardSidebar>
 
@@ -168,9 +173,14 @@ const isAdminUser = computed(() => {
         <UDashboardNavbar>
           <template #right>
             <div class="flex items-center gap-2">
-              <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="error" to="/admin">
-                Admin
-              </UButton>
+              <ClientOnly>
+                <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="error" to="/admin">
+                  Admin
+                </UButton>
+                <template #fallback>
+                  <span />
+                </template>
+              </ClientOnly>
               <UButton icon="i-lucide-log-out" color="primary" variant="subtle" :loading="signOutLoading"
                 @click="handleSignOut">
                 Sign out

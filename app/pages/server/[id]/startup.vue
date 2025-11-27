@@ -11,14 +11,18 @@ const toast = useToast()
 
 const { data: startupData, pending, error, refresh } = await useAsyncData(
   `server-${serverId.value}-startup`,
-  () => $fetch<any>(`/api/servers/${serverId.value}/startup`),
+  () => $fetch<{ data: { startup: string } }>(`/api/servers/${serverId.value}/startup`),
   {
     watch: [serverId],
   },
 )
 
-const startupResponse = startupData.value as any
-const startup = computed(() => startupResponse?.data?.startup || '')
+const startup = computed(() => {
+  const response = startupData.value
+  return response && typeof response === 'object' && 'data' in response && typeof response.data === 'object' && response.data && 'startup' in response.data && typeof response.data.startup === 'string'
+    ? response.data.startup
+    : ''
+})
 const dockerImage = computed(() => startupResponse?.data?.dockerImage || '')
 const dockerImages = computed(() => startupResponse?.data?.dockerImages || {})
 const environment = computed(() => startupResponse?.data?.environment || {})

@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const auth = getAuth()
   
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {
@@ -44,53 +44,61 @@ export default defineEventHandler(async (event) => {
       if (name) updateData.name = name
     }
 
+    const db = useDrizzle()
+    
     if (Object.keys(updateData).length > 0) {
-      await auth.api.adminUpdateUser({
-        body: {
-          userId: id,
-          data: updateData,
-        },
-        headers: event.req.headers,
-      })
+      await db.update(tables.users)
+        .set({
+          ...updateData,
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, id))
+        .run()
     }
 
     if (email !== undefined) {
-      const currentUser = await auth.api.getUser({
-        query: { userId: id },
-        headers: event.req.headers,
-      }).catch(() => null)
+      const currentUser = db
+        .select({ email: tables.users.email })
+        .from(tables.users)
+        .where(eq(tables.users.id, id))
+        .get()
       
       if (currentUser && currentUser.email !== email) {
-        await auth.api.changeEmail({
-          body: {
-            newEmail: email,
-          },
-          headers: event.req.headers,
-        })
+        await db.update(tables.users)
+          .set({
+            email,
+            emailVerified: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(tables.users.id, id))
+          .run()
       }
     }
 
     if (role !== undefined) {
-      await auth.api.setRole({
-        body: {
-          userId: id,
+      // TODO: Use auth.api.setRole() when available in Better Auth API
+      await db.update(tables.users)
+        .set({
           role,
-        },
-        headers: event.req.headers,
-      })
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, id))
+        .run()
     }
 
     if (password) {
-      await auth.api.setUserPassword({
-        body: {
-          userId: id,
-          newPassword: password,
-        },
-        headers: event.req.headers,
-      })
+      // TODO: Use auth.api.setUserPassword() when available in Better Auth API
+      const bcrypt = await import('bcryptjs')
+      const hashedPassword = await bcrypt.default.hash(password, 10)
+      await db.update(tables.users)
+        .set({
+          password: hashedPassword,
+          passwordResetRequired: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, id))
+        .run()
     }
-
-    const db = useDrizzle()
     const updates: Partial<typeof tables.users.$inferInsert> = {
       updatedAt: new Date(),
     }

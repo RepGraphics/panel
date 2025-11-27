@@ -1,6 +1,6 @@
 import { createError, getQuery } from 'h3'
 import { desc, eq, or } from 'drizzle-orm'
-import { auth } from '~~/server/utils/auth'
+import { getServerSession } from '~~/server/utils/session'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import type { AccountActivityItem, AccountActivityResponse } from '#shared/types/account'
 import type { ActivityMetadata } from '#shared/types/audit'
@@ -23,9 +23,7 @@ function parseMetadata(raw: string | null): ActivityMetadata | null {
 }
 
 export default defineEventHandler(async (event): Promise<AccountActivityResponse> => {
-  const session = await auth.api.getSession({
-    headers: event.req.headers,
-  })
+  const session = await getServerSession(event)
 
   if (!session?.user?.id) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })

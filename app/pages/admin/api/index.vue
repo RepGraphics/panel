@@ -14,9 +14,13 @@ const showKeyModal = ref(false)
 const createdKey = ref<ApiKeyWithToken | null>(null)
 const isSubmitting = ref(false)
 
-const { data, refresh } = await useFetch<{ data: ApiKey[] }>('/api/admin/api-keys', {
-  key: 'admin-api-keys',
-})
+const { data, refresh } = await useAsyncData(
+  'admin-api-keys',
+  async () => {
+    const response = await $fetch<{ data: ApiKey[] }>('/api/admin/api-keys')
+    return response
+  },
+)
 
 const apiKeys = computed(() => data.value?.data ?? [])
 
@@ -24,12 +28,52 @@ const form = reactive({
   memo: '',
   expiresAt: '',
   allowedIps: '',
+  permissions: {
+    rServers: 0,
+    rNodes: 0,
+    rAllocations: 0,
+    rUsers: 0,
+    rLocations: 0,
+    rNests: 0,
+    rEggs: 0,
+    rDatabaseHosts: 0,
+    rServerDatabases: 0,
+  } as Record<string, number>,
 })
+
+const RESOURCE_NAMES: Record<string, string> = {
+  rServers: 'Servers',
+  rNodes: 'Nodes',
+  rAllocations: 'Allocations',
+  rUsers: 'Users',
+  rLocations: 'Locations',
+  rNests: 'Nests',
+  rEggs: 'Eggs',
+  rDatabaseHosts: 'Database Hosts',
+  rServerDatabases: 'Server Databases',
+}
+
+const PERMISSION_OPTIONS = [
+  { label: 'None', value: 0 },
+  { label: 'Read', value: 1 },
+  { label: 'Read & Write', value: 3 },
+]
 
 function resetForm() {
   form.memo = ''
   form.expiresAt = ''
   form.allowedIps = ''
+  form.permissions = {
+    rServers: 0,
+    rNodes: 0,
+    rAllocations: 0,
+    rUsers: 0,
+    rLocations: 0,
+    rNests: 0,
+    rEggs: 0,
+    rDatabaseHosts: 0,
+    rServerDatabases: 0,
+  }
 }
 
 async function handleCreate() {
@@ -40,6 +84,7 @@ async function handleCreate() {
       memo: form.memo || undefined,
       expiresAt: form.expiresAt || undefined,
       allowedIps: form.allowedIps ? form.allowedIps.split(',').map(ip => ip.trim()).filter(Boolean) : undefined,
+      permissions: form.permissions,
     }
 
     const result = await $fetch<ApiKeyWithToken>('/api/admin/api-keys', {
@@ -167,13 +212,23 @@ function copyToClipboard(text: string) {
 
     <UModal v-model:open="showCreateModal" title="Create API Key">
       <template #body>
-        <form class="space-y-4" @submit.prevent="handleCreate">
-          <UFormField label="Description" name="memo">
-            <UInput v-model="form.memo" placeholder="My API Key" :disabled="isSubmitting" class="w-full" />
-            <template #help>
-              Optional description to help you identify this key
-            </template>
-          </UFormField>
+        <div class="max-w-4xl mx-auto">
+          <form class="space-y-6" @submit.prevent="handleCreate">
+          <div class="grid gap-4 md:grid-cols-2">
+            <UFormField label="Description" name="memo">
+              <UInput v-model="form.memo" placeholder="My API Key" :disabled="isSubmitting" class="w-full" />
+              <template #help>
+                Optional description to help you identify this key
+              </template>
+            </UFormField>
+
+            <UFormField label="Expires At" name="expiresAt">
+              <UInput v-model="form.expiresAt" type="datetime-local" :disabled="isSubmitting" class="w-full" />
+              <template #help>
+                Optional expiration date. Leave empty for no expiration.
+              </template>
+            </UFormField>
+          </div>
 
           <UFormField label="Allowed IPs" name="allowedIps">
             <UInput v-model="form.allowedIps" placeholder="192.168.1.1, 10.0.0.1" :disabled="isSubmitting"
@@ -183,13 +238,38 @@ function copyToClipboard(text: string) {
             </template>
           </UFormField>
 
-          <UFormField label="Expires At" name="expiresAt">
-            <UInput v-model="form.expiresAt" type="datetime-local" :disabled="isSubmitting" class="w-full" />
-            <template #help>
-              Optional expiration date. Leave empty for no expiration.
-            </template>
-          </UFormField>
+          <div class="space-y-3">
+            <div>
+              <label class="text-sm font-medium">Permissions</label>
+              <p class="text-xs text-muted-foreground mt-1">
+                Select permissions for each resource. You cannot edit permissions after creation.
+              </p>
+            </div>
+            <div class="border border-default rounded-lg overflow-hidden">
+              <div class="divide-y divide-default">
+                <div
+                  v-for="(resourceName, resourceKey) in RESOURCE_NAMES"
+                  :key="resourceKey"
+                  class="grid grid-cols-4 gap-4 p-3 items-center hover:bg-muted/30 transition-colors"
+                >
+                  <div class="font-medium text-sm">{{ resourceName }}</div>
+                  <div class="col-span-3">
+                    <URadioGroup
+                      :model-value="form.permissions[resourceKey]"
+                      :items="PERMISSION_OPTIONS"
+                      :disabled="isSubmitting"
+                      orientation="horizontal"
+                      variant="list"
+                      size="sm"
+                      @update:model-value="form.permissions[resourceKey] = typeof $event === 'string' ? Number.parseInt($event, 10) : Number($event)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </form>
+        </div>
       </template>
 
       <template #footer>

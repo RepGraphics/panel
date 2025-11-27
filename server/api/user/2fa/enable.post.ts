@@ -1,65 +1,64 @@
-import { getServerSession, getSessionUser  } from '~~/server/utils/session'
-import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
-import { generateTotpSecret, generateTotpUri, generateRecoveryTokens, hashRecoveryToken } from '~~/server/utils/totp'
-import { randomUUID } from 'node:crypto'
+import { createError } from 'h3'
+import { APIError } from 'better-auth/api'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
-  const user = getSessionUser(session)
+  const auth = getAuth()
+  
+  const session = await auth.api.getSession({
+    headers: normalizeHeadersForAuth(event.node.req.headers),
+  })
 
-  if (!user) {
+  if (!session?.user?.id) {
     throw createError({
       statusCode: 401,
-      message: 'Unauthorized',
+      statusMessage: 'Unauthorized',
     })
   }
 
-  const userId = user.id
-  const username = user.username
+  const body = await readBody(event)
+  const { password } = body
 
-  const db = useDrizzle()
-
-  const existingUser = db
-    .select({ useTotp: tables.users.useTotp })
-    .from(tables.users)
-    .where(eq(tables.users.id, userId))
-    .get()
-
-  if (existingUser?.useTotp) {
+  if (!password) {
     throw createError({
       statusCode: 400,
-      message: '2FA is already enabled',
+      statusMessage: 'Password is required to enable 2FA',
     })
   }
 
-  const secret = generateTotpSecret()
-  const uri = generateTotpUri(secret, username)
-
-  const recoveryTokens = generateRecoveryTokens(8)
-
-  const now = new Date()
-  for (const token of recoveryTokens) {
-    const hashedToken = await hashRecoveryToken(token)
-    db.insert(tables.recoveryTokens).values({
-      id: randomUUID(),
-      userId,
-      token: hashedToken,
-      usedAt: null,
-      createdAt: now,
-    }).run()
-  }
-
-  db.update(tables.users)
-    .set({
-      totpSecret: secret,
-      updatedAt: now,
+  try {
+    const api = auth.api as typeof auth.api & {
+      enableTwoFactor: (options: {
+        body: { password: string }
+        headers: Record<string, string>
+      }) => Promise<{ totpURI?: string; backupCodes?: string[] }>
+    }
+    const result = await api.enableTwoFactor({
+      body: {
+        password,
+      },
+      headers: normalizeHeadersForAuth(event.node.req.headers),
     })
-    .where(eq(tables.users.id, userId))
-    .run()
 
-  return {
-    secret,
-    uri,
-    recoveryTokens,
+    const secretFromUri = result.totpURI ? result.totpURI.split('secret=')[1]?.split('&')[0] : null
+    
+    return {
+      uri: result.totpURI,
+      secret: secretFromUri || '',
+      recoveryTokens: result.backupCodes || [],
+      backupCodes: result.backupCodes || [],
+    }
+  }
+  catch (error) {
+    if (error instanceof APIError) {
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: error.message || 'Failed to enable 2FA',
+      })
+    }
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to enable 2FA',
+    })
   }
 })

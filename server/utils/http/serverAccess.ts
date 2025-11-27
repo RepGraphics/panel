@@ -23,7 +23,7 @@ export async function resolveServerRequest(
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'Missing server identifier' })
   }
 
-  const contextAuth = (event.context as { auth?: { session?: Awaited<ReturnType<typeof getServerSession>>, user?: any } }).auth
+  const contextAuth = (event.context as { auth?: { session?: Awaited<ReturnType<typeof getServerSession>>, user?: ReturnType<typeof resolveSessionUser> } }).auth
   
   let user: ReturnType<typeof resolveSessionUser> | null = null
 

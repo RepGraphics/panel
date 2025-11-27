@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, sendRedirect } from 'h3'
 import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 import { getServerSession } from '~~/server/utils/session'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import type { AuthContext } from '#shared/types/auth'
 
 const PUBLIC_ASSET_PREFIXES = [
@@ -87,6 +88,130 @@ export default defineEventHandler(async (event) => {
   const existingAuth = (event.context as { auth?: AuthContext }).auth
   if (existingAuth?.session && existingAuth.user) {
     return
+  }
+
+  if (isApiRequest) {
+    const authHeader = event.node.req.headers.authorization
+    const apiKeyHeader = event.node.req.headers['x-api-key']
+    
+    if (apiKeyHeader || (authHeader && authHeader.startsWith('Bearer '))) {
+      const auth = getAuth()
+      
+      try {
+        const session = await auth.api.getSession({
+          headers: normalizeHeadersForAuth(event.node.req.headers),
+        })
+        
+        if (session?.user?.id) {
+          const { useDrizzle, tables, eq } = await import('~~/server/utils/drizzle')
+          const db = useDrizzle()
+          
+          const apiKeyValue = (typeof apiKeyHeader === 'string' ? apiKeyHeader : apiKeyHeader?.[0]) 
+            || (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : null)
+          const identifier = apiKeyValue?.split('.')[0] || null
+          
+          const apiKeyRecord = identifier
+            ? db
+                .select({
+                  id: tables.apiKeys.id,
+                  keyType: tables.apiKeys.keyType,
+                  rServers: tables.apiKeys.rServers,
+                  rNodes: tables.apiKeys.rNodes,
+                  rAllocations: tables.apiKeys.rAllocations,
+                  rUsers: tables.apiKeys.rUsers,
+                  rLocations: tables.apiKeys.rLocations,
+                  rNests: tables.apiKeys.rNests,
+                  rEggs: tables.apiKeys.rEggs,
+                  rDatabaseHosts: tables.apiKeys.rDatabaseHosts,
+                  rServerDatabases: tables.apiKeys.rServerDatabases,
+                })
+                .from(tables.apiKeys)
+                .where(eq(tables.apiKeys.identifier, identifier))
+                .get()
+            : null
+          
+          if (apiKeyRecord?.id) {
+            const now = new Date()
+            db.update(tables.apiKeys)
+              .set({ 
+                lastUsedAt: now,
+                updatedAt: now,
+              })
+              .where(eq(tables.apiKeys.id, apiKeyRecord.id))
+              .run()
+          }
+          
+          const user = db
+            .select({
+              id: tables.users.id,
+              username: tables.users.username,
+              email: tables.users.email,
+              role: tables.users.role,
+              rootAdmin: tables.users.rootAdmin,
+            })
+            .from(tables.users)
+            .where(eq(tables.users.id, session.user.id))
+            .get()
+          
+          if (user) {
+            const mockSession = {
+              user: {
+                id: user.id,
+                username: user.username || null,
+                email: user.email || null,
+                role: ((user.rootAdmin || user.role === 'admin') ? 'admin' : 'user') as 'admin' | 'user',
+                name: null,
+                image: null,
+                permissions: [],
+                remember: null,
+                passwordResetRequired: false,
+              },
+              session: {
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              },
+            }
+            
+            const apiKeyUser = {
+              id: user.id,
+              username: user.username || '',
+              role: ((user.rootAdmin || user.role === 'admin') ? 'admin' : 'user') as 'admin' | 'user',
+              permissions: [],
+              email: user.email || null,
+              name: null,
+              image: null,
+              remember: null,
+              passwordResetRequired: false,
+            }
+            
+            const apiKeyPermissions = apiKeyRecord ? {
+              id: apiKeyRecord.id,
+              keyType: apiKeyRecord.keyType,
+              permissions: {
+                rServers: apiKeyRecord.rServers ?? 0,
+                rNodes: apiKeyRecord.rNodes ?? 0,
+                rAllocations: apiKeyRecord.rAllocations ?? 0,
+                rUsers: apiKeyRecord.rUsers ?? 0,
+                rLocations: apiKeyRecord.rLocations ?? 0,
+                rNests: apiKeyRecord.rNests ?? 0,
+                rEggs: apiKeyRecord.rEggs ?? 0,
+                rDatabaseHosts: apiKeyRecord.rDatabaseHosts ?? 0,
+                rServerDatabases: apiKeyRecord.rServerDatabases ?? 0,
+              },
+            } : null
+            
+            ;(event.context as { auth?: AuthContext & { apiKey?: typeof apiKeyPermissions } }).auth = {
+              session: mockSession as unknown as typeof session,
+              user: apiKeyUser,
+              apiKey: apiKeyPermissions,
+            }
+            return
+          }
+        }
+      } catch (error) {
+        console.error('API key verification failed:', error)
+      }
+    }
   }
 
   const session = await getServerSession(event)

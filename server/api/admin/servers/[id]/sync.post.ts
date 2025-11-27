@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { useDrizzle, tables, eq } = await import('../../../../utils/drizzle')
+  const { useDrizzle, tables, eq } = await import('~~/server/utils/drizzle')
   const db = useDrizzle()
 
   const server = db
@@ -34,10 +34,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { requireAdmin } = await import('../../../../utils/api-helpers')
+  const { requireAdmin } = await import('~~/server/utils/security')
   await requireAdmin(event)
 
-  const { getWingsClientForServer } = await import('../../../../utils/wings-client')
+  const { getWingsClientForServer } = await import('~~/server/utils/wings-client')
   const { client } = await getWingsClientForServer(server.uuid)
 
   try {

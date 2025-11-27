@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 
 interface ResetBody {
   token?: string
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
         token,
         newPassword: password,
       },
-      headers: event.req.headers,
+      headers: normalizeHeadersForAuth(event.node.req.headers),
     })
 
     return { success: true }

@@ -90,7 +90,7 @@ export class SSHKeyManager {
     const sshKeyRecord = {
       id: keyId,
       userId: options.userId,
-      name,
+      name: name.trim(),
       fingerprint,
       publicKey: publicKey.trim(),
       createdAt: now,

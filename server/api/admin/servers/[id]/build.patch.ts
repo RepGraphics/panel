@@ -63,7 +63,7 @@ export default defineEventHandler(async (event) => {
       .where(eq(tables.serverLimits.serverId, serverId))
       .run()
     
-    const [updated] = db.select()
+    const [_updated] = db.select()
       .from(tables.serverLimits)
       .where(eq(tables.serverLimits.serverId, serverId))
       .limit(1)
@@ -90,7 +90,7 @@ export default defineEventHandler(async (event) => {
       })
       .run()
     
-    const [inserted] = db.select()
+    const [_inserted] = db.select()
       .from(tables.serverLimits)
       .where(eq(tables.serverLimits.serverId, serverId))
       .limit(1)

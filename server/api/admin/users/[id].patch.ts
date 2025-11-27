@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import type { UpdateUserRequest } from '#shared/types/user'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const auth = getAuth()
   
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {
@@ -36,44 +36,51 @@ export default defineEventHandler(async (event) => {
       if (name) updateData.name = name
     }
 
+    const db = useDrizzle()
+    
     if (body.email !== undefined) {
-      const currentUser = await auth.api.getUser({
-        query: { userId },
-        headers: event.req.headers,
-      }).catch(() => null)
+      const currentUser = db
+        .select({ email: tables.users.email })
+        .from(tables.users)
+        .where(eq(tables.users.id, userId))
+        .get()
       
       if (currentUser && currentUser.email !== body.email) {
-        await auth.api.changeEmail({
-          body: {
-            newEmail: body.email,
-          },
-          headers: event.req.headers,
-        })
+        await db.update(tables.users)
+          .set({
+            email: body.email,
+            emailVerified: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(tables.users.id, userId))
+          .run()
       }
     }
 
-    if (body.role !== undefined) {
-      await auth.api.setRole({
-        body: {
-          userId,
-          role: body.role,
-        },
-        headers: event.req.headers,
-      })
+    if ((body as { role?: string }).role !== undefined) {
+      await db.update(tables.users)
+        .set({
+          role: (body as { role: string }).role,
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, userId))
+        .run()
     }
 
     if (body.password) {
-      await auth.api.setUserPassword({
-        body: {
-          userId,
-          newPassword: body.password,
-        },
-        headers: event.req.headers,
-      })
+      const bcrypt = await import('bcryptjs')
+      const hashedPassword = await bcrypt.default.hash(body.password, 10)
+      await db.update(tables.users)
+        .set({
+          password: hashedPassword,
+          passwordResetRequired: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(tables.users.id, userId))
+        .run()
     }
 
     if (body.username !== undefined || body.rootAdmin !== undefined) {
-      const db = useDrizzle()
       const updates: Partial<typeof tables.users.$inferInsert> = {
         updatedAt: new Date(),
       }
@@ -98,10 +105,19 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    const updatedUser = await auth.api.getUser({
-      query: { userId },
-      headers: event.req.headers,
-    }).catch(() => null)
+    const updatedUser = db
+      .select({
+        id: tables.users.id,
+        username: tables.users.username,
+        email: tables.users.email,
+        nameFirst: tables.users.nameFirst,
+        nameLast: tables.users.nameLast,
+        role: tables.users.role,
+        createdAt: tables.users.createdAt,
+      })
+      .from(tables.users)
+      .where(eq(tables.users.id, userId))
+      .get()
 
     if (!updatedUser) {
       throw createError({ statusCode: 404, statusMessage: 'Not Found', message: 'User not found after update' })
@@ -110,10 +126,10 @@ export default defineEventHandler(async (event) => {
     return {
       data: {
         id: updatedUser.id,
-        username: (updatedUser as { username?: string }).username || updatedUser.email,
+        username: updatedUser.username || updatedUser.email,
         email: updatedUser.email,
-        name: updatedUser.name || null,
-        role: (updatedUser as { role?: string }).role || 'user',
+        name: [updatedUser.nameFirst, updatedUser.nameLast].filter(Boolean).join(' ') || null,
+        role: updatedUser.role || 'user',
         createdAt: updatedUser.createdAt?.toISOString() || new Date().toISOString(),
       },
     }

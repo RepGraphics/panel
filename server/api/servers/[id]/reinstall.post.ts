@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
   })
 
   try {
-    const { getWingsClientForServer } = await import('../../../utils/wings-client')
+    const { getWingsClientForServer } = await import('~~/server/utils/wings-client')
     const { client } = await getWingsClientForServer(serverId)
     
     console.log('[Reinstall] Calling Wings reinstall endpoint...')

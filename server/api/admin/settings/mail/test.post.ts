@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const user = getSessionUser(session)
 
   try {
-    const { sendEmail } = await import('../../../../utils/email')
+    const { sendEmail } = await import('~~/server/utils/email')
 
     await sendEmail({
       to: user?.email || 'admin@example.com',

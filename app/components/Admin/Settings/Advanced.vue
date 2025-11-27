@@ -12,18 +12,22 @@ const schema = z.object({
   recaptchaEnabled: z.boolean(),
   recaptchaSiteKey: z.string().trim().max(255),
   recaptchaSecretKey: z.string().trim().max(255),
-  sessionTimeoutMinutes: z.number({ invalid_type_error: 'Session timeout is required' })
+  sessionTimeoutMinutes: z.number('Session timeout is required')
     .int('Session timeout must be a whole number')
     .min(5, 'Minimum 5 minutes')
     .max(1440, 'Maximum 1440 minutes (24 hours)'),
-  queueConcurrency: z.number({ invalid_type_error: 'Queue concurrency is required' })
+  queueConcurrency: z.number('Queue concurrency is required')
     .int('Concurrency must be a whole number')
     .min(1, 'Minimum 1 worker')
     .max(32, 'Maximum 32 workers'),
-  queueRetryLimit: z.number({ invalid_type_error: 'Queue retry limit is required' })
+  queueRetryLimit: z.number('Queue retry limit is required')
     .int('Retry limit must be a whole number')
     .min(1, 'Minimum 1 retry')
     .max(50, 'Maximum 50 retries'),
+  paginationLimit: z.number('Pagination limit is required')
+    .int('Pagination limit must be a whole number')
+    .min(10, 'Minimum 10 items per page')
+    .max(100, 'Maximum 100 items per page'),
 }).superRefine((data, ctx) => {
   if (data.recaptchaEnabled) {
     if (data.recaptchaSiteKey.length === 0) {
@@ -55,12 +59,19 @@ function createFormState(source?: AdvancedSettings | null): FormSchema {
     sessionTimeoutMinutes: source?.sessionTimeoutMinutes ?? 60,
     queueConcurrency: source?.queueConcurrency ?? 4,
     queueRetryLimit: source?.queueRetryLimit ?? 5,
+    paginationLimit: source?.paginationLimit ?? 25,
   }
 }
 
-const { data: settings, refresh } = await useFetch<AdvancedSettings>('/api/admin/settings/advanced', {
-  key: 'admin-settings-advanced',
-})
+async function fetchAdvancedSettings(): Promise<AdvancedSettings> {
+  const response = await fetch('/api/admin/settings/advanced')
+  if (!response.ok) {
+    throw new Error(`Failed to fetch advanced settings: ${response.statusText}`)
+  }
+  return await response.json()
+}
+
+const { data: settings, refresh } = await useLazyAsyncData('admin-settings-advanced', fetchAdvancedSettings)
 
 const form = reactive<FormSchema>(createFormState(settings.value))
 
@@ -86,10 +97,18 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
   }
 
   try {
-    await $fetch('/api/admin/settings/advanced', {
-      method: 'patch',
-      body: payload,
+    const response = await fetch('/api/admin/settings/advanced', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `Failed to update settings: ${response.statusText}`)
+    }
 
     Object.assign(form, payload)
 
@@ -192,6 +211,13 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
             <UInput v-model.number="form.queueRetryLimit" type="number" min="1" max="50" :disabled="isSubmitting" class="w-full" />
             <template #description>
               <span class="text-xs text-muted-foreground">Max attempts before a job is marked failed.</span>
+            </template>
+          </UFormField>
+
+          <UFormField label="Pagination limit" name="paginationLimit" required>
+            <UInput v-model.number="form.paginationLimit" type="number" min="10" max="100" :disabled="isSubmitting" class="w-full" />
+            <template #description>
+              <span class="text-xs text-muted-foreground">Default number of items per page in admin lists.</span>
             </template>
           </UFormField>
         </div>

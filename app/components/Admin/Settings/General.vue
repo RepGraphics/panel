@@ -35,9 +35,9 @@ const timezoneOptions = [
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Panel name must be at least 2 characters'),
-  url: z.string().trim().url('Enter a valid URL'),
-  locale: z.enum(localeEnumValues, { required_error: 'Select a default language' }),
-  timezone: z.enum(timezoneEnumValues, { required_error: 'Select a timezone' }),
+  url: z.string().trim().pipe(z.url('Enter a valid URL')),
+  locale: z.enum(localeEnumValues, { message: 'Select a default language' }),
+  timezone: z.enum(timezoneEnumValues, { message: 'Select a timezone' }),
   brandText: z.string().trim().max(80, 'Brand text must be 80 characters or less'),
   showBrandText: z.boolean(),
   showBrandLogo: z.boolean(),
@@ -47,15 +47,22 @@ const schema = z.object({
         return null
       return value
     },
-    z.string().trim().url('Provide a valid logo URL').nullable(),
+    z.string().trim().pipe(z.url('Provide a valid logo URL')).nullable(),
   ),
 })
 
 type FormSchema = z.infer<typeof schema>
 
-const { data: settings, refresh } = await useFetch<GeneralSettings>('/api/admin/settings/general', {
-  key: 'admin-settings-general',
-})
+const { data: settings, refresh } = await useAsyncData(
+  'admin-settings-general',
+  async () => {
+    const response = await fetch('/api/admin/settings/general')
+    if (!response.ok) {
+      throw new Error(`Failed to fetch general settings: ${response.statusText}`)
+    }
+    return await response.json() as GeneralSettings
+  },
+)
 
 function resolveLocale(value: string | null | undefined): LocaleValue {
   return (localeEnumValues.includes(value as LocaleValue) ? value : localeEnumValues[0]) as LocaleValue
@@ -211,7 +218,7 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
       :state="form"
       class="space-y-4"
       :disabled="isSubmitting"
-      validate-on="input"
+      :validate-on="['input']"
       @submit="handleSubmit"
     >
       <UFormField label="Panel Name" name="name" required>

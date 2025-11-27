@@ -20,7 +20,6 @@ const {
   refresh: refreshProfile,
 } = await useFetch<AccountProfileResponse>('/api/account/profile', {
   key: 'account-profile',
-  server: false,
   immediate: false,
 })
 
@@ -111,18 +110,19 @@ async function handleSubmit(event: FormSubmitEvent<ProfileFormSchema>) {
   try {
     const payload = event.data
 
-    const updated = await $fetch<AccountProfileResponse>('/api/account/profile', {
+    await $fetch<AccountProfileResponse>('/api/account/profile', {
       method: 'PUT',
       body: payload,
     })
-
-    profileResponse.value = updated
-    Object.assign(form, createFormState(updated.data))
 
     await authStore.syncSession({ force: true })
     await nextTick()
     await refreshProfile()
     await new Promise(resolve => setTimeout(resolve, 100))
+    
+    if (profileResponse.value) {
+      Object.assign(form, createFormState(profileResponse.value.data))
+    }
 
     toast.add({
       title: 'Profile updated',

@@ -9,17 +9,71 @@ definePageMeta({
 const toast = useToast()
 const isCreating = ref(false)
 const showCreateModal = ref(false)
+const showDeleteModal = ref(false)
+const keyToDelete = ref<string | null>(null)
+const isDeleting = ref(false)
 
 const createForm = reactive({
   name: '',
   publicKey: '',
 })
 
-const { data: keysData, refresh } = await useFetch('/api/account/ssh-keys', {
-  key: 'account-ssh-keys',
-})
+const { data: keysData, refresh } = await useAsyncData('account-ssh-keys', () => 
+  $fetch('/api/account/ssh-keys')
+)
 
 const sshKeys = computed(() => keysData.value?.data || [])
+const expandedKeys = ref<Set<string>>(new Set())
+
+function toggleKey(id: string) {
+  if (expandedKeys.value.has(id)) {
+    expandedKeys.value.delete(id)
+  } else {
+    expandedKeys.value.add(id)
+  }
+}
+
+function formatJson(data: Record<string, unknown>): string {
+  return JSON.stringify(data, null, 2)
+}
+
+function getFullKeyData(key: typeof sshKeys.value[0]) {
+  return {
+    id: key.id,
+    name: key.name,
+    fingerprint: key.fingerprint,
+    public_key: key.public_key,
+    created_at: key.created_at,
+  }
+}
+
+async function copyJson(key: typeof sshKeys.value[0]) {
+  const json = formatJson(getFullKeyData(key))
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(json)
+    } else {
+      const textArea = document.createElement('textarea')
+      textArea.value = json
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+    toast.add({
+      title: 'Copied to clipboard',
+      description: 'SSH key data JSON has been copied.',
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Failed to copy',
+      description: error instanceof Error ? error.message : 'Unable to copy to clipboard.',
+      color: 'error',
+    })
+  }
+}
 
 async function createSshKey() {
   isCreating.value = true
@@ -57,17 +111,23 @@ async function createSshKey() {
   }
 }
 
-async function deleteKey(id: string) {
-  if (!confirm('Are you sure you want to delete this SSH key? This action cannot be undone.')) {
-    return
-  }
+function openDeleteModal(id: string) {
+  keyToDelete.value = id
+  showDeleteModal.value = true
+}
 
+async function confirmDelete() {
+  if (!keyToDelete.value) return
+
+  isDeleting.value = true
   try {
-    await $fetch(`/api/account/ssh-keys/${id}`, {
+    await $fetch(`/api/account/ssh-keys/${keyToDelete.value}`, {
       method: 'DELETE',
     })
 
     await refresh()
+    showDeleteModal.value = false
+    keyToDelete.value = null
 
     toast.add({
       title: 'SSH Key Deleted',
@@ -83,12 +143,11 @@ async function deleteKey(id: string) {
       color: 'error',
     })
   }
+  finally {
+    isDeleting.value = false
+  }
 }
 
-function formatDate(date: Date | string | number | null | undefined) {
-  if (!date) return 'Never'
-  return new Date(date).toLocaleString()
-}
 </script>
 
 <template>
@@ -160,6 +219,45 @@ function formatDate(date: Date | string | number | null | undefined) {
       </template>
     </UModal>
 
+    <UModal
+      v-model:open="showDeleteModal"
+      title="Delete SSH Key"
+      description="Are you sure you want to delete this SSH key? This action cannot be undone."
+    >
+      <template #body>
+        <UAlert
+          color="error"
+          variant="soft"
+          icon="i-lucide-alert-triangle"
+          title="Warning"
+          description="Deleting this SSH key will immediately revoke SFTP access for this key. Make sure you have another way to access your servers."
+        />
+      </template>
+
+      <template #footer="{ close }">
+        <div class="flex justify-end gap-2">
+          <UButton
+            variant="ghost"
+            color="neutral"
+            :disabled="isDeleting"
+            @click="close"
+          >
+            Cancel
+          </UButton>
+          <UButton
+            variant="solid"
+            color="error"
+            icon="i-lucide-trash"
+            :loading="isDeleting"
+            :disabled="isDeleting"
+            @click="confirmDelete"
+          >
+            Delete SSH Key
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
     <UPageBody>
       <UContainer>
         <UCard :ui="{ body: 'space-y-3' }">
@@ -176,35 +274,78 @@ function formatDate(date: Date | string | number | null | undefined) {
             description="Add an SSH key to securely access your servers via SFTP"
           />
 
-          <div v-else class="divide-y">
-            <div v-for="key in sshKeys" :key="key.id" class="py-4 flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <h3 class="font-medium">{{ key.name }}</h3>
-                </div>
-                <div class="mt-2 space-y-1">
-                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span class="font-medium">Fingerprint:</span>
-                    <code class="text-xs">{{ key.fingerprint }}</code>
+          <div v-else class="space-y-3">
+            <div
+              v-for="key in sshKeys"
+              :key="key.id"
+              class="rounded-lg border border-default overflow-hidden"
+            >
+              <button
+                class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
+                @click="toggleKey(key.id)"
+              >
+                <UIcon
+                  name="i-lucide-key-round"
+                  class="size-5 shrink-0 text-primary"
+                />
+                
+                <div class="flex-1 min-w-0 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-sm font-medium font-mono">{{ key.name }}</span>
+                      <UIcon
+                        :name="expandedKeys.has(key.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                        class="size-4 text-muted-foreground shrink-0"
+                      />
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span class="font-medium">Fingerprint:</span>
+                      <code class="text-xs font-mono">{{ key.fingerprint }}</code>
+                    </div>
                   </div>
-                  <div class="text-xs text-muted-foreground">
-                    Added: {{ formatDate(key.created_at) }}
+
+                  <div class="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                    <span class="truncate">
+                      Added:
+                      <NuxtTime :datetime="key.created_at" class="font-medium" />
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    <UButton
+                      variant="ghost"
+                      color="error"
+                      size="xs"
+                      icon="i-lucide-trash"
+                      :loading="isDeleting"
+                      :disabled="isDeleting"
+                      @click.stop="openDeleteModal(key.id)"
+                    >
+                      Delete
+                    </UButton>
                   </div>
                 </div>
-                <details class="mt-2">
-                  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                    Show public key
-                  </summary>
-                  <pre class="mt-2 p-2 bg-muted rounded text-xs overflow-x-auto">{{ key.public_key }}</pre>
-                </details>
+              </button>
+              
+              <div
+                v-if="expandedKeys.has(key.id)"
+                class="border-t border-default bg-muted/30 p-4"
+              >
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SSH Key Data</p>
+                    <UButton
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-copy"
+                      @click.stop="copyJson(key)"
+                    >
+                      Copy JSON
+                    </UButton>
+                  </div>
+                  <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullKeyData(key)) }}</code></pre>
+                </div>
               </div>
-              <UButton
-                icon="i-lucide-trash"
-                color="error"
-                variant="ghost"
-                size="sm"
-                @click="deleteKey(key.id)"
-              />
             </div>
           </div>
         </UCard>

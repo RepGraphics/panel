@@ -1,9 +1,9 @@
 import { createError } from 'h3'
 import { getServerSession, isAdmin  } from '~~/server/utils/session'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
 import { initiateServerTransfer, TransferError } from '~~/server/utils/transfers/initiate'
 import { serverTransferSchema } from '~~/shared/schema/admin/server'
-import { validateBody } from '~~/server/utils/validation'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -22,7 +22,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await validateBody(event, serverTransferSchema)
+  const body = await readValidatedBodyWithLimit(
+    event,
+    serverTransferSchema,
+    BODY_SIZE_LIMITS.MEDIUM,
+  )
   const { nodeId, allocationId, additionalAllocationIds, startOnCompletion } = body
 
   const db = useDrizzle()

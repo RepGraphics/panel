@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { authClient } from '~/utils/auth-client'
 import type { AccountSessionsResponse, UserSessionSummary } from '#shared/types/auth'
@@ -24,12 +24,10 @@ const {
   pending: sessionsPending,
   error: sessionsFetchError,
   execute: fetchSessions,
-} = useLazyFetch<AccountSessionsResponse>('/api/account/sessions', {
-  server: false,
-  immediate: false,
-  cache: 'no-cache',
-  retry: 0,
-})
+  refresh: refreshSessions,
+} = useLazyAsyncData('account-sessions', () => 
+  $fetch<AccountSessionsResponse>('/api/account/sessions')
+)
 
 watch(sessionsResponse, (response) => {
   if (!response)
@@ -49,56 +47,98 @@ watch(sessionsFetchError, (err) => {
   sessionsError.value = message
 })
 
-watch(status, async (value, previous) => {
-  if (value === 'authenticated') {
-    await authStore.syncSession()
-    await fetchSessions()
-    return
+watch(status, async (newStatus) => {
+  if (newStatus === 'authenticated') {
+    if (!sessionsResponse.value && !sessionsPending.value) {
+      await fetchSessions()
+    }
   }
 
-  if (value === 'unauthenticated' && previous === 'authenticated') {
+  if (newStatus === 'unauthenticated') {
     sessions.value = []
     currentSessionToken.value = null
     sessionsError.value = 'You need to sign in to view sessions.'
   }
 }, { immediate: true })
 
+onMounted(async () => {
+  if (status.value === 'authenticated' && !sessionsResponse.value && !sessionsPending.value) {
+    await fetchSessions()
+  }
+})
+
 async function loadSessions() {
   await authStore.syncSession()
-  await fetchSessions()
+  await refreshSessions()
 }
 
 const sortedSessions = computed(() => (
   [...sessions.value].sort((a, b) => b.expiresAtTimestamp - a.expiresAtTimestamp)
 ))
 
-const revealedIps = ref<Record<string, boolean>>({})
+const expandedSessions = ref<Set<string>>(new Set())
+
+function toggleSession(token: string) {
+  if (expandedSessions.value.has(token)) {
+    expandedSessions.value.delete(token)
+  } else {
+    expandedSessions.value.add(token)
+  }
+}
 
 function maskIp(ip: string) {
   if (!ip || ip === 'Unknown') return 'Unknown'
-  if (ip.includes(':')) {
-    const segments = ip.split(':')
-    return segments.slice(0, 4).join(':') + '::'
+  return '**********'
+}
+
+function formatJson(data: Record<string, unknown>): string {
+  return JSON.stringify(data, null, 2)
+}
+
+function getFullSessionData(session: UserSessionSummary) {
+  return {
+    token: session.token,
+    issuedAt: session.issuedAt,
+    expiresAt: session.expiresAt,
+    expiresAtTimestamp: session.expiresAtTimestamp,
+    isCurrent: session.isCurrent,
+    ipAddress: session.ipAddress,
+    userAgent: session.userAgent,
+    browser: session.browser,
+    os: session.os,
+    device: session.device,
+    lastSeenAt: session.lastSeenAt,
+    firstSeenAt: session.firstSeenAt,
+    fingerprint: session.fingerprint,
   }
-  const parts = ip.split('.')
-  if (parts.length !== 4) return ip
-  return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`
 }
 
-function isIpRevealed(token: string) {
-  return revealedIps.value[token] === true
-}
-
-function toggleIpReveal(token: string) {
-  revealedIps.value = {
-    ...revealedIps.value,
-    [token]: !isIpRevealed(token),
+async function copyJson(session: UserSessionSummary) {
+  const json = formatJson(getFullSessionData(session))
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(json)
+    } else {
+      const textArea = document.createElement('textarea')
+      textArea.value = json
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+    toast.add({
+      title: 'Copied to clipboard',
+      description: 'Session data JSON has been copied.',
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Failed to copy',
+      description: error instanceof Error ? error.message : 'Unable to copy to clipboard.',
+      color: 'error',
+    })
   }
-}
-
-function displayIp(ip: string, token: string) {
-  if (!ip || ip === 'Unknown') return 'Unknown'
-  return isIpRevealed(token) ? ip : maskIp(ip)
 }
 
 async function handleSignOut(token: string) {
@@ -106,28 +146,40 @@ async function handleSignOut(token: string) {
 
   updatingSessions.value = true
   try {
-    let currentSessionRevoked = false
-    
-    if (typeof authClient.revokeSession === 'function') {
+    if (authClient.multiSession && typeof authClient.multiSession.revoke === 'function') {
       try {
-        await authClient.revokeSession({ token })
-        const cookies = document.cookie.split(';').find(c => c.trim().startsWith('better-auth.session_token='))
-        const currentToken = cookies?.split('=')[1]
-        currentSessionRevoked = currentToken === token
-      }
-      catch {
-        const result = await $fetch<{ revoked: boolean, currentSessionRevoked: boolean }>(`/api/account/sessions/${encodeURIComponent(token)}`, {
-          method: 'DELETE',
+        const result = await authClient.multiSession.revoke({
+          sessionToken: token,
         })
-        currentSessionRevoked = result.currentSessionRevoked
+
+        if (result?.error) {
+          throw new Error(result.error.message || 'Failed to revoke session')
+        }
+
+        const currentSession = await authClient.getSession()
+        const currentSessionRevoked = !currentSession?.data
+
+        if (currentSessionRevoked) {
+          await navigateTo('/auth/login')
+          return
+        }
+
+        await loadSessions()
+        toast.add({
+          title: 'Session revoked',
+          description: 'The selected session has been signed out.',
+        })
+        return
+      }
+      catch (err) {
+        console.warn('Multi-session client revoke failed, falling back to API:', err)
       }
     }
-    else {
-      const result = await $fetch<{ revoked: boolean, currentSessionRevoked: boolean }>(`/api/account/sessions/${encodeURIComponent(token)}`, {
-        method: 'DELETE',
-      })
-      currentSessionRevoked = result.currentSessionRevoked
-    }
+
+    const result = await $fetch<{ revoked: boolean, currentSessionRevoked: boolean }>(`/api/account/sessions/${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+    })
+    const currentSessionRevoked = result.currentSessionRevoked
 
     if (currentSessionRevoked) {
       await navigateTo('/auth/login')
@@ -255,93 +307,103 @@ async function handleSignOutAll(includeCurrent = false) {
             description="No browser sessions found for your account"
             variant="subtle"
           />
-          <div v-else class="space-y-2">
+          <div v-else class="space-y-3">
             <div
               v-for="session in sortedSessions"
               :key="session.token"
-              class="flex items-center gap-3 rounded-lg border border-default p-3 transition-colors hover:bg-elevated/50"
+              class="rounded-lg border border-default overflow-hidden"
             >
-              <UIcon
-                :name="session.device === 'Mobile' ? 'i-lucide-smartphone' : session.device === 'Tablet' ? 'i-lucide-tablet' : 'i-lucide-monitor'"
-                class="size-5 shrink-0 text-primary"
-              />
-              
-              <div class="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-2 md:gap-4 items-center">
-                <div class="min-w-0 flex items-center gap-2 flex-wrap">
-                  <span class="text-sm font-medium">{{ session.device ?? 'Unknown' }}</span>
-                  <span class="text-xs text-muted-foreground">{{ session.os ?? 'Unknown' }} • {{ session.browser ?? 'Unknown' }}</span>
-                  <UBadge v-if="session.token === currentSessionToken" color="primary" variant="soft" size="xs" class="shrink-0">
-                    Current
-                  </UBadge>
-                </div>
+              <button
+                class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
+                @click="toggleSession(session.token)"
+              >
+                <UIcon
+                  :name="session.device === 'Mobile' ? 'i-lucide-smartphone' : session.device === 'Tablet' ? 'i-lucide-tablet' : 'i-lucide-monitor'"
+                  class="size-5 shrink-0 text-primary"
+                />
+                
+                <div class="flex-1 min-w-0 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-sm font-medium">{{ session.device ?? 'Unknown' }}</span>
+                      <UIcon
+                        :name="expandedSessions.has(session.token) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                        class="size-4 text-muted-foreground shrink-0"
+                      />
+                    </div>
+                    <span class="text-xs text-muted-foreground">{{ session.os ?? 'Unknown' }} • {{ session.browser ?? 'Unknown' }}</span>
+                    <UBadge v-if="session.token === currentSessionToken" color="primary" variant="soft" size="xs" class="shrink-0">
+                      Current
+                    </UBadge>
+                  </div>
 
-                <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-muted-foreground min-w-0">
-                  <div class="flex items-center gap-1 shrink-0">
-                    <span class="truncate">IP: {{ displayIp(session.ipAddress ?? 'Unknown', session.token) }}</span>
-                    <UButton variant="link" size="xs" class="h-auto p-0 min-w-0" @click="toggleIpReveal(session.token)">
-                      {{ isIpRevealed(session.token) ? 'Hide' : 'Show' }}
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-muted-foreground shrink-0">
+                    <div class="flex items-center gap-1 shrink-0">
+                      <span class="truncate">IP:</span>
+                      <UTooltip
+                        v-if="session.ipAddress && session.ipAddress !== 'Unknown'"
+                        :delay-duration="0"
+                        :text="session.ipAddress"
+                      >
+                        <span class="cursor-help font-mono">{{ maskIp(session.ipAddress) }}</span>
+                      </UTooltip>
+                      <span v-else class="font-mono">{{ maskIp(session.ipAddress ?? 'Unknown') }}</span>
+                    </div>
+                    <span class="hidden sm:inline">•</span>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span class="truncate">
+                        Active:
+                        <template v-if="session.lastSeenAt">
+                          <NuxtTime :datetime="session.lastSeenAt" class="font-medium" />
+                        </template>
+                        <span v-else>Unknown</span>
+                      </span>
+                      <span class="hidden sm:inline">•</span>
+                      <span class="truncate">
+                        Expires:
+                        <template v-if="session.expiresAtTimestamp">
+                          <NuxtTime :datetime="session.expiresAtTimestamp * 1000" class="font-medium" />
+                        </template>
+                        <span v-else>Unknown</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    <UButton
+                      variant="ghost"
+                      color="error"
+                      size="xs"
+                      :loading="updatingSessions"
+                      :disabled="session.token === currentSessionToken && updatingSessions"
+                      @click.stop="handleSignOut(session.token)"
+                    >
+                      Revoke
                     </UButton>
                   </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <span class="truncate">
-                      Active:
-                      <template v-if="session.lastSeenAt">
-                        <NuxtTime :datetime="session.lastSeenAt" class="font-medium" />
-                      </template>
-                      <span v-else>Unknown</span>
-                    </span>
-                    <span class="hidden sm:inline">•</span>
-                    <span class="truncate">
-                      Expires:
-                      <template v-if="session.expiresAtTimestamp">
-                        <NuxtTime :datetime="session.expiresAtTimestamp * 1000" class="font-medium" />
-                      </template>
-                      <span v-else>Unknown</span>
-                    </span>
-                  </div>
                 </div>
-
-                <div class="flex items-center gap-2 shrink-0">
-                  <UButton
-                    variant="ghost"
-                    color="error"
-                    size="xs"
-                    :loading="updatingSessions"
-                    :disabled="session.token === currentSessionToken && updatingSessions"
-                    @click="handleSignOut(session.token)"
-                  >
-                    Revoke
-                  </UButton>
+              </button>
+              
+              <div
+                v-if="expandedSessions.has(session.token)"
+                class="border-t border-default bg-muted/30 p-4"
+              >
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session Data</p>
+                    <UButton
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-copy"
+                      @click.stop="copyJson(session)"
+                    >
+                      Copy JSON
+                    </UButton>
+                  </div>
+                  <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullSessionData(session)) }}</code></pre>
                 </div>
               </div>
             </div>
-
-            <details v-if="sortedSessions.some(s => s.token === currentSessionToken)" class="text-xs border border-default rounded-lg p-3">
-              <summary class="cursor-pointer text-muted-foreground hover:text-foreground font-medium">
-                Show current session details
-              </summary>
-              <div class="mt-3 space-y-2 text-muted-foreground">
-                <div>
-                  <strong>Token:</strong>
-                  <code class="block mt-1 break-all text-xs bg-muted p-2 rounded">{{ sortedSessions.find(s => s.token === currentSessionToken)?.token }}</code>
-                </div>
-                <div>
-                  <strong>User Agent:</strong>
-                  <span class="block mt-1 break-all">{{ sortedSessions.find(s => s.token === currentSessionToken)?.userAgent }}</span>
-                </div>
-                <div>
-                  <strong>Issued:</strong>
-                  <template v-if="sortedSessions.find(s => s.token === currentSessionToken)?.issuedAt">
-                    <NuxtTime
-                      :datetime="sortedSessions.find(s => s.token === currentSessionToken)?.issuedAt || ''"
-                      relative
-                      class="ml-1 font-medium"
-                    />
-                  </template>
-                  <span v-else class="ml-1">Unknown</span>
-                </div>
-              </div>
-            </details>
           </div>
         </UCard>
       </UContainer>

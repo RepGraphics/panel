@@ -1,9 +1,10 @@
 import { createError, getQuery, parseCookies } from 'h3'
-import { auth } from '~~/server/utils/auth'
+import { auth, normalizeHeadersForAuth } from '~~/server/utils/auth'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {
@@ -15,7 +16,7 @@ export default defineEventHandler(async (event) => {
 
   if (includeCurrent) {
     await auth.api.revokeOtherSessions({
-      headers: event.req.headers,
+      headers: normalizeHeadersForAuth(event.node.req.headers),
     })
     
     const cookies = parseCookies(event)
@@ -23,9 +24,20 @@ export default defineEventHandler(async (event) => {
     if (currentToken) {
       await auth.api.revokeSession({
         body: { token: currentToken },
-        headers: event.req.headers,
+        headers: normalizeHeadersForAuth(event.node.req.headers),
       })
     }
+
+    await recordAuditEventFromRequest(event, {
+      actor: session.user.id,
+      actorType: 'user',
+      action: 'account.session.revoke_all',
+      targetType: 'session',
+      targetId: null,
+      metadata: {
+        includeCurrent: true,
+      },
+    })
 
     return {
       revoked: 1,
@@ -34,7 +46,18 @@ export default defineEventHandler(async (event) => {
   }
 
   await auth.api.revokeOtherSessions({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
+  })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.id,
+    actorType: 'user',
+    action: 'account.session.revoke_others',
+    targetType: 'session',
+    targetId: null,
+    metadata: {
+      includeCurrent: false,
+    },
   })
 
   return {

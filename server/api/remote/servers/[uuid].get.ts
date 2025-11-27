@@ -1,7 +1,7 @@
 import { createError, type H3Event } from 'h3'
 import { getNodeIdFromAuth } from '~~/server/utils/wings/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
-import { debugLog, debugError, debugWarn } from '~~/server/utils/logger'
+import { debugError, debugWarn } from '~~/server/utils/logger'
 
 function safeJsonParse(value: string | null | undefined, defaultValue: unknown = {}): unknown {
   if (!value || typeof value !== 'string' || value.trim().length === 0) {
@@ -255,7 +255,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
       if (key.startsWith('server.')) {
         const path = key.replace(/^server\./, '').split('.')
-        let current: any = structure
+        let current: Record<string, unknown> = structure
         for (const part of path) {
           if (current && typeof current === 'object' && part in current) {
             current = current[part]

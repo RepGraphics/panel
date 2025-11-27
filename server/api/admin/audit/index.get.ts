@@ -1,27 +1,9 @@
-import { createError } from 'h3'
-import { getAuth } from '~~/server/utils/auth'
+import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { count, desc, eq, like, or, and } from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
-  const auth = getAuth()
-  
-  const session = await auth.api.getSession({
-    headers: event.req.headers,
-  })
-
-  if (!session?.user?.id) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
-
-  const userRole = (session.user as { role?: string }).role
-  if (userRole !== 'admin') {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Forbidden',
-      message: 'Admin access required',
-    })
-  }
+  await requireAdmin(event)
 
   const query = getQuery(event)
   const page = Number(query.page) || 1
@@ -108,15 +90,94 @@ export default defineEventHandler(async (event) => {
     return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
   }
 
+  const actorIds = new Set<string>()
+  const actorEmails = new Set<string>()
+  
+  events.forEach(event => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (uuidRegex.test(event.actor)) {
+      actorIds.add(event.actor)
+    } else if (event.actor.includes('@')) {
+      actorEmails.add(event.actor)
+    }
+  })
+
+  const userMap = new Map<string, { id: string; username: string | null; email: string | null }>()
+  
+  if (actorIds.size > 0) {
+    const { inArray } = await import('drizzle-orm')
+    const userIds = Array.from(actorIds)
+    if (userIds.length > 0) {
+      const users = db
+        .select({
+          id: tables.users.id,
+          username: tables.users.username,
+          email: tables.users.email,
+        })
+        .from(tables.users)
+        .where(inArray(tables.users.id, userIds))
+        .all()
+      
+      users.forEach(user => {
+        userMap.set(user.id, { id: user.id, username: user.username, email: user.email })
+        if (user.email) {
+          userMap.set(user.email, { id: user.id, username: user.username, email: user.email })
+        }
+      })
+    }
+  }
+  
+  if (actorEmails.size > 0) {
+    const emails = Array.from(actorEmails)
+    for (const email of emails) {
+      if (!userMap.has(email)) {
+        const user = db
+          .select({
+            id: tables.users.id,
+            username: tables.users.username,
+            email: tables.users.email,
+          })
+          .from(tables.users)
+          .where(eq(tables.users.email, email))
+          .get()
+        
+        if (user) {
+          userMap.set(user.id, { id: user.id, username: user.username, email: user.email })
+          userMap.set(email, { id: user.id, username: user.username, email: user.email })
+        }
+      }
+    }
+  }
+
   return {
-    data: events.map(event => ({
-      id: event.id,
-      occurredAt: transformTimestamp(event.occurredAt),
-      actor: event.actor,
-      action: event.action,
-      target: event.targetId ? `${event.targetType}#${event.targetId}` : event.targetType,
-      details: parseMetadata(event.metadata),
-    })),
+    data: events.map(event => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      
+      const userInfo = uuidRegex.test(event.actor) 
+        ? userMap.get(event.actor)
+        : event.actor.includes('@')
+          ? userMap.get(event.actor)
+          : null
+
+      let formattedActorDisplay: string | undefined
+      if (userInfo) {
+        const name = userInfo.username || userInfo.email || event.actor
+        const email = userInfo.email
+        formattedActorDisplay = email && email !== name ? `${name} (${email})` : name
+      }
+
+      return {
+        id: event.id,
+        occurredAt: transformTimestamp(event.occurredAt),
+        actor: event.actor,
+        actorDisplay: formattedActorDisplay,
+        actorUserId: userInfo?.id,
+        actorEmail: userInfo?.email || undefined,
+        action: event.action,
+        target: event.targetId ? `${event.targetType}#${event.targetId}` : event.targetType,
+        details: parseMetadata(event.metadata),
+      }
+    }),
     pagination: {
       page,
       perPage: limit,

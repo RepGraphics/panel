@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { useDrizzle, tables, eq } = await import('../../../../../utils/drizzle')
+  const { useDrizzle, tables, eq } = await import('~~/server/utils/drizzle')
   const db = useDrizzle()
 
   const server = db
@@ -34,10 +34,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { requireServerPermission } = await import('../../../../../utils/api-helpers')
-  await requireServerPermission(event, server.id, 'backup.read')
+  const { requireServerPermission } = await import('~~/server/utils/permission-middleware')
+  await requireServerPermission(event, {
+    serverId: server.id,
+    requiredPermissions: ['backup.read'],
+  })
 
-  const { getWingsClientForServer } = await import('../../../../../utils/wings-client')
+  const { getWingsClientForServer } = await import('~~/server/utils/wings-client')
   const { client } = await getWingsClientForServer(uuid)
 
   try {

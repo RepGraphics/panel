@@ -1,7 +1,62 @@
+<script setup lang="ts">
+import { useAuthStore } from '~/stores/auth'
+import { storeToRefs } from 'pinia'
+import { authClient } from '~/utils/auth-client'
+
+await authClient.useSession(useFetch)
+
+const authStore = useAuthStore()
+const { user, isAuthenticated } = storeToRefs(authStore)
+const route = useRoute()
+
+const passwordCompromised = computed(() => {
+  if (!isAuthenticated.value || !user.value) return false
+  return Boolean((user.value as { passwordCompromised?: boolean }).passwordCompromised)
+})
+
+const showPasswordWarning = ref(false)
+
+watch([passwordCompromised, () => route.path], () => {
+  if (!passwordCompromised.value) {
+    showPasswordWarning.value = false
+    return
+  }
+  showPasswordWarning.value = route.path !== '/account/security'
+}, { immediate: true })
+</script>
+
 <template>
   <UApp>
     <NuxtPwaManifest/>
-    <NuxtLoadingIndicator color="#16a34a" error-color="#ef4444" :height="3" />
+    <NuxtLoadingIndicator color="#16a34a" error-color="#ef4444" :height="3" />    
+    <UModal
+      v-model:open="showPasswordWarning"
+      :dismissible="false"
+      modal
+      title="Password Security Alert"
+      :close="false"
+    >
+      <template #body>
+        <div class="flex items-start gap-3">
+          <UIcon name="i-lucide-shield-alert" class="size-6 text-error shrink-0 mt-0.5" />
+          <p class="text-sm text-foreground">
+            Your password has been found in a data breach and may be compromised. You must change your password immediately to continue using the application.
+          </p>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex items-center justify-end w-full">
+          <UButton
+            color="error"
+            label="Change Password Now"
+            to="/account/security"
+            size="lg"
+          />
+        </div>
+      </template>
+    </UModal>
+    
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

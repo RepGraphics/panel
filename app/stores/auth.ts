@@ -6,23 +6,24 @@ import { authClient } from '~/utils/auth-client'
 export const useAuthStore = defineStore('auth', () => {
   const sessionRef = authClient.useSession()
   const sessionData = computed(() => sessionRef.value?.data ?? null)
-  const isPending = computed(() => sessionRef.value?.isPending ?? true)
-  const refetchSession = async () => {
-    if (sessionRef.value?.refetch) {
-      await sessionRef.value.refetch()
-    } else {
-      try {
-        await authClient.getSession()
-      }
-      catch (err) {
-        console.error('Failed to refetch session', err)
-      }
+  const isPending = computed(() => {
+    if (sessionData.value) return false
+    return sessionRef.value?.isPending ?? false
+  })
+  const refetchSession = async (options?: { bypassCache?: boolean }) => {
+    try {
+      await authClient.getSession({
+        query: options?.bypassCache ? { disableCookieCache: true } : undefined,
+      })
+    }
+    catch (err) {
+      console.error('Failed to refetch session', err)
     }
   }
   
   const authStatus = computed(() => {
-    if (isPending.value) return 'loading'
     if (sessionData.value) return 'authenticated'
+    if (isPending.value) return 'loading'
     return 'unauthenticated'
   })
 
@@ -68,8 +69,9 @@ export const useAuthStore = defineStore('auth', () => {
     return values.includes(required)
   }
 
-  async function syncSession(options?: { force?: boolean }) {
+  async function syncSession(options?: { force?: boolean; bypassCache?: boolean }) {
     const force = options?.force ?? false
+    const bypassCache = options?.bypassCache ?? false
 
     if (isSyncing.value && !force) {
       return
@@ -77,7 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     isSyncing.value = true
     try {
-      await refetchSession()
+      await refetchSession({ bypassCache })
       await new Promise(resolve => setTimeout(resolve, 50))
       
       lastSyncedAt.value = Date.now()
@@ -120,18 +122,18 @@ export const useAuthStore = defineStore('auth', () => {
           })
 
           if (usernameResult.error) {
-            error.value = emailResult.error.message || usernameResult.error.message
+            error.value = (emailResult.error.message || usernameResult.error.message) ?? null
             return { error: emailResult.error.message || usernameResult.error.message }
           }
 
-          if (usernameResult.data?.twoFactorRedirect && token) {
+          if (token) {
             const twoFactorResult = await authClient.twoFactor.verifyTotp({
               code: token,
               trustDevice: true,
             })
 
             if (twoFactorResult.error) {
-              error.value = twoFactorResult.error.message
+              error.value = twoFactorResult.error.message ?? null
               return { error: twoFactorResult.error.message }
             }
           }
@@ -139,14 +141,14 @@ export const useAuthStore = defineStore('auth', () => {
           return usernameResult
         }
 
-        if (emailResult.data?.twoFactorRedirect && token) {
+        if (token) {
           const twoFactorResult = await authClient.twoFactor.verifyTotp({
             code: token,
             trustDevice: true,
           })
 
           if (twoFactorResult.error) {
-            error.value = twoFactorResult.error.message
+            error.value = twoFactorResult.error.message ?? null
             return { error: twoFactorResult.error.message }
           }
         }
@@ -165,18 +167,18 @@ export const useAuthStore = defineStore('auth', () => {
           })
 
           if (emailResult.error) {
-            error.value = usernameResult.error.message || emailResult.error.message
+            error.value = (usernameResult.error.message || emailResult.error.message) ?? null
             return { error: usernameResult.error.message || emailResult.error.message }
           }
 
-          if (emailResult.data?.twoFactorRedirect && token) {
+          if (token) {
             const twoFactorResult = await authClient.twoFactor.verifyTotp({
               code: token,
               trustDevice: true,
             })
 
             if (twoFactorResult.error) {
-              error.value = twoFactorResult.error.message
+              error.value = twoFactorResult.error.message ?? null
               return { error: twoFactorResult.error.message }
             }
           }
@@ -184,14 +186,14 @@ export const useAuthStore = defineStore('auth', () => {
           return emailResult
         }
 
-        if (usernameResult.data?.twoFactorRedirect && token) {
+        if (token) {
           const twoFactorResult = await authClient.twoFactor.verifyTotp({
             code: token,
             trustDevice: true,
           })
 
           if (twoFactorResult.error) {
-            error.value = twoFactorResult.error.message
+            error.value = twoFactorResult.error.message ?? null
             return { error: twoFactorResult.error.message }
           }
         }

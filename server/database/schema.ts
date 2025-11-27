@@ -19,6 +19,7 @@ export const users = sqliteTable(
     suspendedAt: integer('suspended_at', { mode: 'timestamp' }),
     suspensionReason: text('suspension_reason'),
     passwordResetRequired: integer('password_reset_required', { mode: 'boolean' }).notNull().default(false),
+    passwordCompromised: integer('password_compromised', { mode: 'boolean' }).notNull().default(false),
     banned: integer('banned', { mode: 'boolean' }),
     banReason: text('ban_reason'),
     banExpires: integer('ban_expires', { mode: 'timestamp' }),

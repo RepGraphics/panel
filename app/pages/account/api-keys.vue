@@ -2,6 +2,7 @@
 import { ref, computed, reactive, watch } from 'vue'
 import { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
+import type { ApiKeyResponse } from '#shared/types/api'
 
 definePageMeta({
   auth: true,
@@ -10,6 +11,9 @@ definePageMeta({
 
 const toast = useToast()
 const showCreateModal = ref(false)
+const showDeleteModal = ref(false)
+const keyToDelete = ref<string | null>(null)
+const isDeleting = ref(false)
 const newKeyToken = ref<string | null>(null)
 const isCreating = ref(false)
 const copySuccess = ref(false)
@@ -42,8 +46,8 @@ const {
   pending: keysPending,
   refresh: refreshKeys,
   error: keysError,
-} = await useAsyncData('account-api-keys', () => $fetch('/api/account/api-keys'), {
-  server: false,
+} = await useFetch('/api/account/api-keys', {
+  key: 'account-api-keys',
 })
 
 const apiKeys = computed(() => keysData.value?.data ?? [])
@@ -59,6 +63,58 @@ const loadError = computed(() => {
   return 'Unable to load API keys. Try refreshing the page.'
 })
 
+const expandedKeys = ref<Set<string>>(new Set())
+
+function toggleKey(identifier: string) {
+  if (expandedKeys.value.has(identifier)) {
+    expandedKeys.value.delete(identifier)
+  } else {
+    expandedKeys.value.add(identifier)
+  }
+}
+
+function formatJson(data: Record<string, unknown>): string {
+  return JSON.stringify(data, null, 2)
+}
+
+function getFullKeyData(key: typeof apiKeys.value[0]) {
+  return {
+    identifier: key.identifier,
+    description: key.description,
+    allowed_ips: (key as { allowed_ips?: string[] }).allowed_ips || [],
+    last_used_at: key.last_used_at,
+    created_at: key.created_at,
+  }
+}
+
+async function copyJson(key: typeof apiKeys.value[0]) {
+  const json = formatJson(getFullKeyData(key))
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(json)
+    } else {
+      const textArea = document.createElement('textarea')
+      textArea.value = json
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+    toast.add({
+      title: 'Copied to clipboard',
+      description: 'API key data JSON has been copied.',
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Failed to copy',
+      description: error instanceof Error ? error.message : 'Unable to copy to clipboard.',
+      color: 'error',
+    })
+  }
+}
+
 function resetCreateState() {
   createError.value = null
   copySuccess.value = false
@@ -67,8 +123,9 @@ function resetCreateState() {
 }
 
 watch(showCreateModal, (open) => {
-  if (!open)
+  if (!open && !newKeyToken.value) {
     resetCreateState()
+  }
 })
 
 async function createApiKey(event: FormSubmitEvent<KeyFormSchema>) {
@@ -89,7 +146,7 @@ async function createApiKey(event: FormSubmitEvent<KeyFormSchema>) {
 
     const formattedIps = allowedIps.length > 0 ? allowedIps : null
 
-    const response = await $fetch('/api/account/api-keys', {
+    const response = await $fetch<ApiKeyResponse>('/api/account/api-keys', {
       method: 'POST',
       body: {
         memo: payload.memo && payload.memo.length > 0 ? payload.memo : null,
@@ -97,20 +154,25 @@ async function createApiKey(event: FormSubmitEvent<KeyFormSchema>) {
       },
     })
 
+    if (!response?.meta?.secret_token) {
+      throw new Error('API key was created but token was not returned')
+    }
+
     newKeyToken.value = response.meta.secret_token
     Object.assign(createForm, keySchema.parse({}))
+    showCreateModal.value = true
 
     await refreshKeys()
-
-    toast.add({
-      title: 'API Key Created',
-      description: 'Copy your API key now – it will not be shown again.',
-      color: 'success',
-    })
   }
   catch (error) {
-    const err = error as { data?: { message?: string } }
-    const message = err.data?.message || 'Failed to create API key'
+    console.error('Failed to create API key:', error)
+    
+    let message = 'Failed to create API key'
+    if (error && typeof error === 'object') {
+      const err = error as { data?: { message?: string }, message?: string, statusMessage?: string }
+      message = err.data?.message || err.message || err.statusMessage || message
+    }
+
     createError.value = message
 
     toast.add({
@@ -124,17 +186,27 @@ async function createApiKey(event: FormSubmitEvent<KeyFormSchema>) {
   }
 }
 
-async function deleteKey(identifier: string) {
-  if (!confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+function openDeleteModal(identifier: string) {
+  keyToDelete.value = identifier
+  showDeleteModal.value = true
+}
+
+async function confirmDelete() {
+  if (!keyToDelete.value) {
     return
   }
 
+  isDeleting.value = true
+
   try {
-    await $fetch(`/api/account/api-keys/${identifier}`, {
+    await $fetch(`/api/account/api-keys/${keyToDelete.value}`, {
       method: 'DELETE',
     })
 
     await refreshKeys()
+
+    showDeleteModal.value = false
+    keyToDelete.value = null
 
     toast.add({
       title: 'API Key Deleted',
@@ -150,6 +222,9 @@ async function deleteKey(identifier: string) {
       color: 'error',
     })
   }
+  finally {
+    isDeleting.value = false
+  }
 }
 
 async function copyToken() {
@@ -157,7 +232,27 @@ async function copyToken() {
     return
 
   try {
-    await navigator.clipboard.writeText(newKeyToken.value)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(newKeyToken.value)
+    }
+    else {
+      const textArea = document.createElement('textarea')
+      textArea.value = newKeyToken.value
+      textArea.style.position = 'fixed'
+      textArea.style.left = '-999999px'
+      textArea.style.top = '-999999px'
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      
+      const successful = document.execCommand('copy')
+      document.body.removeChild(textArea)
+      
+      if (!successful) {
+        throw new Error('execCommand copy failed')
+      }
+    }
+    
     copySuccess.value = true
     toast.add({
       title: 'Copied',
@@ -173,11 +268,6 @@ async function copyToken() {
       color: 'error',
     })
   }
-}
-
-function formatDate(date: Date | string | number | null | undefined) {
-  if (!date) return 'Never'
-  return new Date(date).toLocaleString()
 }
 </script>
 
@@ -195,8 +285,9 @@ function formatDate(date: Date | string | number | null | undefined) {
 
     <UModal
       v-model:open="showCreateModal"
-      title="Create API Key"
-      description="Generate a personal API key for programmatic access"
+      :title="newKeyToken ? 'API Key Created' : 'Create API Key'"
+      :description="newKeyToken ? 'Copy your API key now – it will not be shown again.' : 'Generate a personal API key for programmatic access'"
+      :dismissible="!newKeyToken"
       :ui="{ body: 'space-y-4', footer: 'flex justify-end gap-2' }"
     >
       <template #body>
@@ -299,13 +390,64 @@ function formatDate(date: Date | string | number | null | undefined) {
           </UButton>
         </template>
         <template v-else>
-          <UButton @click="() => {
-            showCreateModal = false
-            close()
-          }">
+          <UButton
+            color="primary"
+            icon="i-lucide-check"
+            @click="() => {
+              newKeyToken = null
+              showCreateModal = false
+              close()
+            }"
+          >
             Done
           </UButton>
         </template>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="showDeleteModal"
+      title="Delete API Key"
+      description="This action cannot be undone. The API key will be permanently removed."
+      :ui="{ footer: 'flex justify-end gap-2' }"
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UAlert color="error" variant="soft" icon="i-lucide-alert-triangle">
+            <template #title>Warning</template>
+            <template #description>
+              Are you sure you want to delete this API key? Any applications using this key will lose access immediately.
+            </template>
+          </UAlert>
+          <div v-if="keyToDelete" class="rounded-md bg-muted p-3">
+            <p class="text-sm font-medium">Key Identifier:</p>
+            <code class="text-sm font-mono mt-1">{{ keyToDelete }}</code>
+          </div>
+        </div>
+      </template>
+
+      <template #footer="{ close }">
+        <UButton
+          variant="ghost"
+          color="neutral"
+          :disabled="isDeleting"
+          @click="() => {
+            showDeleteModal = false
+            keyToDelete = null
+            close()
+          }"
+        >
+          Cancel
+        </UButton>
+        <UButton
+          color="error"
+          icon="i-lucide-trash-2"
+          :loading="isDeleting"
+          :disabled="isDeleting"
+          @click="confirmDelete"
+        >
+          Delete Key
+        </UButton>
       </template>
     </UModal>
 
@@ -335,39 +477,85 @@ function formatDate(date: Date | string | number | null | undefined) {
             description="Create an API key to access the panel programmatically"
           />
 
-          <div v-else class="divide-y">
-            <div v-for="key in apiKeys" :key="key.identifier" class="py-4 flex items-center justify-between">
-              <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <code class="text-sm font-mono">{{ key.identifier }}</code>
-                  <UBadge v-if="(key as any).allowed_ips?.length" color="primary" variant="soft">
-                    IP Restricted
-                  </UBadge>
-                </div>
-                <p v-if="key.description" class="text-sm text-muted-foreground mt-1">
-                  {{ key.description }}
-                </p>
-                <div class="flex gap-4 mt-2 text-xs text-muted-foreground">
-                  <span>Created: {{ formatDate(key.created_at) }}</span>
-                  <span v-if="key.last_used_at">Last used: {{ formatDate(key.last_used_at) }}</span>
-                </div>
-                <div v-if="(key as any).allowed_ips?.length" class="mt-2">
-                  <p class="text-xs text-muted-foreground">Allowed IPs:</p>
-                  <div class="flex flex-wrap gap-1 mt-1">
-                    <UBadge v-for="ip in (key as any).allowed_ips" :key="ip" size="xs" variant="soft">
-                      {{ ip }}
+          <div v-else class="space-y-3">
+            <div
+              v-for="key in apiKeys"
+              :key="key.identifier"
+              class="rounded-lg border border-default overflow-hidden"
+            >
+              <button
+                class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
+                @click="toggleKey(key.identifier)"
+              >
+                <UIcon
+                  name="i-lucide-key"
+                  class="size-5 shrink-0 text-primary"
+                />
+                
+                <div class="flex-1 min-w-0 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <code class="text-sm font-medium font-mono">{{ key.identifier }}</code>
+                      <UIcon
+                        :name="expandedKeys.has(key.identifier) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                        class="size-4 text-muted-foreground shrink-0"
+                      />
+                    </div>
+                    <UBadge v-if="(key as any).allowed_ips?.length" color="primary" variant="soft" size="xs">
+                      IP Restricted
                     </UBadge>
+                    <p v-if="key.description" class="text-sm text-muted-foreground">
+                      {{ key.description }}
+                    </p>
+                  </div>
+
+                  <div class="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                    <span class="truncate">
+                      Created:
+                      <NuxtTime :datetime="key.created_at" class="font-medium" />
+                    </span>
+                    <span v-if="key.last_used_at" class="hidden sm:inline">•</span>
+                    <span v-if="key.last_used_at" class="truncate">
+                      Last used:
+                      <NuxtTime :datetime="key.last_used_at" class="font-medium" />
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    <UButton
+                      variant="ghost"
+                      color="error"
+                      size="xs"
+                      icon="i-lucide-trash-2"
+                      :loading="isDeleting"
+                      :disabled="isDeleting"
+                      @click.stop="openDeleteModal(key.identifier)"
+                    >
+                      Delete
+                    </UButton>
                   </div>
                 </div>
+              </button>
+              
+              <div
+                v-if="expandedKeys.has(key.identifier)"
+                class="border-t border-default bg-muted/30 p-4"
+              >
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">API Key Data</p>
+                    <UButton
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-copy"
+                      @click.stop="copyJson(key)"
+                    >
+                      Copy JSON
+                    </UButton>
+                  </div>
+                  <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullKeyData(key)) }}</code></pre>
+                </div>
               </div>
-              <UButton
-                icon="i-lucide-trash-2"
-                color="error"
-                variant="ghost"
-                size="sm"
-                aria-label="Delete API key"
-                @click="deleteKey(key.identifier)"
-              />
             </div>
           </div>
         </UCard>

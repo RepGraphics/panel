@@ -20,7 +20,7 @@ const {
   async () => {
     try {
       const response = await $fetch(`/api/admin/servers/${props.server.id}/limits`)
-      return ((response as any)?.data ?? null) as ServerLimits | null
+      return (response as { data: ServerLimits } | null)?.data ?? null
     }
     catch (error) {
       console.error('Failed to load server limits', error)
@@ -119,7 +119,7 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
         console.warn('[Build Form] Response does not indicate success:', response)
       }
     } catch (fetchError: unknown) {
-      const error = fetchError as any
+      const error = fetchError instanceof Error ? fetchError : new Error(String(fetchError))
       console.error('[Build Form] Fetch error:', {
         error: fetchError,
         message: error?.message,

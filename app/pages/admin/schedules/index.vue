@@ -1,24 +1,113 @@
 <script setup lang="ts">
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { AdminScheduleResponse } from '#shared/types/admin'
 
 definePageMeta({
   auth: true,
   layout: 'admin',
   adminTitle: 'Schedules',
-  adminSubtitle: 'Review panel automation synced to Wings tasks',
+  adminSubtitle: 'Review panel automation (Wings tasks & Nitro tasks)',
 })
+
+async function fetchSchedules(): Promise<{ data: AdminScheduleResponse[] }> {
+  const response = await fetch('/api/admin/schedules')
+  if (!response.ok) {
+    throw new Error(`Failed to fetch schedules: ${response.statusText}`)
+  }
+  return await response.json()
+}
 
 const {
   data: schedulesResponse,
   pending: schedulesPending,
   error: schedulesError,
-} = await useAsyncData('admin-schedules', () => $fetch<{ data: AdminScheduleResponse[] }>('/api/admin/schedules'))
+  refresh: refreshSchedules,
+} = await useLazyAsyncData('admin-schedules', fetchSchedules)
 
-const schedules = computed(() => schedulesResponse.value?.data ?? [])
+let refreshInterval: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  refreshInterval = setInterval(() => {
+    refreshSchedules()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
+})
+
+const schedules = computed<AdminScheduleResponse[]>(() => {
+  const response = schedulesResponse.value
+  if (response && typeof response === 'object' && 'data' in response && Array.isArray(response.data)) {
+    return response.data
+  }
+  return []
+})
 
 function statusColor(enabled: boolean) {
-  return enabled ? 'primary' : 'neutral'
+  return enabled ? 'success' : 'error'
 }
+
+const expandedEntries = ref<Set<string>>(new Set())
+const toast = useToast()
+
+function toggleEntry(id: string) {
+  if (expandedEntries.value.has(id)) {
+    expandedEntries.value.delete(id)
+  } else {
+    expandedEntries.value.add(id)
+  }
+}
+
+function formatJson(data: Record<string, unknown> | null): string {
+  if (!data) return 'null'
+  return JSON.stringify(data, null, 2)
+}
+
+function getFullScheduleData(schedule: AdminScheduleResponse) {
+  return {
+    id: schedule.id,
+    name: schedule.name,
+    description: schedule.description,
+    serverName: schedule.serverName,
+    cron: schedule.cron,
+    nextRun: schedule.nextRun,
+    lastRun: schedule.lastRun,
+    enabled: schedule.enabled,
+    type: schedule.type,
+  }
+}
+
+async function copyJson(schedule: AdminScheduleResponse) {
+  const json = formatJson(getFullScheduleData(schedule))
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(json)
+    } else {
+      const textArea = document.createElement('textarea')
+      textArea.value = json
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+    toast.add({
+      title: 'Copied to clipboard',
+      description: 'Schedule JSON has been copied.',
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Failed to copy',
+      description: error instanceof Error ? error.message : 'Unable to copy to clipboard.',
+      color: 'error',
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -29,50 +118,86 @@ function statusColor(enabled: boolean) {
           <UCard :ui="{ body: 'space-y-3' }">
             <template #header>
               <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold">Schedules</h2>
-                <UBadge :color="schedulesPending ? 'neutral' : 'primary'" variant="outline">
-                  {{ schedulesPending ? 'Loading…' : `${schedules.length} found` }}
-                </UBadge>
+                <div class="space-y-1">
+                  <h2 class="text-lg font-semibold">Schedules</h2>
+                  <p class="text-xs text-muted-foreground">
+                    Showing {{ schedules.length }} schedule{{ schedules.length !== 1 ? 's' : '' }}
+                  </p>
+                </div>
+                <UBadge v-if="schedulesPending" color="primary" variant="soft">Loading</UBadge>
               </div>
             </template>
 
-            <div class="overflow-hidden rounded-lg border border-default">
-              <div
-                class="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <span class="col-span-3">Name</span>
-                <span class="col-span-3">Server</span>
-                <span class="col-span-2">Cron</span>
-                <span class="col-span-2">Next run</span>
-                <span class="col-span-2">Last run</span>
-                <span class="col-span-1">Status</span>
+            <template v-if="schedulesPending && schedules.length === 0">
+              <div class="space-y-2">
+                <USkeleton v-for="i in 5" :key="`schedule-skeleton-${i}`" class="h-14 w-full" />
               </div>
-              <div v-if="schedulesPending" class="space-y-2 p-4">
-                <USkeleton v-for="i in 4" :key="i" class="h-10 w-full" />
-              </div>
-              <div v-else-if="schedulesError" class="p-4 text-sm text-destructive">
-                Failed to load schedules.
-              </div>
-              <div v-else-if="schedules.length === 0" class="p-4 text-sm text-muted-foreground">
-                No schedules found.
-              </div>
-              <div v-else class="divide-y divide-default">
-                <div v-for="schedule in schedules" :key="schedule.id" class="grid grid-cols-12 gap-2 px-4 py-3 text-sm">
-                  <div class="col-span-3 space-y-1">
-                    <p class="font-semibold">{{ schedule.name }}</p>
-                    <p class="text-xs text-muted-foreground">ID: {{ schedule.id }}</p>
-                  </div>
-                  <span class="col-span-3 text-xs text-muted-foreground">{{ schedule.serverName }}</span>
-                  <span class="col-span-2 text-xs text-muted-foreground">{{ schedule.cron }}</span>
-                  <span class="col-span-2 text-xs text-muted-foreground">{{ schedule.nextRun ?? 'N/A' }}</span>
-                  <span class="col-span-2 text-xs text-muted-foreground">{{ schedule.lastRun ?? 'Never' }}</span>
-                  <div class="col-span-1">
-                    <UBadge :color="statusColor(schedule.enabled)" size="xs">
-                      {{ schedule.enabled ? 'Active' : 'Paused' }}
-                    </UBadge>
+            </template>
+            <template v-else-if="schedulesError">
+              <UAlert color="error" icon="i-lucide-alert-triangle">
+                <template #title>Unable to load schedules</template>
+                <template #description>{{ schedulesError }}</template>
+              </UAlert>
+            </template>
+            <UEmpty
+              v-else-if="schedules.length === 0"
+              icon="i-lucide-calendar-clock"
+              title="No schedules found"
+              description="Panel automation schedules will appear here"
+              variant="subtle"
+            />
+            <template v-else>
+              <div class="space-y-3">
+                <div
+                  v-for="schedule in schedules"
+                  :key="schedule.id"
+                  class="rounded-lg border border-default overflow-hidden"
+                >
+                  <button
+                    class="w-full flex flex-col gap-2 p-3 text-left hover:bg-elevated/50 transition-colors md:flex-row md:items-center md:justify-between"
+                    @click="toggleEntry(schedule.id)"
+                  >
+                    <div class="flex-1 min-w-0 flex items-center gap-3">
+                      <UIcon
+                        :name="expandedEntries.has(schedule.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                        class="size-4 text-muted-foreground shrink-0"
+                      />
+                      <span class="text-sm text-muted-foreground">
+                        Server: <span class="font-medium text-foreground">{{ schedule.serverName }}</span>
+                      </span>
+                      <UBadge :color="statusColor(schedule.enabled)" size="xs">
+                        {{ schedule.enabled ? 'Active' : 'Paused' }}
+                      </UBadge>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground shrink-0">
+                      <span>
+                        Cron: <span class="font-medium text-foreground font-mono">{{ schedule.cron }}</span>
+                      </span>
+                    </div>
+                  </button>
+                  
+                  <div
+                    v-if="expandedEntries.has(schedule.id)"
+                    class="border-t border-default bg-muted/30 p-4"
+                  >
+                    <div class="space-y-2">
+                      <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Schedule Details</p>
+                        <UButton
+                          variant="ghost"
+                          size="xs"
+                          icon="i-lucide-copy"
+                          @click.stop="copyJson(schedule)"
+                        >
+                          Copy JSON
+                        </UButton>
+                      </div>
+                      <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullScheduleData(schedule)) }}</code></pre>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </template>
           </UCard>
         </section>
       </UContainer>

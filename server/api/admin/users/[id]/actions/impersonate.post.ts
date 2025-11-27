@@ -1,24 +1,12 @@
 import { createError, getRequestURL } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { randomBytes, createHash, randomUUID } from 'node:crypto'
+import { sql } from 'drizzle-orm'
+import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  const auth = getAuth()
-  
-  const session = await auth.api.getSession({
-    headers: event.req.headers,
-  })
-
-  if (!session?.user?.id) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
-
-  const userRole = (session.user as { role?: string }).role
-  if (userRole !== 'admin') {
-    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: 'Admin privileges required' })
-  }
+  const session = await requireAdmin(event)
 
   const userId = getRouterParam(event, 'id')
   if (!userId) {
@@ -50,12 +38,16 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const result = await auth.api.impersonateUser({
-      body: {
-        userId,
-      },
-      headers: event.req.headers,
-    })
+    const token = randomBytes(32).toString('base64url')
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+    const now = new Date()
+    const tokenId = randomUUID()
+
+    await db.run(sql`
+      INSERT INTO user_impersonation_tokens (id, user_id, issued_by, token_hash, expires_at, created_at)
+      VALUES (${tokenId}, ${userId}, ${session.user.id}, ${tokenHash}, ${expiresAt.getTime()}, ${now.getTime()})
+    `)
 
     await recordAuditEventFromRequest(event, {
       actor: session.user.email || session.user.id,
@@ -74,20 +66,15 @@ export default defineEventHandler(async (event) => {
 
     return {
       success: true,
-      impersonateUrl: `${baseUrl}/auth/impersonate?token=${result.token || ''}`,
-      expiresAt: result.expiresAt || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      impersonateUrl: `${baseUrl}/auth/impersonate?token=${token}`,
+      expiresAt: expiresAt.toISOString(),
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to impersonate user',
-      })
-    }
+    const message = error instanceof Error ? error.message : 'Failed to impersonate user'
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to impersonate user',
+      statusMessage: message,
     })
   }
 })

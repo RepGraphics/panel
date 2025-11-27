@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type {
-  AdminUserProfilePayload,
-  AdminUserServerSummary,
-  AdminUserApiKeySummary,
-} from '#shared/types/admin'
+import type { AdminUserProfilePayload, PaginatedServersResponse, PaginatedApiKeysResponse, PaginatedActivityResponse } from '#shared/types/admin'
 
 definePageMeta({
   auth: true,
@@ -24,8 +20,8 @@ const userId = computed(() => route.params.id as string)
 const { data, pending, error, refresh } = await useFetch<AdminUserProfilePayload>(
   () => `/api/admin/users/${userId.value}`,
   {
-    watch: [userId],
     immediate: true,
+    watch: [userId],
   },
 )
 
@@ -87,12 +83,44 @@ watch(error, (value) => {
 
 const profile = computed(() => data.value)
 const user = computed(() => profile.value?.user)
-const servers = computed<AdminUserServerSummary[]>(() => profile.value?.servers ?? [])
-const apiKeys = computed<AdminUserApiKeySummary[]>(() => profile.value?.apiKeys ?? [])
-const activity = computed(() => profile.value?.activity ?? [])
 
-const activeApiKeys = computed(() => apiKeys.value.filter(key => !key.expiresAt || new Date(key.expiresAt) > new Date()))
-const expiredApiKeys = computed(() => apiKeys.value.filter(key => key.expiresAt && new Date(key.expiresAt) <= new Date()))
+const { data: advancedSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/advanced', {
+  key: 'admin-settings-advanced',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => advancedSettings.value?.paginationLimit ?? 25)
+
+const { data: serversData } = await useFetch<PaginatedServersResponse>(
+  () => `/api/admin/users/${userId.value}/servers`,
+  {
+    key: `admin-user-servers-${userId.value}`,
+    query: computed(() => ({ page: 1, limit: 1 })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+  },
+)
+
+const { data: apiKeysData } = await useFetch<PaginatedApiKeysResponse>(
+  () => `/api/admin/users/${userId.value}/api-keys`,
+  {
+    key: `admin-user-api-keys-${userId.value}`,
+    query: computed(() => ({ page: 1, limit: 1 })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+  },
+)
+
+const { data: activityData } = await useFetch<PaginatedActivityResponse>(
+  () => `/api/admin/users/${userId.value}/activity`,
+  {
+    key: `admin-user-activity-${userId.value}`,
+    query: computed(() => ({ page: 1, limit: 1 })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+  },
+)
+
+const serversPagination = computed(() => serversData.value?.pagination)
+const apiKeysPagination = computed(() => apiKeysData.value?.pagination)
+const activityPagination = computed(() => activityData.value?.pagination)
+
 const isSuspended = computed(() => Boolean(user.value?.suspended))
 const hasTwoFactor = computed(() => Boolean(user.value?.twoFactorEnabled))
 const hasVerifiedEmail = computed(() => Boolean(user.value?.emailVerified))
@@ -104,14 +132,10 @@ const controlsOpen = ref(false)
 
 const tabItems = computed(() => [
   { label: 'Overview', value: 'overview', icon: 'i-lucide-layout-dashboard' },
-  { label: `Servers (${servers.value.length})`, value: 'servers', icon: 'i-lucide-server' },
-  { label: `API keys (${apiKeys.value.length})`, value: 'api-keys', icon: 'i-lucide-key' },
-  { label: `Activity (${activity.value.length})`, value: 'activity', icon: 'i-lucide-activity' },
+  { label: `Servers (${serversPagination.value?.total ?? 0})`, value: 'servers', icon: 'i-lucide-server' },
+  { label: `API keys (${apiKeysPagination.value?.total ?? 0})`, value: 'api-keys', icon: 'i-lucide-key' },
+  { label: `Activity (${activityPagination.value?.total ?? 0})`, value: 'activity', icon: 'i-lucide-activity' },
 ])
-
-function cleanMetadata(details: Record<string, unknown>) {
-  return Object.entries(details).filter(([, value]) => value !== null && value !== undefined && value !== '')
-}
 
 function formatDate(value: string | null | undefined) {
   if (!value)
@@ -367,24 +391,25 @@ async function impersonateUser() {
       <UContainer>
         <section class="space-y-6">
           <header class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 class="text-xl font-semibold">
-                <template v-if="user">
-                  {{ user.name || user.username }}
-                </template>
-                <template v-else>
-                  Loading user…
-                </template>
-              </h1>
-              <p class="text-xs text-muted-foreground">
-                Review account metadata, owned servers, and recent audit activity.
-              </p>
+            <div v-if="user">
+              <UUser
+                :name="user.name || user.username"
+                :description="user.email"
+                :avatar="(() => {
+                  const name = user.name || user.username || user.email
+                  if (!name) return undefined
+                  return {
+                    alt: name,
+                    text: name.slice(0, 2).toUpperCase(),
+                  }
+                })()"
+                size="lg"
+              />
+            </div>
+            <div v-else>
+              <h1 class="text-xl font-semibold">Loading user…</h1>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <UButton v-if="user" icon="i-lucide-rotate-ccw" variant="outline" color="neutral"
-                @click="() => refresh()">
-                Refresh
-              </UButton>
               <UButton
                 icon="i-lucide-sliders-horizontal"
                 color="warning"
@@ -562,269 +587,14 @@ async function impersonateUser() {
 
           <UTabs v-model="tab" variant="link" :items="tabItems" class="w-full" />
 
-          <div v-if="tab === 'overview'" class="space-y-4">
-            <UCard :ui="{ body: 'space-y-6' }">
-              <template #header>
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h2 class="text-lg font-semibold">Profile overview</h2>
-                    <p class="text-xs text-muted-foreground">Consolidated account metadata, status, and metrics.</p>
-                  </div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <UBadge v-if="user?.rootAdmin" size="sm" color="error" variant="soft" class="uppercase">Root admin</UBadge>
-                    <UBadge size="sm" color="primary" variant="soft" class="uppercase">{{ user?.role }}</UBadge>
-                    <UBadge v-if="isSuspended" size="sm" color="error" variant="solid" class="uppercase">Suspended</UBadge>
-                    <UBadge v-if="requiresPasswordReset" size="sm" color="warning" variant="soft" class="uppercase">Reset required</UBadge>
-                    <UBadge size="sm" :color="hasTwoFactor ? 'primary' : 'neutral'" variant="soft" class="uppercase">
-                      2FA {{ hasTwoFactor ? 'ON' : 'OFF' }}
-                    </UBadge>
-                  </div>
-                </div>
-              </template>
-
-              <div class="grid gap-4 md:grid-cols-2">
-                <dl class="space-y-3 text-sm">
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Username</dt>
-                    <dd class="font-medium">{{ user?.username }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Email</dt>
-                    <dd class="font-medium">{{ user?.email || 'No email provided' }}</dd>
-                  </div>
-                  <div v-if="user?.name" class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Display name</dt>
-                    <dd class="font-medium">{{ user.name }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Language</dt>
-                    <dd class="font-medium">{{ user?.language?.toUpperCase() }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Created</dt>
-                    <dd class="font-medium">{{ formatDate(user?.createdAt) }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Updated</dt>
-                    <dd class="font-medium">{{ formatDate(user?.updatedAt) }}</dd>
-                  </div>
-                </dl>
-
-                <dl class="space-y-3 text-sm">
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Two-factor</dt>
-                    <dd class="font-medium">{{ hasTwoFactor ? 'Enabled' : 'Disabled' }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Password reset required</dt>
-                    <dd class="font-medium">{{ requiresPasswordReset ? 'Yes' : 'No' }}</dd>
-                  </div>
-                  <div class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Account status</dt>
-                    <dd class="font-medium">{{ isSuspended ? 'Suspended' : 'Active' }}</dd>
-                  </div>
-                  <div v-if="user?.suspensionReason" class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Suspension reason</dt>
-                    <dd class="font-medium">{{ user.suspensionReason }}</dd>
-                  </div>
-                  <div v-if="user?.emailVerifiedAt" class="flex justify-between gap-3">
-                    <dt class="text-muted-foreground">Email verified at</dt>
-                    <dd class="font-medium">{{ formatDate(user.emailVerifiedAt) }}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <USeparator />
-
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <UCard variant="soft" :ui="{ body: 'p-3 space-y-1' }">
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground">Owned servers</p>
-                  <p class="text-sm font-semibold">{{ profile.stats.serverCount }}</p>
-                </UCard>
-                <UCard variant="soft" :ui="{ body: 'p-3 space-y-1' }">
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground">API keys</p>
-                  <p class="text-sm font-semibold">{{ profile.stats.apiKeyCount }}</p>
-                </UCard>
-                <UCard variant="soft" :ui="{ body: 'p-3 space-y-1' }">
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground">Email verified</p>
-                  <p class="text-sm font-semibold">{{ user?.emailVerified ? 'Yes' : 'No' }}</p>
-                </UCard>
-                <UCard variant="soft" :ui="{ body: 'p-3 space-y-1' }">
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground">Two-factor</p>
-                  <p class="text-sm font-semibold">{{ hasTwoFactor ? 'Enabled' : 'Disabled' }}</p>
-                </UCard>
-              </div>
-            </UCard>
-          </div>
-
-          <UCard v-else-if="tab === 'servers'" :ui="{ body: 'space-y-3' }">
-            <template #header>
-              <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold">Servers</h2>
-                <UBadge color="neutral" variant="soft" size="xs">{{ servers.length }} total</UBadge>
-              </div>
-            </template>
-
-            <UCard
-              v-if="servers.length === 0"
-              variant="subtle"
-              :ui="{ body: 'px-4 py-6 text-center space-y-2 text-sm text-muted-foreground' }"
-            >
-              This user does not own any servers.
-            </UCard>
-            <div v-else class="overflow-hidden rounded-md border border-default">
-              <table class="min-w-full divide-y divide-default text-sm">
-                <thead class="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th class="px-3 py-2 text-left">Server</th>
-                    <th class="px-3 py-2 text-left">Status</th>
-                    <th class="px-3 py-2 text-left">Node</th>
-                    <th class="px-3 py-2 text-left">Created</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="server in servers" :key="server.id">
-                    <td class="px-3 py-2">
-                      <div class="flex flex-col">
-                        <NuxtLink :to="`/admin/servers/${server.id}`" class="font-medium hover:text-primary">
-                          {{ server.name }}
-                        </NuxtLink>
-                        <span class="text-xs text-muted-foreground">{{ server.identifier }}</span>
-                      </div>
-                    </td>
-                    <td class="px-3 py-2">
-                      <UBadge v-if="server.suspended" size="xs" color="error" variant="soft">Suspended</UBadge>
-                      <span v-else class="text-xs text-muted-foreground">{{ server.status || 'Unknown' }}</span>
-                    </td>
-                    <td class="px-3 py-2 text-xs text-muted-foreground">
-                      {{ server.nodeName || 'Unassigned' }}
-                    </td>
-                    <td class="px-3 py-2 text-xs text-muted-foreground">{{ formatDate(server.createdAt) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </UCard>
-
-          <UCard v-else-if="tab === 'api-keys'" :ui="{ body: 'space-y-3' }">
-            <template #header>
-              <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold">API keys</h2>
-                <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{{ activeApiKeys.length }} active</span>
-                  <span v-if="expiredApiKeys.length">· {{ expiredApiKeys.length }} expired</span>
-                </div>
-              </div>
-            </template>
-
-            <UCard
-              v-if="apiKeys.length === 0"
-              variant="subtle"
-              :ui="{ body: 'px-4 py-6 text-center text-sm text-muted-foreground' }"
-            >
-              No API keys issued.
-            </UCard>
-            <div v-else class="space-y-4 text-sm">
-              <div v-if="activeApiKeys.length" class="space-y-3">
-                <p class="text-xs uppercase tracking-wide text-muted-foreground">Active keys</p>
-                <ul class="space-y-3">
-                  <UCard
-                    v-for="key in activeApiKeys"
-                    :key="key.id"
-                    as="li"
-                    variant="outline"
-                    :ui="{ body: 'space-y-3 px-3 py-3' }"
-                  >
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="font-mono text-sm break-all">{{ key.identifier }}</span>
-                      <span class="text-xs text-muted-foreground">Created {{ formatDate(key.createdAt) }}</span>
-                    </div>
-                    <p v-if="key.memo" class="text-xs text-muted-foreground">{{ key.memo }}</p>
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/80">
-                      <span v-if="key.lastUsedAt">Last used {{ formatDate(key.lastUsedAt) }}</span>
-                      <span v-if="key.expiresAt">Expires {{ formatDate(key.expiresAt) }}</span>
-                    </div>
-                  </UCard>
-                </ul>
-              </div>
-
-              <div v-if="expiredApiKeys.length" class="space-y-3">
-                <p class="text-xs uppercase tracking-wide text-muted-foreground">Expired keys</p>
-                <ul class="space-y-3">
-                  <UCard
-                    v-for="key in expiredApiKeys"
-                    :key="key.id"
-                    as="li"
-                    variant="outline"
-                    :ui="{ body: 'space-y-3 px-3 py-3 opacity-70' }"
-                  >
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="font-mono text-sm break-all">{{ key.identifier }}</span>
-                      <span class="text-xs text-muted-foreground">Expired {{ formatDate(key.expiresAt) }}</span>
-                    </div>
-                    <p v-if="key.memo" class="text-xs text-muted-foreground">{{ key.memo }}</p>
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/80">
-                      <span v-if="key.lastUsedAt">Last used {{ formatDate(key.lastUsedAt) }}</span>
-                      <span>Created {{ formatDate(key.createdAt) }}</span>
-                    </div>
-                  </UCard>
-                </ul>
-              </div>
-            </div>
-          </UCard>
-
-          <UCard v-else-if="tab === 'activity'" :ui="{ body: 'space-y-3' }">
-            <template #header>
-              <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold">Recent activity</h2>
-                <UBadge color="neutral" variant="soft" size="xs">{{ activity.length }}</UBadge>
-              </div>
-            </template>
-
-            <UCard
-              v-if="activity.length === 0"
-              variant="subtle"
-              :ui="{ body: 'px-4 py-6 text-center text-sm text-muted-foreground' }"
-            >
-              No audit events recorded for this user yet.
-            </UCard>
-            <ul v-else class="space-y-3">
-              <UCard
-                v-for="item in activity"
-                :key="item.id"
-                as="li"
-                variant="outline"
-                :ui="{ body: 'space-y-2 px-3 py-3 text-sm' }"
-              >
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p class="font-medium">{{ item.action }}</p>
-                    <p class="text-xs text-muted-foreground">{{ item.target }}</p>
-                  </div>
-                  <span class="text-xs text-muted-foreground">{{ formatDate(item.occurredAt) }}</span>
-                </div>
-
-                <dl
-                  v-if="cleanMetadata(item.details ?? {})?.length"
-                  class="grid gap-1 rounded-md bg-muted/30 p-2 text-xs text-muted-foreground"
-                >
-                  <div
-                    v-for="([label, value]) in cleanMetadata(item.details ?? {})"
-                    :key="label"
-                    class="flex flex-wrap items-center gap-2"
-                  >
-                    <dt class="font-medium uppercase tracking-wide">{{ label }}</dt>
-                    <dd class="flex-1 break-words text-muted-foreground">
-                      <code class="whitespace-pre-wrap">{{ String(value) }}</code>
-                    </dd>
-                  </div>
-                </dl>
-              </UCard>
-            </ul>
-          </UCard>
-          </div>
+          <AdminUserOverviewTab v-if="tab === 'overview'" :profile="profile" />
+          <AdminUserServersTab v-else-if="tab === 'servers'" :user-id="userId" :items-per-page="itemsPerPage" />
+          <AdminUserApiKeysTab v-else-if="tab === 'api-keys'" :user-id="userId" :items-per-page="itemsPerPage" />
+          <AdminUserActivityTab v-else-if="tab === 'activity'" :user-id="userId" :items-per-page="itemsPerPage" />
+        </div>
         </section>
       </UContainer>
     </UPageBody>
+
   </UPage>
 </template>

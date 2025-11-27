@@ -1,7 +1,6 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
 import { randomBytes } from 'node:crypto'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
@@ -55,7 +54,7 @@ export default defineEventHandler(async (event) => {
           email: user.email,
           redirectTo: resetBaseUrl,
         },
-        headers: event.req.headers,
+        headers: normalizeHeadersForAuth(event.node.req.headers),
       })
 
       await recordAuditEventFromRequest(event, {
@@ -77,14 +76,17 @@ export default defineEventHandler(async (event) => {
 
     const temporaryPassword = body.password?.trim() || randomBytes(9).toString('base64url')
     
-    await auth.api.setUserPassword({
-      body: {
-        userId,
-        newPassword: temporaryPassword,
-      },
-      headers: event.req.headers,
-    })
-
+    const bcrypt = await import('bcryptjs')
+    const hashedPassword = await bcrypt.default.hash(temporaryPassword, 10)
+    await db.update(tables.users)
+      .set({
+        password: hashedPassword,
+        passwordResetRequired: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.users.id, userId))
+      .run()
+    
     await db.update(tables.users)
       .set({
         passwordResetRequired: true,
@@ -112,15 +114,10 @@ export default defineEventHandler(async (event) => {
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to reset password',
-      })
-    }
+    const message = error instanceof Error ? error.message : 'Failed to reset password'
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to reset password',
+      statusMessage: message,
     })
   }
 })

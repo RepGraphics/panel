@@ -1,1 +1,0 @@
-ALTER TABLE `server_limits` ADD `swap` integer;

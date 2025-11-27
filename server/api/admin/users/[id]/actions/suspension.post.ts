@@ -1,6 +1,4 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
@@ -20,20 +18,29 @@ export default defineEventHandler(async (event) => {
     BODY_SIZE_LIMITS.SMALL,
   )
 
+  const db = useDrizzle()
+  const now = new Date()
+
   try {
-    const auth = getAuth()
-    
     if (body.action === 'ban') {
       const reason = (body.reason ?? '').trim()
+      const banExpires = body.banExpiresIn
+        ? new Date(Date.now() + body.banExpiresIn * 1000)
+        : null
       
-      await auth.api.banUser({
-        body: {
-          userId,
-          banReason: reason.length > 0 ? reason : undefined,
-          banExpiresIn: body.banExpiresIn || undefined,
-        },
-        headers: event.req.headers,
-      })
+      await db.update(tables.users)
+        .set({
+          banned: true,
+          banReason: reason.length > 0 ? reason : null,
+          banExpires: banExpires,
+          updatedAt: now,
+        })
+        .where(eq(tables.users.id, userId))
+        .run()
+
+      await db.delete(tables.sessions)
+        .where(eq(tables.sessions.userId, userId))
+        .run()
 
       await recordAuditEventFromRequest(event, {
         actor: session.user.email || session.user.id,
@@ -55,12 +62,15 @@ export default defineEventHandler(async (event) => {
     }
 
     if (body.action === 'unban') {
-      await auth.api.unbanUser({
-        body: {
-          userId,
-        },
-        headers: event.req.headers,
-      })
+      await db.update(tables.users)
+        .set({
+          banned: false,
+          banReason: null,
+          banExpires: null,
+          updatedAt: now,
+        })
+        .where(eq(tables.users.id, userId))
+        .run()
 
       await recordAuditEventFromRequest(event, {
         actor: session.user.email || session.user.id,
@@ -76,7 +86,6 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const db = useDrizzle()
     const existing = db
       .select({
         id: tables.users.id,
@@ -91,12 +100,10 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Not Found', message: 'User not found' })
     }
 
-    const now = new Date()
-
     if (body.action === 'suspend') {
       const reason = (body.reason ?? '').trim()
 
-      db.update(tables.users)
+      await db.update(tables.users)
         .set({
           suspended: true,
           suspendedAt: now,
@@ -106,12 +113,9 @@ export default defineEventHandler(async (event) => {
         .where(eq(tables.users.id, userId))
         .run()
 
-      await auth.api.revokeUserSessions({
-        body: {
-          userId,
-        },
-        headers: event.req.headers,
-      })
+      await db.delete(tables.sessions)
+        .where(eq(tables.sessions.userId, userId))
+        .run()
 
       await recordAuditEventFromRequest(event, {
         actor: session.user.email || session.user.id,
@@ -131,7 +135,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    db.update(tables.users)
+    await db.update(tables.users)
       .set({
         suspended: false,
         suspendedAt: null,
@@ -155,15 +159,10 @@ export default defineEventHandler(async (event) => {
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to perform action',
-      })
-    }
+    const message = error instanceof Error ? error.message : 'Failed to perform action'
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to perform action',
+      statusMessage: message,
     })
   }
 })

@@ -1,5 +1,6 @@
 import { getServerSession, getSessionUser  } from '~~/server/utils/session'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -28,6 +29,18 @@ export default defineEventHandler(async (event) => {
   if (!key) {
     throw createError({ statusCode: 404, statusMessage: 'SSH key not found' })
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: user.id,
+    actorType: 'user',
+    action: 'account.ssh_key.delete',
+    targetType: 'user',
+    targetId: id,
+    metadata: {
+      name: key.name,
+      fingerprint: key.fingerprint,
+    },
+  })
 
   db.delete(tables.sshKeys)
     .where(eq(tables.sshKeys.id, id))

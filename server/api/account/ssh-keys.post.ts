@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { getServerSession, getSessionUser  } from '~~/server/utils/session'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 function parseSSHPublicKey(publicKey: string): { fingerprint: string; valid: boolean } {
   try {
@@ -82,11 +83,11 @@ export default defineEventHandler(async (event) => {
   const now = Date.now()
   const keyId = randomUUID()
 
-  db.insert(tables.sshKeys)
+  await db.insert(tables.sshKeys)
     .values({
       id: keyId,
       userId: user.id,
-      name: body.name,
+      name: body.name.trim(),
       fingerprint,
       publicKey: body.public_key.trim(),
       createdAt: new Date(now),
@@ -99,6 +100,18 @@ export default defineEventHandler(async (event) => {
     .from(tables.sshKeys)
     .where(eq(tables.sshKeys.id, keyId))
     .get()
+
+  await recordAuditEventFromRequest(event, {
+    actor: user.id,
+    actorType: 'user',
+    action: 'account.ssh_key.create',
+    targetType: 'user',
+    targetId: keyId,
+    metadata: {
+      name: key!.name,
+      fingerprint: key!.fingerprint,
+    },
+  })
 
   return {
     data: {

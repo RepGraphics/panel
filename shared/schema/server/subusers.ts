@@ -4,8 +4,8 @@ export const createSubuserSchema = z.object({
   email: z
     .string()
     .trim()
-    .email('Enter a valid email address')
-    .max(191, 'Email must be under 191 characters'),
+    .max(191, 'Email must be under 191 characters')
+    .refine((val) => z.email().safeParse(val).success, 'Enter a valid email address'),
   permissions: z
     .array(z.string().trim().min(1, 'Permission cannot be empty'))
     .min(1, 'At least one permission is required')

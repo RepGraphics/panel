@@ -1,11 +1,11 @@
 import { createError, parseCookies } from 'h3'
-import { auth } from '~~/server/utils/auth'
+import { auth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import type { UserSessionSummary, AccountSessionsResponse } from '#shared/types/auth'
 import { parseUserAgent } from '~~/server/utils/user-agent'
 
 export default defineEventHandler(async (event): Promise<AccountSessionsResponse> => {
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {
@@ -13,7 +13,6 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
   }
 
   const db = useDrizzle()
-
   let metadataAvailable = true
   let rows: AccountSessionRow[]
 
@@ -66,9 +65,33 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
   const metadataUpserts: SessionMetadataUpsertInput[] = []
 
   const data: UserSessionSummary[] = rows.map((row) => {
-    const expiresDate = row.expires instanceof Date
-      ? row.expires
-      : new Date(row.expires)
+    // Drizzle's mode: 'timestamp' should return a Date object
+    // But Better Auth stores expires as seconds (Unix) in the database
+    let expiresDate: Date
+    
+    if (row.expires instanceof Date) {
+      expiresDate = row.expires
+    }
+    else if (typeof row.expires === 'number') {
+      const timestampStr = String(row.expires)
+      
+      if (timestampStr.length <= 10) {
+        expiresDate = new Date(row.expires * 1000)
+      }
+      else {
+        expiresDate = new Date(row.expires)
+      }
+    }
+    else {
+      const parsedDate = new Date(row.expires)
+      expiresDate = !isNaN(parsedDate.getTime()) ? parsedDate : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+    }
+    
+    const year = expiresDate.getFullYear()
+    if (isNaN(year) || year < 2000 || year > 2100) {
+      console.warn(`Invalid expires date year: ${year} for token ${row.sessionToken.substring(0, 8)}..., using default`)
+      expiresDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+    }
 
     const isCurrent = row.sessionToken === currentToken
 

@@ -9,8 +9,8 @@ const usernameSchema = z
 const emailSchema = z
   .string()
   .trim()
-  .email("Enter a valid email address")
-  .max(191, "Email must be under 191 characters");
+  .max(191, "Email must be under 191 characters")
+  .refine((val) => z.email().safeParse(val).success, "Enter a valid email address");
 
 const currentPasswordSchema = z
   .string()
@@ -38,7 +38,7 @@ export const accountProfileUpdateSchema = accountProfileBaseSchema.superRefine(
   (data, ctx) => {
     if (data.username === undefined && data.email === undefined) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Provide username or email to update",
         path: ["username"],
       });
@@ -64,7 +64,7 @@ function validateAccountPassword(
 ) {
   if (data.newPassword === data.currentPassword) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["newPassword"],
       message: "New password must be different from current password",
     });
@@ -75,7 +75,7 @@ function validateAccountPassword(
     data.newPassword !== data.confirmPassword
   ) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["confirmPassword"],
       message: "Passwords do not match",
     });
@@ -115,7 +115,7 @@ function validateForcedPassword(
     data.newPassword !== data.confirmPassword
   ) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["confirmPassword"],
       message: "Passwords do not match",
     });
@@ -134,13 +134,13 @@ const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[
 const ipValidator = z.string().regex(ipRegex, 'Invalid IP address format')
 
 export const createApiKeySchema = z.object({
-  memo: z.string().min(1, 'Description is required').max(500, 'Description too long'),
-  allowedIps: z.array(ipValidator).optional(),
-  expiresAt: z.string().datetime().optional(),
+  memo: z.string().max(500, 'Description too long').nullable().optional(),
+  allowedIps: z.array(ipValidator).nullable().optional(),
+  expiresAt: z.iso.datetime().nullable().optional(),
 })
 
 export const updateEmailSchema = z.object({
-  email: z.string().email('Invalid email'),
+  email: z.email('Invalid email'),
   password: z.string().min(1, 'Password is required'),
 })
 
@@ -173,7 +173,7 @@ function validatePasswordReset(
 ) {
   if (data.password !== data.confirmPassword) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ['confirmPassword'],
       message: 'Passwords do not match',
     })

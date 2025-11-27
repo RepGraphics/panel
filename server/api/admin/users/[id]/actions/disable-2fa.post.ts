@@ -1,13 +1,10 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { requireAdmin } from '~~/server/utils/security'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
-  const auth = getAuth()
 
   const userId = getRouterParam(event, 'id')
   if (!userId) {
@@ -31,17 +28,18 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    await auth.api.adminUpdateUser({
-      body: {
-        userId,
-        data: {
-          twoFactorEnabled: false,
-        },
-      },
-      headers: event.req.headers,
-    })
+    await db.update(tables.users)
+      .set({
+        twoFactorEnabled: false,
+        useTotp: false,
+        totpSecret: null,
+        totpAuthenticatedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.users.id, userId))
+      .run()
 
-    db.delete(tables.twoFactor)
+    await db.delete(tables.twoFactor)
       .where(eq(tables.twoFactor.userId, userId))
       .run()
 
@@ -61,15 +59,10 @@ export default defineEventHandler(async (event) => {
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to disable 2FA',
-      })
-    }
+    const message = error instanceof Error ? error.message : 'Failed to disable 2FA'
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to disable 2FA',
+      statusMessage: message,
     })
   }
 })

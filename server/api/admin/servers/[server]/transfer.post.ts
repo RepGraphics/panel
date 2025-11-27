@@ -1,7 +1,8 @@
+import { createError } from 'h3'
+import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
 import { initiateServerTransfer } from '~~/server/utils/transfers/initiate'
 import { requireAdminPermission } from '~~/server/utils/permission-middleware'
 import { serverTransferSchema } from '~~/shared/schema/admin/server'
-import { validateBody } from '~~/server/utils/validation'
 
 export default defineEventHandler(async (event) => {
   const serverId = getRouterParam(event, 'server')
@@ -14,7 +15,11 @@ export default defineEventHandler(async (event) => {
 
   await requireAdminPermission(event)
 
-  const body = await validateBody(event, serverTransferSchema)
+  const body = await readValidatedBodyWithLimit(
+    event,
+    serverTransferSchema,
+    BODY_SIZE_LIMITS.MEDIUM,
+  )
   const { nodeId: targetNodeId, allocationId, additionalAllocationIds, startOnCompletion } = body
 
   try {

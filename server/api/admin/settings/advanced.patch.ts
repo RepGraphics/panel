@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
     { key: 'sessionTimeoutMinutes', target: SETTINGS_KEYS.SESSION_TIMEOUT_MINUTES, min: 5, max: 1440 },
     { key: 'queueConcurrency', target: SETTINGS_KEYS.QUEUE_CONCURRENCY, min: 1, max: 32 },
     { key: 'queueRetryLimit', target: SETTINGS_KEYS.QUEUE_RETRY_LIMIT, min: 1, max: 50 },
+    { key: 'paginationLimit', target: SETTINGS_KEYS.PAGINATION_LIMIT, min: 10, max: 100 },
   ]
 
   for (const field of numericFields) {

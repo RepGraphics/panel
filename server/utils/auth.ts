@@ -1,12 +1,13 @@
 import { betterAuth } from 'better-auth/minimal'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { username, twoFactor, customSession, apiKey, bearer, haveIBeenPwned, admin, jwt } from 'better-auth/plugins'
+import { username, twoFactor, customSession, apiKey, bearer, haveIBeenPwned, admin, multiSession } from 'better-auth/plugins'
 import { createAuthMiddleware } from 'better-auth/api'
 import type { AuthContext } from '@better-auth/core'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import type { Role } from '#shared/types/auth'
 import bcrypt from 'bcryptjs'
 import { parseUserAgent } from '~~/server/utils/user-agent'
+import { createHash } from 'node:crypto'
 
 let authInstance: ReturnType<typeof betterAuth> | null = null
 
@@ -22,6 +23,58 @@ const ADMIN_PANEL_PERMISSIONS = [
   'admin.settings.read',
 ]
 
+/**
+ * Checks if a password is compromised using Have I Been Pwned API
+ * Runs asynchronously and doesn't block the calling function
+ */
+export async function checkPasswordCompromised(userId: string, password: string): Promise<void> {
+  try {
+    const sha1Hash = createHash('sha1').update(password, 'utf8').digest('hex').toUpperCase()
+    const prefix = sha1Hash.substring(0, 5)
+    const suffix = sha1Hash.substring(5)
+
+    console.log(`[Password Check] Checking password for user ${userId}, prefix: ${prefix}`)
+
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+      headers: {
+        'User-Agent': 'XyraPanel',
+      },
+    })
+
+    if (!response.ok) {
+      console.warn(`[Password Check] API returned ${response.status} for user ${userId}`)
+      return
+    }
+
+    const data = await response.text()
+    // HIBP returns lines like "SUFFIX:COUNT\r\n", handle both \r\n and \n
+    const lines = data.split(/\r?\n/).filter(line => line.trim().length > 0)
+    const hashes = lines.map(line => {
+      const trimmed = line.trim()
+      const colonIndex = trimmed.indexOf(':')
+      return colonIndex > 0 ? trimmed.substring(0, colonIndex) : trimmed
+    }).filter(Boolean)
+    
+    const isCompromised = hashes.includes(suffix)
+    
+    console.log(`[Password Check] User ${userId} - Password compromised: ${isCompromised} (checked ${hashes.length} hashes)`)
+
+    const db = useDrizzle()
+    await db.update(tables.users)
+      .set({
+        passwordCompromised: isCompromised,
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.users.id, userId))
+      .run()
+    
+    console.log(`[Password Check] Updated user ${userId} passwordCompromised flag to ${isCompromised}`)
+  }
+  catch (error) {
+    console.error(`[Password Check] Failed to check password compromise status for user ${userId}:`, error)
+  }
+}
+
 async function getUserPermissionsAndRole(userId: string) {
   const db = useDrizzle()
   const dbUser = db
@@ -30,6 +83,7 @@ async function getUserPermissionsAndRole(userId: string) {
       role: tables.users.role,
       rootAdmin: tables.users.rootAdmin,
       passwordResetRequired: tables.users.passwordResetRequired,
+      passwordCompromised: tables.users.passwordCompromised,
       nameFirst: tables.users.nameFirst,
       nameLast: tables.users.nameLast,
     })
@@ -48,6 +102,7 @@ async function getUserPermissionsAndRole(userId: string) {
     role: derivedRole,
     permissions,
     passwordResetRequired: Boolean(dbUser.passwordResetRequired),
+    passwordCompromised: Boolean(dbUser.passwordCompromised),
   }
 }
 
@@ -93,7 +148,7 @@ function createAuth() {
       .split(',')
       .map(origin => origin.trim())
       .filter(Boolean)
-      .filter(origin => !trustedOrigins.includes(origin)) // Avoid duplicates
+      .filter(origin => !trustedOrigins.includes(origin)) 
     trustedOrigins.push(...additionalOrigins)
   }
   
@@ -196,8 +251,37 @@ function createAuth() {
         hash: async (password: string) => {
           return await bcrypt.hash(password, 10)
         },
-        verify: async ({ hash, password }: { hash: string; password: string }) => {
-          return await bcrypt.compare(password, hash)
+        verify: async ({ hash, password, userId }: { hash: string; password: string; userId?: string }) => {
+          const isValid = await bcrypt.compare(password, hash)
+          
+          if (isValid && userId) {
+            checkPasswordCompromised(userId, password).catch((err) => {
+              console.error('Background password compromise check failed:', err)
+            })
+          }
+          else if (isValid) {
+            Promise.resolve().then(async () => {
+              try {
+                const db = useDrizzle()
+                const user = db
+                  .select({ id: tables.users.id })
+                  .from(tables.users)
+                  .where(eq(tables.users.password, hash))
+                  .get()
+                
+                if (user?.id) {
+                  await checkPasswordCompromised(user.id, password)
+                }
+              }
+              catch (err) {
+                console.error('Background password compromise check failed:', err)
+              }
+            }).catch(() => {
+              // Ignore
+            })
+          }
+          
+          return isValid
         },
       },
       sendResetPassword: async ({ user, token }, _request) => {
@@ -213,7 +297,10 @@ function createAuth() {
           .run()
         
         await db.update(tables.users)
-          .set({ passwordResetRequired: false })
+          .set({ 
+            passwordResetRequired: false,
+            passwordCompromised: false,
+          })
           .where(eq(tables.users.id, user.id))
           .run()
       },
@@ -294,7 +381,7 @@ function createAuth() {
       defaultCookieAttributes: {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'lax', // 'lax' is recommended for auth cookies; 'strict' can break legitimate flows
+        sameSite: 'lax', // strict can break flows
       },
     },
     onAPIError: {
@@ -353,6 +440,22 @@ function createAuth() {
             catch (err) {
               console.error('Failed to track session metadata:', err)
             }
+
+            if (ctx.path.startsWith('/sign-in') && newSession.user?.id) {
+              try {
+                const requestBody = (ctx as { body?: { password?: string } }).body
+                const password = requestBody?.password
+
+                if (password) {
+                  checkPasswordCompromised(newSession.user.id, password).catch((err) => {
+                    console.error('Failed to check password compromise status:', err)
+                  })
+                }
+              }
+              catch (err) {
+                console.error('Error checking password compromise:', err)
+              }
+            }
           }
         }
       }),
@@ -375,14 +478,15 @@ function createAuth() {
         defaultBanReason: 'No reason provided',
         bannedUserMessage: 'You have been banned from this application. Please contact support if you believe this is an error.',
       }),
-      jwt({
-      }),
       apiKey({
         enableSessionForAPIKeys: false,
         apiKeyHeaders: ['x-api-key', 'authorization'],
         enableMetadata: true,
       }),
       bearer(),
+      multiSession({
+        maximumSessions: 5,
+      }),
       customSession(async ({ user, session }) => {
         if (!user?.id) {
           return { user, session }
@@ -414,6 +518,7 @@ function createAuth() {
             role: userData.role,
             permissions: userData.permissions,
             passwordResetRequired: userData.passwordResetRequired,
+            passwordCompromised: userData.passwordCompromised,
             name,
           },
           session,
@@ -431,3 +536,26 @@ export function getAuth() {
 }
 
 export const auth = getAuth()
+
+/**
+ * Normalizes H3 event headers to a format compatible with Better Auth API.
+ * Converts header arrays to single strings and ensures all headers are strings.
+ * 
+ * @param headers - Headers from H3 event (event.node.req.headers)
+ * @returns Record<string, string> - Normalized headers object
+ * 
+ * @example
+ * ```ts
+ * const headers = normalizeHeadersForAuth(event.node.req.headers)
+ * const session = await auth.api.getSession({ headers })
+ * ```
+ */
+export function normalizeHeadersForAuth(headers: Record<string, string | string[] | undefined>): Record<string, string> {
+  const normalized: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    if (value) {
+      normalized[key] = Array.isArray(value) ? value[0]! : value
+    }
+  }
+  return normalized
+}

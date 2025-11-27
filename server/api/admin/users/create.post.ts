@@ -1,15 +1,13 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
-import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
-import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
-import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { randomUUID } from 'node:crypto'
+import bcrypt from 'bcryptjs'
+import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
+import { useDrizzle, tables, eq, or } from '~~/server/utils/drizzle'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { createUserSchema } from '~~/shared/schema/admin/users'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
-  const auth = getAuth()
 
   const body = await readValidatedBodyWithLimit(event, createUserSchema, BODY_SIZE_LIMITS.SMALL)
   const { username, email, password, nameFirst, nameLast, language, rootAdmin, role } = body
@@ -22,46 +20,77 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (!username) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Bad Request',
+      message: 'Username is required',
+    })
+  }
+
   const finalPassword = password || randomUUID()
+  const db = useDrizzle()
+
+  const existingUser = db
+    .select({ id: tables.users.id })
+    .from(tables.users)
+    .where(
+      or(
+        eq(tables.users.username, username),
+        eq(tables.users.email, email),
+      )
+    )
+    .get()
+
+  if (existingUser) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Conflict',
+      message: 'Username or email already exists',
+    })
+  }
 
   try {
-    const newUser = await auth.api.createUser({
-      body: {
-        email,
-        password: finalPassword,
-        name: nameFirst || nameLast ? `${nameFirst || ''} ${nameLast || ''}`.trim() : username || undefined,
-        role: role || (rootAdmin === true || rootAdmin === 'true' ? 'admin' : 'user'),
-        data: {
-          username,
-          nameFirst: nameFirst || null,
-          nameLast: nameLast || null,
-          language: language || 'en',
-          rootAdmin: rootAdmin === true || rootAdmin === 'true',
-        },
-      },
-      headers: event.req.headers,
-    })
+    const hashedPassword = await bcrypt.hash(finalPassword, 10)
+    const userId = randomUUID()
+    const now = new Date()
+    const normalizedRole = role || (rootAdmin === true || rootAdmin === 'true' ? 'admin' : 'user')
 
-    if (username || nameFirst || nameLast || language || rootAdmin) {
-      const db = useDrizzle()
-      await db.update(tables.users)
-        .set({
-          ...(username && { username }),
-          ...(nameFirst !== undefined && { nameFirst: nameFirst || null }),
-          ...(nameLast !== undefined && { nameLast: nameLast || null }),
-          ...(language && { language }),
-          ...(rootAdmin !== undefined && { rootAdmin: rootAdmin === true || rootAdmin === 'true' }),
-        })
-        .where(eq(tables.users.id, newUser.id))
-        .run()
-    }
+    await db.insert(tables.users)
+      .values({
+        id: userId,
+        username,
+        email,
+        password: hashedPassword,
+        nameFirst: nameFirst || null,
+        nameLast: nameLast || null,
+        language: language || 'en',
+        rootAdmin: rootAdmin === true || rootAdmin === 'true',
+        role: normalizedRole,
+        emailVerified: null,
+        image: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const newUser = db
+      .select({
+        id: tables.users.id,
+        username: tables.users.username,
+        email: tables.users.email,
+        role: tables.users.role,
+      })
+      .from(tables.users)
+      .where(eq(tables.users.id, userId))
+      .get()
 
     await recordAuditEventFromRequest(event, {
       actor: session.user.email || session.user.id,
       actorType: 'user',
       action: 'admin.user.created',
       targetType: 'user',
-      targetId: newUser.id,
+      targetId: userId,
       metadata: {
         username,
         email,
@@ -70,20 +99,20 @@ export default defineEventHandler(async (event) => {
     })
 
     return {
-      user: newUser,
+      user: newUser || {
+        id: userId,
+        username,
+        email,
+        role: normalizedRole,
+      },
       generatedPassword: password ? undefined : finalPassword,
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to create user',
-      })
-    }
+    const message = error instanceof Error ? error.message : 'Failed to create user'
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to create user',
+      statusMessage: message,
     })
   }
 })

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const createUserSchema = z.object({
   username: z.string().min(1).max(255).optional(),
-  email: z.string().email().min(1).max(255),
+  email: z.string().min(1).max(255).refine((val) => z.email().safeParse(val).success, 'Invalid email format'),
   password: z.string().min(8).max(255).optional(),
   name: z.string().min(1).max(255).optional(),
   nameFirst: z.string().max(255).optional(),
@@ -13,7 +13,7 @@ export const createUserSchema = z.object({
 })
 
 export const updateUserSchema = z.object({
-  email: z.string().email().optional(),
+  email: z.email().optional(),
   username: z.string().min(1).max(255).optional(),
   name: z.string().min(1).max(255).optional(),
   password: z.string().min(8).optional(),

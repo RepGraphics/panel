@@ -1,16 +1,20 @@
-import { getServerSession, getSessionUser  } from '~~/server/utils/session'
+import { createError } from 'h3'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import bcrypt from 'bcryptjs'
-import { log2FA, getRequestMetadata } from '~~/server/utils/activity'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
-  const sessionUser = getSessionUser(session)
+  const auth = getAuth()
+  
+  const session = await auth.api.getSession({
+    headers: normalizeHeadersForAuth(event.node.req.headers),
+  })
 
-  if (!sessionUser) {
+  if (!session?.user?.id) {
     throw createError({
       statusCode: 401,
-      message: 'Unauthorized',
+      statusMessage: 'Unauthorized',
     })
   }
 
@@ -20,12 +24,12 @@ export default defineEventHandler(async (event) => {
   if (!password) {
     throw createError({
       statusCode: 400,
-      message: 'Password is required to disable 2FA',
+      statusMessage: 'Password is required to disable 2FA',
     })
   }
 
-  const userId = sessionUser.id
   const db = useDrizzle()
+  const userId = session.user.id
 
   const user = db
     .select({
@@ -39,14 +43,7 @@ export default defineEventHandler(async (event) => {
   if (!user) {
     throw createError({
       statusCode: 404,
-      message: 'User not found',
-    })
-  }
-
-  if (!user.useTotp) {
-    throw createError({
-      statusCode: 400,
-      message: '2FA is not enabled',
+      statusMessage: 'User not found',
     })
   }
 
@@ -54,29 +51,50 @@ export default defineEventHandler(async (event) => {
   if (!isValidPassword) {
     throw createError({
       statusCode: 401,
-      message: 'Invalid password',
+      statusMessage: 'Invalid password',
     })
   }
 
-  const now = new Date()
-  db.update(tables.users)
-    .set({
-      useTotp: false,
-      totpSecret: null,
-      totpAuthenticatedAt: null,
-      updatedAt: now,
+  if (!user.useTotp) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: '2FA is not enabled for this account',
     })
-    .where(eq(tables.users.id, userId))
-    .run()
+  }
 
-  db.delete(tables.recoveryTokens)
-    .where(eq(tables.recoveryTokens.userId, userId))
-    .run()
+  try {
+    db.update(tables.users)
+      .set({
+        useTotp: false,
+        totpSecret: null,
+        totpAuthenticatedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tables.users.id, userId))
+      .run()
 
-  log2FA(userId, 'auth.2fa.disabled', getRequestMetadata(event))
+    db.delete(tables.twoFactor)
+      .where(eq(tables.twoFactor.userId, userId))
+      .run()
 
-  return {
-    success: true,
-    message: '2FA disabled successfully',
+    await recordAuditEventFromRequest(event, {
+      actor: session.user.email || session.user.id,
+      actorType: 'user',
+      action: 'auth.2fa.disabled',
+      targetType: 'user',
+      targetId: userId,
+    })
+
+    return {
+      success: true,
+      message: '2FA disabled successfully',
+    }
+  }
+  catch (error) {
+    console.error('Failed to disable 2FA:', error)
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to disable 2FA',
+    })
   }
 })

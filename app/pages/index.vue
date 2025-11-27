@@ -47,66 +47,6 @@
           </div>
         </section>
 
-        <section>
-          <UCard :ui="{ body: 'space-y-4' }">
-            <template #header>
-              <div class="flex items-center justify-between">
-                <div>
-                  <h2 class="text-lg font-semibold">Recent account activity</h2>
-                  <p class="text-sm text-muted-foreground">Latest actions taken on your account.</p>
-                </div>
-              </div>
-            </template>
-
-            <div class="space-y-3">
-              <template v-if="loading">
-                <div v-for="i in 3" :key="`activity-skeleton-${i}`" class="flex gap-3">
-                  <USkeleton class="h-10 w-10 rounded-md" />
-                  <div class="flex-1 space-y-2">
-                    <USkeleton class="h-3 w-3/4" />
-                    <USkeleton class="h-3 w-2/3" />
-                    <USkeleton class="h-3 w-1/3" />
-                  </div>
-                </div>
-              </template>
-              <template v-else-if="error">
-                <UAlert color="error" icon="i-lucide-alert-circle" :title="error" />
-              </template>
-              <template v-else-if="activity.length === 0">
-                <UAlert
-                  variant="subtle"
-                  icon="i-lucide-info"
-                  title="No recent activity"
-                  description="Your account activity will appear here"
-                />
-              </template>
-              <template v-else>
-                <div
-                  v-for="item in activity.slice(0, 5)"
-                  :key="item.id"
-                  class="flex items-start gap-3 rounded-lg border border-default p-3 transition-colors hover:bg-elevated/50"
-                >
-                  <div class="flex size-9 items-center justify-center rounded-md text-primary">
-                    <UIcon :name="item.icon" class="size-5" />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-2">
-                      <h3 class="text-sm font-medium truncate">{{ item.title }}</h3>
-                      <NuxtTime
-                        v-if="item.occurredAt"
-                        :datetime="item.occurredAt"
-                        relative
-                        class="text-xs text-muted-foreground shrink-0"
-                      />
-                      <span v-else class="text-xs text-muted-foreground shrink-0">Unknown</span>
-                    </div>
-                    <p class="text-xs text-muted-foreground line-clamp-2">{{ item.description || 'No additional details' }}</p>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </UCard>
-        </section>
       </UContainer>
     </UPageBody>
   </UPage>
@@ -115,22 +55,23 @@
 <script setup lang="ts">
 import { computed, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
+import { authClient } from '~/utils/auth-client'
 
 import type { ButtonProps } from '#ui/types'
 
 import type {
   ClientDashboardMetric,
-  ClientDashboardActivity,
   ClientDashboardResponse,
   MeResponse,
   DashboardData,
 } from '#shared/types/dashboard'
 import type { AccountSessionsResponse } from '#shared/types/auth'
-import type { AccountActivityResponse } from '#shared/types/account'
 
 definePageMeta({
   auth: true,
 })
+
+const { data: session } = await authClient.useSession(useFetch)
 
 const headerLinks: ButtonProps[] = [
   {
@@ -169,13 +110,9 @@ const {
   refresh: refreshSessions,
 } = await useFetch<AccountSessionsResponse>('/api/account/sessions', { key: 'dashboard-sessions' })
 
-const {
-  data: accountActivityResponse,
-  refresh: refreshActivity,
-} = await useFetch<AccountActivityResponse>('/api/account/activity', { key: 'dashboard-activity' })
 
 const dashboardData = computed<DashboardData | null>(() => {
-  if (!meData.value || !dashboardResponse.value || !sessionsResponse.value || !accountActivityResponse.value) {
+  if (!meData.value || !dashboardResponse.value || !sessionsResponse.value) {
     return null
   }
 
@@ -205,53 +142,18 @@ const dashboardData = computed<DashboardData | null>(() => {
   }
 
   const meUser = meData.value?.user || null
-  
-  const accountActivity: ClientDashboardActivity[] = (accountActivityResponse.value.data || []).slice(0, 5).map((item) => {
-      let icon = 'i-lucide-activity'
-      const actionLower = item.action.toLowerCase()
-      if (actionLower.includes('backup')) icon = 'i-lucide-archive-restore'
-      else if (actionLower.includes('install') || actionLower.includes('deploy')) icon = 'i-lucide-rocket'
-      else if (actionLower.includes('restart') || actionLower.includes('power')) icon = 'i-lucide-power'
-      else if (actionLower.includes('node')) icon = 'i-lucide-hard-drive'
-      else if (actionLower.includes('schedule')) icon = 'i-lucide-calendar-clock'
-      else if (actionLower.includes('user') || actionLower.includes('team')) icon = 'i-lucide-users'
-      else if (actionLower.includes('sign') || actionLower.includes('login') || actionLower.includes('auth')) icon = 'i-lucide-log-in'
-      else if (actionLower.includes('password') || actionLower.includes('security')) icon = 'i-lucide-lock'
-      else if (actionLower.includes('email') || actionLower.includes('verify')) icon = 'i-lucide-mail'
-      
-      const metadata = item.metadata
-      const serverUuid = metadata && typeof metadata === 'object' && 'serverUuid' in metadata
-        ? String(metadata.serverUuid)
-        : undefined
-      const nodeId = metadata && typeof metadata === 'object' && 'nodeId' in metadata
-        ? String(metadata.nodeId)
-        : undefined
-      
-      return {
-        id: item.id,
-        title: item.action,
-        description: item.target || 'No additional details',
-        occurredAt: item.occurredAt,
-        actor: item.actor,
-        icon,
-        serverUuid,
-        nodeId,
-        target: item.target,
-      }
-    })
     
   return {
     user: meUser,
     dashboard: {
       ...dashboardResponse.value,
       metrics,
-      activity: accountActivity,
     },
   }
 })
 
 const dashboardPending = computed(() => 
-  !meData.value || !dashboardResponse.value || !sessionsResponse.value || !accountActivityResponse.value
+  !meData.value || !dashboardResponse.value || !sessionsResponse.value
 )
 
 const refreshDashboard = async () => {
@@ -259,7 +161,6 @@ const refreshDashboard = async () => {
     refreshMe(),
     refreshDashboardData(),
     refreshSessions(),
-    refreshActivity(),
   ])
 }
 
@@ -278,7 +179,6 @@ watch(() => authStore.displayName, async (newDisplayName, oldDisplayName) => {
 }, { immediate: false })
 
 const metrics = computed<ClientDashboardMetric[]>(() => dashboardData.value?.dashboard.metrics ?? [])
-const activity = computed<ClientDashboardActivity[]>(() => dashboardData.value?.dashboard.activity ?? [])
 
 function toErrorMessage(err: unknown, fallback: string) {
   if (!err) {
@@ -307,6 +207,13 @@ const error = computed<string | null>(() => {
 })
 
 const userName = computed(() => {
+  const sessionUser = session.value?.user
+  if (sessionUser) {
+    if (sessionUser.username) return sessionUser.username
+    if (sessionUser.email) return sessionUser.email
+    if (sessionUser.name) return sessionUser.name
+  }
+  
   if (!authStore.isAuthenticated || !authStore.user) {
     return null
   }
@@ -339,7 +246,7 @@ const userName = computed(() => {
 })
 
 const welcomeTitle = computed(() => {
-  if (import.meta.client && userName.value) {
+  if (userName.value) {
     return `Welcome back, ${userName.value}`
   }
   return 'Welcome'

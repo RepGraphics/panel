@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { getServerSession } from '~~/server/utils/session'
-import { requireAdmin } from '~~/server/utils/api-helpers'
+import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { provisionServerOnWings } from '~~/server/utils/server-provisioning'
 

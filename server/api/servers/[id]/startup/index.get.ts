@@ -7,7 +7,7 @@ import { resolveSessionUser } from '~~/server/utils/auth/sessionUser'
 export default defineEventHandler(async (event) => {
   const identifier = event.context.params?.id
   
-  const contextAuth = (event.context as any).auth
+  const contextAuth = (event.context as { auth?: { session?: Awaited<ReturnType<typeof getServerSession>> } }).auth
   console.log('[Startup GET] Handler started:', {
     identifier,
     path: event.path,

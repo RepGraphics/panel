@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const { executeScheduledTask } = await import('../../../../../../utils/task-scheduler')
+    const { executeScheduledTask } = await import('~~/server/utils/task-scheduler')
 
     const tasks = await db
       .select()

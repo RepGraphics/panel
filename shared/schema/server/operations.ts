@@ -102,7 +102,7 @@ export const updateDockerImageSchema = z.object({
 })
 
 export const attachMountSchema = z.object({
-  mountId: z.string().uuid('Mount ID must be a valid UUID'),
+  mountId: z.uuid('Mount ID must be a valid UUID'),
 })
 
 export type UpdateDockerImageInput = z.infer<typeof updateDockerImageSchema>

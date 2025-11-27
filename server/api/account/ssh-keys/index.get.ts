@@ -13,9 +13,9 @@ export default defineEventHandler(async (event) => {
         id: key.id,
         name: key.name,
         fingerprint: key.fingerprint,
-        publicKey: `${key.publicKey.split(' ')[0]} ${key.publicKey.split(' ')[1].substring(0, 20)}...`,
-        createdAt: key.createdAt.toISOString(),
-        updatedAt: key.updatedAt.toISOString(),
+        public_key: key.publicKey,
+        created_at: key.createdAt.toISOString(),
+        updated_at: key.updatedAt.toISOString(),
       })),
     }
   } catch (error) {

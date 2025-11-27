@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type { FormSubmitEvent } from '@nuxt/ui'
+import type { FormSubmitEvent, TableColumn } from '@nuxt/ui'
 import type { Allocation } from '#shared/types/server'
 
 const props = defineProps<{
@@ -19,8 +19,8 @@ const pending = ref(false)
 async function loadAllocations() {
   pending.value = true
   try {
-    const response = await $fetch(`/api/admin/nodes/${props.nodeId}/allocations`) as any
-    allocationsData.value = response as { data: Allocation[] }
+    const response = await $fetch<{ data: Allocation[] }>(`/api/admin/nodes/${props.nodeId}/allocations`)
+    allocationsData.value = response
   } catch (error) {
     console.error('Failed to load allocations:', error)
     allocationsData.value = { data: [] }
@@ -222,7 +222,7 @@ async function deleteAllocation(allocation: Allocation) {
   }
 }
 
-const columns: any[] = [
+const columns: TableColumn[] = [
   { key: 'ip', label: 'IP Address' },
   { key: 'ipAlias', label: 'IP Alias' },
   { key: 'port', label: 'Port' },

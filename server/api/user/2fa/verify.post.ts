@@ -1,71 +1,69 @@
-import { getServerSession, getSessionUser  } from '~~/server/utils/session'
-import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
-import { verifyTotpToken } from '~~/server/utils/totp'
-import { log2FA, getRequestMetadata } from '~~/server/utils/activity'
+import { createError } from 'h3'
+import { APIError } from 'better-auth/api'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  const session = await getServerSession(event)
-  const user = getSessionUser(session)
+  const auth = getAuth()
+  
+  const session = await auth.api.getSession({
+    headers: normalizeHeadersForAuth(event.node.req.headers),
+  })
 
-  if (!user) {
+  if (!session?.user?.id) {
     throw createError({
       statusCode: 401,
-      message: 'Unauthorized',
+      statusMessage: 'Unauthorized',
     })
   }
 
   const body = await readBody(event)
-  const { token } = body
+  const { code } = body // Better Auth uses code not token
 
-  if (!token) {
+  if (!code) {
     throw createError({
       statusCode: 400,
-      message: 'Token is required',
+      statusMessage: 'TOTP code is required',
     })
   }
 
-  const userId = user.id
-  const db = useDrizzle()
-
-  const dbUser = db
-    .select({
-      totpSecret: tables.users.totpSecret,
-      useTotp: tables.users.useTotp,
+  try {
+    const api = auth.api as typeof auth.api & {
+      verifyTOTP: (options: {
+        body: { code: string }
+        headers: Record<string, string>
+      }) => Promise<unknown>
+    }
+    await api.verifyTOTP({
+      body: {
+        code,
+      },
+      headers: normalizeHeadersForAuth(event.node.req.headers),
     })
-    .from(tables.users)
-    .where(eq(tables.users.id, userId))
-    .get()
 
-  if (!dbUser?.totpSecret) {
-    throw createError({
-      statusCode: 400,
-      message: '2FA setup not initiated',
+    await recordAuditEventFromRequest(event, {
+      actor: session.user.email || session.user.id,
+      actorType: 'user',
+      action: 'auth.2fa.enabled',
+      targetType: 'user',
+      targetId: session.user.id,
     })
+
+    return {
+      success: true,
+      message: '2FA enabled successfully',
+    }
   }
-
-  const isValid = verifyTotpToken(token, dbUser.totpSecret)
-
-  if (!isValid) {
+  catch (error) {
+    if (error instanceof APIError) {
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: error.message || 'Invalid TOTP code',
+      })
+    }
     throw createError({
-      statusCode: 400,
-      message: 'Invalid token',
+      statusCode: 500,
+      statusMessage: 'Failed to verify TOTP code',
     })
-  }
-
-  const now = new Date()
-  db.update(tables.users)
-    .set({
-      useTotp: true,
-      totpAuthenticatedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(tables.users.id, userId))
-    .run()
-
-  log2FA(userId, 'auth.2fa.enabled', getRequestMetadata(event))
-
-  return {
-    success: true,
-    message: '2FA enabled successfully',
   }
 })

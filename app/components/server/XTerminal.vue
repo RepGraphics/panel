@@ -12,7 +12,7 @@ const terminalRef = ref<HTMLElement | null>(null)
 let terminal: Terminal | null = null
 let fitAddon: import('xterm-addon-fit').FitAddon | null = null
 let searchAddon: import('xterm-addon-search').SearchAddon | null = null
-let searchBarAddon: any = null
+let searchBarAddon: { dispose: () => void } | null = null
 let webLinksAddon: import('xterm-addon-web-links').WebLinksAddon | null = null
 let lastProcessedLogCount = 0
 
@@ -141,9 +141,16 @@ onMounted(async () => {
   
   try {
     const searchBarModule = await import('xterm-addon-search-bar')
-    const SearchAddonBar = (searchBarModule as any).SearchAddonBar || (searchBarModule as any).default?.SearchAddonBar || (searchBarModule as any).default
+    type SearchBarModule = {
+      SearchAddonBar?: new (options: { searchAddon: import('xterm-addon-search').SearchAddon }) => { dispose: () => void }
+      default?: {
+        SearchAddonBar?: new (options: { searchAddon: import('xterm-addon-search').SearchAddon }) => { dispose: () => void }
+      } | (new (options: { searchAddon: import('xterm-addon-search').SearchAddon }) => { dispose: () => void })
+    }
+    const module = searchBarModule as SearchBarModule
+    const SearchAddonBar = module.SearchAddonBar || (module.default && ('SearchAddonBar' in module.default ? module.default.SearchAddonBar : module.default as typeof module.default))
     if (SearchAddonBar) {
-      searchBarAddon = new SearchAddonBar({ searchAddon }) as any
+      searchBarAddon = new SearchAddonBar({ searchAddon })
       terminal.loadAddon(searchBarAddon)
     }
   } catch (e) {

@@ -1,5 +1,5 @@
 import { createError, readBody, type H3Event } from 'h3'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { createWingsNode, toWingsNodeSummary } from '~~/server/utils/wings/nodesStore'
 import { recordAuditEvent } from '~~/server/utils/audit'
 
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event: H3Event) => {
   const auth = getAuth()
   
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {

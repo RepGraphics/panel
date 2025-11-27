@@ -9,7 +9,7 @@ export const updateLocationSchema = createLocationSchema.partial()
 
 export const createNodeSchema = z.object({
   name: z.string().min(1).max(255),
-  locationId: z.string().uuid(),
+  locationId: z.uuid(),
   fqdn: z.string().min(1).max(255),
   scheme: z.enum(['http', 'https']).default('https'),
   behindProxy: z.boolean().default(false),
@@ -62,8 +62,8 @@ export const createMountSchema = z.object({
   target: z.string().min(1),
   readOnly: z.boolean().default(false),
   userMountable: z.boolean().default(false),
-  nodeIds: z.array(z.string().uuid()).optional(),
-  eggIds: z.array(z.string().uuid()).optional(),
+  nodeIds: z.array(z.uuid()).optional(),
+  eggIds: z.array(z.uuid()).optional(),
 })
 
 export const updateMountSchema = createMountSchema.partial()
@@ -76,7 +76,7 @@ export const createNestSchema = z.object({
 export const updateNestSchema = createNestSchema.partial()
 
 export const createEggSchema = z.object({
-  nestId: z.string().uuid(),
+  nestId: z.uuid(),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   dockerImage: z.string().min(1),

@@ -6,6 +6,9 @@ import type { Nest, Egg, EggVariable } from './nest'
 export interface AuditEventResponse extends BaseActivityEvent {
   target: string
   details: Record<string, unknown>
+  actorDisplay?: string
+  actorUserId?: string
+  actorEmail?: string
 }
 
 export interface AuditEventsPagination {
@@ -26,11 +29,26 @@ export type AdminActivityEntry = AuditEventResponse
 export interface AdminScheduleResponse {
   id: string
   name: string
+  description?: string
   serverName: string
   cron: string
   nextRun: string | null
   lastRun: string | null
   enabled: boolean
+  type?: 'wings' | 'nitro'
+}
+
+export interface NitroTasksResponse {
+  tasks: Record<string, { description?: string }>
+  scheduledTasks: Array<{ cron: string; tasks: string[] }>
+}
+
+export interface NitroTaskSchedule {
+  name: string
+  cron: string
+  description?: string
+  tasks: string[]
+  type: 'nitro'
 }
 
 export interface AdminSchedulesPayload {
@@ -39,6 +57,12 @@ export interface AdminSchedulesPayload {
 
 export interface AdminUsersPayload {
   data: AdminUserResponse[]
+  pagination?: {
+    page: number
+    perPage: number
+    total: number
+    totalPages: number
+  }
 }
 
 export interface AdminUserProfileUser {
@@ -82,6 +106,36 @@ export interface AdminUserApiKeySummary {
   expiresAt: string | null
 }
 
+export interface PaginatedServersResponse {
+  data: AdminUserServerSummary[]
+  pagination: {
+    page: number
+    perPage: number
+    total: number
+    totalPages: number
+  }
+}
+
+export interface PaginatedApiKeysResponse {
+  data: AdminUserApiKeySummary[]
+  pagination: {
+    page: number
+    perPage: number
+    total: number
+    totalPages: number
+  }
+}
+
+export interface PaginatedActivityResponse {
+  data: AdminActivityEntry[]
+  pagination: {
+    page: number
+    perPage: number
+    total: number
+    totalPages: number
+  }
+}
+
 export interface AdminUserProfilePayload {
   user: AdminUserProfileUser
   stats: {
@@ -91,6 +145,25 @@ export interface AdminUserProfilePayload {
   servers: AdminUserServerSummary[]
   apiKeys: AdminUserApiKeySummary[]
   activity: AdminActivityEntry[]
+  security: {
+    sessions: Array<{
+      sessionToken: string
+      expiresAt: string | null
+      ipAddress: string | null
+      lastSeenAt: string | null
+      userAgent: string | null
+    }>
+    lastLogin: string | null
+    lastLoginIp: string | null
+    uniqueIps: string[]
+    activeSessions: number
+    securityEvents: Array<{
+      id: string
+      occurredAt: string
+      action: string
+      details: Record<string, unknown>
+    }>
+  }
 }
 
 export interface AdminRemoteServerRow {
@@ -354,6 +427,7 @@ export interface AdvancedSettings {
   sessionTimeoutMinutes: number
   queueConcurrency: number
   queueRetryLimit: number
+  paginationLimit: number
 }
 
 export interface SecuritySettings {

@@ -25,16 +25,33 @@ CREATE TABLE `accounts` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `accounts_provider_provider_account_id_index` ON `accounts` (`provider`,`provider_account_id`);--> statement-breakpoint
+CREATE INDEX `accounts_user_id_index` ON `accounts` (`user_id`);--> statement-breakpoint
 CREATE TABLE `api_keys` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
+	`name` text,
+	`start` text,
+	`prefix` text,
+	`key` text NOT NULL,
 	`key_type` integer DEFAULT 1 NOT NULL,
-	`identifier` text(16) NOT NULL,
-	`token` text NOT NULL,
+	`identifier` text(16),
+	`token` text,
 	`allowed_ips` text,
 	`memo` text,
 	`last_used_at` integer,
 	`expires_at` integer,
+	`refill_interval` integer,
+	`refill_amount` integer,
+	`last_refill_at` integer,
+	`enabled` integer DEFAULT true NOT NULL,
+	`rate_limit_enabled` integer DEFAULT true NOT NULL,
+	`rate_limit_time_window` integer,
+	`rate_limit_max` integer,
+	`request_count` integer DEFAULT 0 NOT NULL,
+	`remaining` integer,
+	`last_request` integer,
+	`metadata` text,
+	`permissions` text,
 	`r_servers` integer DEFAULT 0 NOT NULL,
 	`r_nodes` integer DEFAULT 0 NOT NULL,
 	`r_allocations` integer DEFAULT 0 NOT NULL,
@@ -50,6 +67,8 @@ CREATE TABLE `api_keys` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `api_keys_identifier_unique` ON `api_keys` (`identifier`);--> statement-breakpoint
+CREATE INDEX `api_keys_user_id_index` ON `api_keys` (`user_id`);--> statement-breakpoint
+CREATE INDEX `api_keys_key_index` ON `api_keys` (`key`);--> statement-breakpoint
 CREATE TABLE `audit_events` (
 	`id` text PRIMARY KEY NOT NULL,
 	`occurred_at` integer NOT NULL,
@@ -63,6 +82,9 @@ CREATE TABLE `audit_events` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `audit_events_occurred_id` ON `audit_events` (`occurred_at`,`id`);--> statement-breakpoint
+CREATE INDEX `audit_events_actor_index` ON `audit_events` (`actor`);--> statement-breakpoint
+CREATE INDEX `audit_events_action_index` ON `audit_events` (`action`);--> statement-breakpoint
+CREATE INDEX `audit_events_occurred_at_index` ON `audit_events` (`occurred_at`);--> statement-breakpoint
 CREATE TABLE `database_hosts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -183,18 +205,6 @@ CREATE TABLE `nests` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `nests_uuid_unique` ON `nests` (`uuid`);--> statement-breakpoint
-CREATE TABLE `password_resets` (
-	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
-	`token` text NOT NULL,
-	`expires_at` integer NOT NULL,
-	`used_at` integer,
-	`created_at` integer NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `password_resets_user_id_index` ON `password_resets` (`user_id`);--> statement-breakpoint
-CREATE INDEX `password_resets_token_index` ON `password_resets` (`token`);--> statement-breakpoint
 CREATE TABLE `rate_limit` (
 	`id` text PRIMARY KEY NOT NULL,
 	`key` text NOT NULL,
@@ -204,6 +214,7 @@ CREATE TABLE `rate_limit` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `rate_limit_key_unique` ON `rate_limit` (`key`);--> statement-breakpoint
 CREATE INDEX `rate_limit_key_index` ON `rate_limit` (`key`);--> statement-breakpoint
+CREATE INDEX `rate_limit_last_request_index` ON `rate_limit` (`last_request`);--> statement-breakpoint
 CREATE TABLE `recovery_tokens` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -278,11 +289,12 @@ CREATE TABLE `server_startup_env` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `server_env_key_unique` ON `server_startup_env` (`server_id`,`key`);--> statement-breakpoint
 CREATE TABLE `server_limits` (
-	`server_id` text NOT NULL,
+	`server_id` text PRIMARY KEY NOT NULL,
 	`memory` integer,
 	`memory_overallocate` integer,
 	`disk` integer,
 	`disk_overallocate` integer,
+	`swap` integer,
 	`io` integer,
 	`cpu` integer,
 	`threads` text,
@@ -415,6 +427,9 @@ CREATE TABLE `sessions` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `sessions_session_token_unique` ON `sessions` (`session_token`);--> statement-breakpoint
+CREATE INDEX `sessions_user_id_index` ON `sessions` (`user_id`);--> statement-breakpoint
+CREATE INDEX `sessions_expires_index` ON `sessions` (`expires`);--> statement-breakpoint
+CREATE INDEX `sessions_token_index` ON `sessions` (`session_token`);--> statement-breakpoint
 CREATE TABLE `settings` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text NOT NULL
@@ -442,21 +457,6 @@ CREATE TABLE `two_factor` (
 --> statement-breakpoint
 CREATE INDEX `two_factor_secret_idx` ON `two_factor` (`secret`);--> statement-breakpoint
 CREATE INDEX `two_factor_user_id_idx` ON `two_factor` (`user_id`);--> statement-breakpoint
-CREATE TABLE `user_impersonation_tokens` (
-	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
-	`issued_by` text NOT NULL,
-	`token_hash` text NOT NULL,
-	`expires_at` integer NOT NULL,
-	`consumed_at` integer,
-	`created_at` integer NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`issued_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `user_impersonation_tokens_token_hash_unique` ON `user_impersonation_tokens` (`token_hash`);--> statement-breakpoint
-CREATE INDEX `user_impersonation_tokens_user_id_index` ON `user_impersonation_tokens` (`user_id`);--> statement-breakpoint
-CREATE INDEX `user_impersonation_tokens_token_hash_index` ON `user_impersonation_tokens` (`token_hash`);--> statement-breakpoint
 CREATE TABLE `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`username` text NOT NULL,
@@ -474,6 +474,7 @@ CREATE TABLE `users` (
 	`suspended_at` integer,
 	`suspension_reason` text,
 	`password_reset_required` integer DEFAULT false NOT NULL,
+	`password_compromised` integer DEFAULT false NOT NULL,
 	`banned` integer,
 	`ban_reason` text,
 	`ban_expires` integer,
@@ -488,6 +489,7 @@ CREATE TABLE `users` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `users_username_unique` ON `users` (`username`);--> statement-breakpoint
 CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
+CREATE INDEX `users_role_index` ON `users` (`role`);--> statement-breakpoint
 CREATE TABLE `verification_tokens` (
 	`id` text PRIMARY KEY NOT NULL,
 	`identifier` text NOT NULL,
@@ -500,6 +502,7 @@ CREATE TABLE `verification_tokens` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `verification_token_identifier_token_index` ON `verification_tokens` (`identifier`,`token`);--> statement-breakpoint
+CREATE INDEX `verification_tokens_identifier_index` ON `verification_tokens` (`identifier`);--> statement-breakpoint
 CREATE TABLE `wings_nodes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`uuid` text NOT NULL,

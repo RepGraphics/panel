@@ -1,5 +1,7 @@
-import { createError, type H3Event, readValidatedBody, getValidatedQuery, getValidatedRouterParams } from 'h3'
-import { getAuth } from '~~/server/utils/auth'
+import { createError, type H3Event, readBody } from 'h3'
+import { getServerSession } from '~~/server/utils/session'
+import { requireAdminPermission } from '~~/server/utils/permission-middleware'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import type { z } from 'zod'
 
 export const BODY_SIZE_LIMITS = {
@@ -14,22 +16,19 @@ async function assertBodySize(event: H3Event, limit: number): Promise<void> {
   const contentLength = req.headers['content-length']
   
   if (contentLength) {
-    const size = Number.parseInt(contentLength, 10)
-    if (!Number.isNaN(size) && size > limit) {
+    const headerSize = Number.parseInt(Array.isArray(contentLength) ? contentLength[0] : contentLength, 10)
+    if (!Number.isNaN(headerSize) && headerSize > limit) {
       throw createError({
         statusCode: 413,
         statusMessage: 'Request Entity Too Large',
-        message: `Request body size (${size} bytes) exceeds the limit of ${limit} bytes`,
+        message: `Request body size (${headerSize} bytes) exceeds the limit of ${limit} bytes`,
       })
     }
   }
 }
 
 export async function requireAuth(event: H3Event) {
-  const auth = getAuth()
-  const session = await auth.api.getSession({
-    headers: event.req.headers,
-  })
+  const session = await getServerSession(event)
 
   if (!session?.user?.id) {
     throw createError({
@@ -43,51 +42,69 @@ export async function requireAuth(event: H3Event) {
 }
 
 export async function requireAdmin(event: H3Event) {
-  const session = await requireAuth(event)
-  const userRole = (session.user as { role?: string }).role
-
-  if (userRole !== 'admin') {
+  await requireAdminPermission(event)
+  const session = await getServerSession(event)
+  
+  if (!session) {
     throw createError({
-      statusCode: 403,
-      statusMessage: 'Forbidden',
-      message: 'Admin privileges required',
+      statusCode: 401,
+      statusMessage: 'Unauthorized',
+      message: 'Authentication required',
     })
   }
-
+  
   return session
 }
 
-export async function readValidatedBodyWithLimit<T>(
+export async function readValidatedBodyWithLimit<T extends z.ZodType>(
   event: H3Event,
-  validate: z.ZodSchema<T> | ((body: unknown) => T),
+  schema: T,
   limit: number = BODY_SIZE_LIMITS.MEDIUM,
-) {
+): Promise<z.infer<T>> {
   await assertBodySize(event, limit)
-  return await readValidatedBody(event, validate)
-}
-
-export async function getValidatedQuerySafe<T>(
-  event: H3Event,
-  validate: z.ZodSchema<T> | ((query: unknown) => T),
-) {
-  return await getValidatedQuery(event, validate)
-}
-
-export async function getValidatedRouterParamsSafe<T>(
-  event: H3Event,
-  validate: z.ZodSchema<T> | ((params: unknown) => T),
-) {
-  return await getValidatedRouterParams(event, validate)
+  
+  const body = await readBody(event)
+  
+  const bodySize = Buffer.isBuffer(body) 
+    ? body.length 
+    : typeof body === 'string' 
+      ? Buffer.byteLength(body, 'utf8')
+      : Buffer.byteLength(JSON.stringify(body), 'utf8')
+  
+  if (bodySize > limit) {
+    throw createError({
+      statusCode: 413,
+      statusMessage: 'Request Entity Too Large',
+      message: `Request body size (${bodySize} bytes) exceeds the limit of ${limit} bytes`,
+    })
+  }
+  
+  const result = schema.safeParse(body)
+  if (!result.success) {
+    const errors = result.error.issues.map(err => ({
+      field: err.path.join('.'),
+      message: err.message,
+    }))
+    
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Validation failed',
+      message: 'Request body validation failed',
+      data: { errors },
+    })
+  }
+  
+  return result.data
 }
 
 export async function isApiKeyAuthenticated(event: H3Event): Promise<boolean> {
-  const authHeader = event.req.headers.authorization
-  const apiKeyHeader = event.req.headers['x-api-key']
+  const authHeader = event.node.req.headers.authorization
+  const apiKeyHeader = event.node.req.headers['x-api-key']
 
   if (apiKeyHeader || (authHeader && authHeader.startsWith('Bearer '))) {
     const auth = getAuth()
     const session = await auth.api.getSession({
-      headers: event.req.headers,
+      headers: normalizeHeadersForAuth(event.node.req.headers),
     })
 
     return !!session?.user?.id

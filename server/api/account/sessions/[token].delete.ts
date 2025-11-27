@@ -1,11 +1,12 @@
 import { assertMethod, createError, getValidatedRouterParams, parseCookies } from 'h3'
-import { auth } from '~~/server/utils/auth'
+import { auth, normalizeHeadersForAuth } from '~~/server/utils/auth'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'DELETE')
 
   const session = await auth.api.getSession({
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!session?.user?.id) {
@@ -26,12 +27,23 @@ export default defineEventHandler(async (event) => {
 
   const result = await auth.api.revokeSession({
     body: { token: targetToken },
-    headers: event.req.headers,
+    headers: normalizeHeadersForAuth(event.node.req.headers),
   })
 
   if (!result.status) {
     throw createError({ statusCode: 404, statusMessage: 'Session not found or failed to revoke' })
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.id,
+    actorType: 'user',
+    action: 'account.session.revoke',
+    targetType: 'session',
+    targetId: targetToken,
+    metadata: {
+      isCurrentSession: currentToken === targetToken,
+    },
+  })
 
   return {
     revoked: true,

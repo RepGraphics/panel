@@ -274,44 +274,69 @@ const accountMenuItems = computed(() => [
       </template>
 
       <template #default="{ collapsed }">
-        <UNavigationMenu
-          :collapsed="collapsed"
-          :items="[navItems]"
-          orientation="vertical"
-        />
+        <ClientOnly>
+          <UNavigationMenu
+            :collapsed="collapsed"
+            :items="[navItems]"
+            orientation="vertical"
+          />
+          <template #fallback>
+            <UNavigationMenu
+              :collapsed="collapsed"
+              :items="[[ADMIN_NAV_ITEMS[0]]]"
+              orientation="vertical"
+            />
+          </template>
+        </ClientOnly>
       </template>
 
       <template #footer="{ collapsed }">
         <div class="flex w-full flex-col gap-2">
-          <template v-if="authStatus === 'authenticated' && sessionUser && userLabel">
-            <UDropdownMenu :items="accountMenuItems">
+          <ClientOnly>
+            <template v-if="authStatus === 'authenticated' && sessionUser && userLabel">
+              <UDropdownMenu :items="accountMenuItems">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  class="w-full"
+                  :block="collapsed"
+                >
+                  <template #leading>
+                    <UAvatar v-bind="userAvatar" size="sm" />
+                  </template>
+                  <span v-if="!collapsed">{{ userLabel }}</span>
+                </UButton>
+              </UDropdownMenu>
+            </template>
+            <template v-else>
               <UButton
-                color="neutral"
+                color="error"
                 variant="ghost"
                 class="w-full"
                 :block="collapsed"
+                to="/auth/login"
               >
                 <template #leading>
-                  <UAvatar v-bind="userAvatar" size="sm" />
+                  <UIcon name="i-lucide-log-in" class="size-4" />
                 </template>
-                <span v-if="!collapsed">{{ userLabel }}</span>
+                <span v-if="!collapsed">Sign in</span>
               </UButton>
-            </UDropdownMenu>
-          </template>
-          <template v-else>
-            <UButton
-              color="error"
-              variant="ghost"
-              class="w-full"
-              :block="collapsed"
-              to="/auth/login"
-            >
-              <template #leading>
-                <UIcon name="i-lucide-log-in" class="size-4" />
-              </template>
-              <span v-if="!collapsed">Sign in</span>
-            </UButton>
-          </template>
+            </template>
+            <template #fallback>
+              <UButton
+                color="error"
+                variant="ghost"
+                class="w-full"
+                :block="collapsed"
+                to="/auth/login"
+              >
+                <template #leading>
+                  <UIcon name="i-lucide-log-in" class="size-4" />
+                </template>
+                <span v-if="!collapsed">Sign in</span>
+              </UButton>
+            </template>
+          </ClientOnly>
 
           <div v-if="!collapsed" class="text-[10px] uppercase tracking-wide text-muted-foreground/70">
             <p>© {{ new Date().getFullYear() }} <ULink href="https://xyrapanel.com" target="_blank">XyraPanel</ULink></p>
@@ -329,26 +354,34 @@ const accountMenuItems = computed(() => [
               <p class="text-xs text-muted-foreground">{{ adminSubtitle }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-3">
-              <template v-if="authStatus === 'authenticated' && sessionUser && userLabel">
-                <div class="flex items-center gap-3 rounded-md border border-default bg-muted/30 px-3 py-2">
-                  <div class="flex flex-col text-xs">
-                    <span class="font-medium text-foreground">{{ userLabel }}</span>
-                    <span v-if="sessionUser.email" class="text-muted-foreground">{{ sessionUser.email }}</span>
+              <ClientOnly>
+                <template v-if="authStatus === 'authenticated' && sessionUser && userLabel">
+                  <div class="flex items-center gap-3 rounded-md border border-default bg-muted/30 px-3 py-2">
+                    <div class="flex flex-col text-xs">
+                      <span class="font-medium text-foreground">{{ userLabel }}</span>
+                      <span v-if="sessionUser.email" class="text-muted-foreground">{{ sessionUser.email }}</span>
+                    </div>
+                    <UBadge v-if="sessionUser.role" size="xs" variant="subtle"
+                      color="error" class="uppercase tracking-wide text-[10px]">
+                      {{ sessionUser.role }}
+                    </UBadge>
+                    <UButton size="xs" variant="ghost" color="error"
+                      icon="i-lucide-log-out" @click="handleSignOut" />
                   </div>
-                  <UBadge v-if="sessionUser.role" size="xs" variant="subtle"
-                    color="error" class="uppercase tracking-wide text-[10px]">
-                    {{ sessionUser.role }}
-                  </UBadge>
-                  <UButton size="xs" variant="ghost" color="error"
-                    icon="i-lucide-log-out" @click="handleSignOut" />
-                </div>
-              </template>
-              <template v-else>
-                <UButton size="xs" variant="ghost" color="error" to="/auth/login"
-                  icon="i-lucide-log-in">
-                  Sign in
-                </UButton>
-              </template>
+                </template>
+                <template v-else>
+                  <UButton size="xs" variant="ghost" color="error" to="/auth/login"
+                    icon="i-lucide-log-in">
+                    Sign in
+                  </UButton>
+                </template>
+                <template #fallback>
+                  <UButton size="xs" variant="ghost" color="error" to="/auth/login"
+                    icon="i-lucide-log-in">
+                    Sign in
+                  </UButton>
+                </template>
+              </ClientOnly>
             </div>
           </div>
           <USeparator />

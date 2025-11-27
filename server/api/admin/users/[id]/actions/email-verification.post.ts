@@ -1,6 +1,5 @@
 import { createError } from 'h3'
-import { APIError } from 'better-auth/api'
-import { getAuth } from '~~/server/utils/auth'
+import { getAuth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
@@ -40,27 +39,24 @@ export default defineEventHandler(async (event) => {
   try {
     switch (body.action) {
       case 'mark-verified': {
-        await auth.api.adminUpdateUser({
-          body: {
-            userId,
-            data: {
-              emailVerified: new Date(),
-            },
-          },
-          headers: event.req.headers,
-        })
+        const now = new Date()
+        await db.update(tables.users)
+          .set({
+            emailVerified: now,
+            updatedAt: now,
+          })
+          .where(eq(tables.users.id, userId))
+          .run()
         break
       }
       case 'mark-unverified': {
-        await auth.api.adminUpdateUser({
-          body: {
-            userId,
-            data: {
-              emailVerified: null,
-            },
-          },
-          headers: event.req.headers,
-        })
+        await db.update(tables.users)
+          .set({
+            emailVerified: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(tables.users.id, userId))
+          .run()
         break
       }
       case 'resend-link': {
@@ -68,16 +64,38 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'User is missing an email address' })
         }
 
-        const { sendEmailVerificationEmail } = await import('~~/server/utils/email')
-        const { createEmailVerificationToken } = await import('~~/server/utils/email-verification')
-        
-        const { token, expiresAt } = await createEmailVerificationToken(user.id)
-        await sendEmailVerificationEmail({
-          to: user.email,
-          token,
-          expiresAt,
-          username: user.username,
-        })
+        try {
+          if (typeof auth.api.sendVerificationEmail === 'function') {
+            await auth.api.sendVerificationEmail({
+              body: {
+                email: user.email,
+              },
+              headers: normalizeHeadersForAuth(event.node.req.headers),
+            })
+          } else {
+            const { sendEmailVerificationEmail } = await import('~~/server/utils/email')
+            const { createEmailVerificationToken } = await import('~~/server/utils/email-verification')
+            
+            const { token, expiresAt } = await createEmailVerificationToken(user.id)
+            await sendEmailVerificationEmail({
+              to: user.email,
+              token,
+              expiresAt,
+              username: user.username || undefined,
+            })
+          }
+        } catch {
+          const { sendEmailVerificationEmail } = await import('~~/server/utils/email')
+          const { createEmailVerificationToken } = await import('~~/server/utils/email-verification')
+          
+          const { token, expiresAt } = await createEmailVerificationToken(user.id)
+          await sendEmailVerificationEmail({
+            to: user.email,
+            token,
+            expiresAt,
+            username: user.username || undefined,
+          })
+        }
         break
       }
     }
@@ -96,15 +114,19 @@ export default defineEventHandler(async (event) => {
     }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      throw createError({
-        statusCode: error.statusCode,
-        statusMessage: error.message || 'Failed to perform email verification action',
-      })
+    const message = error instanceof Error ? error.message : 'Failed to perform email verification action'
+    let statusCode = 500
+    
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      const code = error.statusCode
+      if (typeof code === 'number') {
+        statusCode = code
+      }
     }
+    
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to perform email verification action',
+      statusCode,
+      statusMessage: message,
     })
   }
 })

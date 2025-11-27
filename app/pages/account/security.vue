@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { accountPasswordFormSchema, type AccountPasswordFormInput } from '#shared/schema/account'
-import type { TotpSetupResponse, TotpVerifyRequest, TotpDisableRequest } from '#shared/types/account'
+import type { TotpSetupResponse, TotpDisableRequest } from '#shared/types/account'
 import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({
@@ -11,12 +11,23 @@ definePageMeta({
 })
 
 const toast = useToast()
+const isMounted = ref(false)
+
+onMounted(() => {
+  isMounted.value = true
+})
 
 const authStore = useAuthStore()
 const { status, user } = storeToRefs(authStore)
 
 const passwordError = ref<string | null>(null)
 const isSavingPassword = ref(false)
+const isClearingCompromised = ref(false)
+
+const passwordCompromised = computed(() => {
+  if (!user.value) return false
+  return Boolean((user.value as { passwordCompromised?: boolean }).passwordCompromised)
+})
 
 const passwordSchema = accountPasswordFormSchema
 
@@ -64,6 +75,9 @@ async function handlePasswordSubmit(event: FormSubmitEvent<PasswordFormSchema>) 
       color: 'success',
     })
 
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await authStore.syncSession({ force: true, bypassCache: true })
+
     Object.assign(passwordForm, {
       currentPassword: '',
       newPassword: '',
@@ -89,8 +103,10 @@ const twoFactorError = ref<string | null>(null)
 const totpSetup = ref<TotpSetupResponse | null>(null)
 const verificationCode = ref('')
 const verifyingToken = ref(false)
+const enableForm = reactive({ password: '' })
 const disableForm = reactive({ password: '' })
 const disableSubmitting = ref(false)
+const enableSubmitting = ref(false)
 const totpStateOverride = ref<boolean | null>(null)
 
 const isAuthLoading = computed(() => status.value === 'loading')
@@ -99,7 +115,10 @@ const totpEnabled = computed(() => {
     return totpStateOverride.value
 
   const sessionUser = user.value
-  return Boolean(sessionUser && 'useTotp' in sessionUser && (sessionUser as { useTotp?: boolean }).useTotp)
+  return Boolean(sessionUser && (
+    (sessionUser as { twoFactorEnabled?: boolean }).twoFactorEnabled ||
+    ('useTotp' in sessionUser && (sessionUser as { useTotp?: boolean }).useTotp)
+  ))
 })
 
 watch(totpEnabled, (enabled) => {
@@ -126,17 +145,27 @@ async function beginTotpSetup() {
     return
   }
 
+  if (!enableForm.password) {
+    twoFactorError.value = 'Enter your password to enable two-factor authentication.'
+    return
+  }
+
+  enableSubmitting.value = true
   twoFactorError.value = null
   totpSetup.value = null
   verificationCode.value = ''
 
   try {
-    const setup = await $fetch<TotpSetupResponse>('/api/user/2fa/enable', { method: 'POST' })
+    const setup = await $fetch<TotpSetupResponse>('/api/user/2fa/enable', {
+      method: 'POST',
+      body: { password: enableForm.password },
+    })
     totpSetup.value = setup
+    enableForm.password = ''
 
     toast.add({
       title: 'TOTP setup started',
-      description: 'Scan the QR code with your authenticator app and enter the 6-digit token to confirm.',
+      description: 'Scan the QR code with your authenticator app and enter the 6-digit code to confirm.',
       color: 'primary',
     })
   }
@@ -148,6 +177,9 @@ async function beginTotpSetup() {
       description: message,
       color: 'error',
     })
+  }
+  finally {
+    enableSubmitting.value = false
   }
 }
 
@@ -166,10 +198,9 @@ async function verifyTotp() {
   twoFactorError.value = null
 
   try {
-    const payload: TotpVerifyRequest = { token: verificationCode.value.trim() }
     await $fetch('/api/user/2fa/verify', {
       method: 'POST',
-      body: payload,
+      body: { code: verificationCode.value.trim() },
     })
 
     totpSetup.value = null
@@ -238,6 +269,34 @@ async function disableTotp() {
     disableSubmitting.value = false
   }
 }
+
+async function clearCompromisedFlag() {
+  isClearingCompromised.value = true
+  try {
+    await $fetch('/api/account/password/clear-compromised', {
+      method: 'POST',
+    })
+
+    toast.add({
+      title: 'Flag cleared',
+      description: 'Password compromised flag has been cleared. Refreshing session...',
+      color: 'success',
+    })
+
+    await authStore.syncSession({ force: true, bypassCache: true })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to clear flag'
+    toast.add({
+      title: 'Failed to clear flag',
+      description: message,
+      color: 'error',
+    })
+  }
+  finally {
+    isClearingCompromised.value = false
+  }
+}
 </script>
 
 <template>
@@ -263,6 +322,28 @@ async function disableTotp() {
             </template>
 
             <UAlert v-if="passwordErrorMessage" icon="i-lucide-alert-triangle" color="error" :title="passwordErrorMessage" />
+            
+            <UAlert
+              v-if="isMounted && passwordCompromised"
+              icon="i-lucide-shield-alert"
+              color="warning"
+              title="Password Marked as Compromised"
+              description="Your password was previously marked as compromised. If you've already changed to a secure password, you can clear this flag manually."
+              class="mb-4"
+            >
+              <template #actions>
+                <UButton
+                  color="warning"
+                  variant="outline"
+                  size="xs"
+                  :loading="isClearingCompromised"
+                  :disabled="isClearingCompromised"
+                  @click="clearCompromisedFlag"
+                >
+                  Clear Flag
+                </UButton>
+              </template>
+            </UAlert>
 
             <UForm
               :schema="passwordSchema"
@@ -346,9 +427,30 @@ async function disableTotp() {
             <template v-else>
               <div v-if="!totpEnabled && !totpSetup" class="space-y-4">
                 <p class="text-sm text-muted-foreground">
-                  Click the button below to generate a TOTP secret and recovery codes. You’ll scan a QR code and confirm with a 6-digit token.
+                  Enter your password to generate a TOTP secret and recovery codes. You'll scan a QR code and confirm with a 6-digit code.
                 </p>
-                <UButton color="primary" variant="subtle" icon="i-lucide-shield" @click="beginTotpSetup">
+                <UFormField label="Password confirmation" name="enablePassword" required>
+                  <UInput
+                    v-model="enableForm.password"
+                    type="password"
+                    placeholder="Enter your password"
+                    icon="i-lucide-lock"
+                    class="w-full"
+                    :disabled="enableSubmitting"
+                    @keyup.enter="beginTotpSetup"
+                  />
+                  <template #help>
+                    Confirm your password to start two-factor authentication setup
+                  </template>
+                </UFormField>
+                <UButton
+                  color="primary"
+                  variant="subtle"
+                  icon="i-lucide-shield"
+                  :loading="enableSubmitting"
+                  :disabled="!enableForm.password || enableSubmitting"
+                  @click="beginTotpSetup"
+                >
                   Start setup
                 </UButton>
               </div>
