@@ -100,9 +100,11 @@ export default defineNuxtConfig({
     removeSourceMaps: true,
   },
 
-  turnstile: {
-    siteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY || '',
-  },
+  ...(process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY ? {
+    turnstile: {
+      siteKey: process.env.NUXT_PUBLIC_TURNSTILE_SITE_KEY,
+    },
+  } : {}),
 
   runtimeConfig: {
     authOrigin,
