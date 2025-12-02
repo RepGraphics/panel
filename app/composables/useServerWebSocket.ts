@@ -170,7 +170,9 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
     
     if (normalized.length > 0) {
       if (import.meta.dev) {
-        console.log(`[WebSocket] Console output: ${normalized.length} line(s)`, normalized.slice(0, 2).map(l => l.substring(0, 50)))
+        const lineCount = normalized.length
+        const previewLines = normalized.slice(0, 2).map(l => l.substring(0, 50))
+        console.log('[WebSocket] Console output:', lineCount, 'line(s)', previewLines)
       }
       normalized.forEach((line) => {
         logs.value.push(line)
@@ -248,7 +250,10 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         {
           const rawLines = normalizeMessageArgs(message.args)
           if (rawLines.length > 0) {
-            console.log(`[WebSocket] Received ${message.event} (${rawLines.length} line(s)):`, rawLines.slice(0, 2).map(l => l.substring(0, 80)).join(' | '))
+            const eventName = message.event
+            const lineCount = rawLines.length
+            const preview = rawLines.slice(0, 2).map(l => l.substring(0, 80)).join(' | ')
+            console.log('[WebSocket] Received', eventName, '(', lineCount, 'line(s)):', preview)
             handleConsoleOutput(message.args)
             recordEvent({ event: message.event, raw: rawLines.join('\n'), timestamp: Date.now() })
             if (message.event === 'install output') {
@@ -258,7 +263,8 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
               }
             }
           } else {
-            console.warn(`[WebSocket] Received ${message.event} but no lines in args:`, message.args)
+            const eventName = message.event
+            console.warn('[WebSocket] Received', eventName, 'but no lines in args:', message.args)
           }
         }
         break
