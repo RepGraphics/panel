@@ -19,22 +19,6 @@ export default defineEventHandler(async (event) => {
     updates[SETTINGS_KEYS.TELEMETRY_ENABLED] = body.telemetryEnabled ? 'true' : 'false'
   }
 
-  if (body.debugMode !== undefined) {
-    updates[SETTINGS_KEYS.DEBUG_MODE] = body.debugMode ? 'true' : 'false'
-  }
-
-  if (body.recaptchaEnabled !== undefined) {
-    updates[SETTINGS_KEYS.RECAPTCHA_ENABLED] = body.recaptchaEnabled ? 'true' : 'false'
-  }
-
-  if (body.recaptchaSiteKey !== undefined) {
-    updates[SETTINGS_KEYS.RECAPTCHA_SITE_KEY] = body.recaptchaSiteKey
-  }
-
-  if (body.recaptchaSecretKey !== undefined) {
-    updates[SETTINGS_KEYS.RECAPTCHA_SECRET_KEY] = body.recaptchaSecretKey
-  }
-
   const numericFields: Array<{ key: keyof AdvancedSettings; target: typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]; min: number; max?: number }> = [
     { key: 'sessionTimeoutMinutes', target: SETTINGS_KEYS.SESSION_TIMEOUT_MINUTES, min: 5, max: 1440 },
     { key: 'queueConcurrency', target: SETTINGS_KEYS.QUEUE_CONCURRENCY, min: 1, max: 32 },

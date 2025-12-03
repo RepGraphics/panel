@@ -9,10 +9,6 @@ const isSubmitting = ref(false)
 
 const schema = z.object({
   telemetryEnabled: z.boolean(),
-  debugMode: z.boolean(),
-  recaptchaEnabled: z.boolean(),
-  recaptchaSiteKey: z.string().trim().max(255),
-  recaptchaSecretKey: z.string().trim().max(255),
   sessionTimeoutMinutes: z.number(t('admin.settings.advancedSettings.sessionTimeoutRequired'))
     .int(t('admin.settings.advancedSettings.sessionTimeoutInt'))
     .min(5, t('admin.settings.advancedSettings.sessionTimeoutMin'))
@@ -29,23 +25,6 @@ const schema = z.object({
     .int(t('admin.settings.advancedSettings.paginationLimitInt'))
     .min(10, t('admin.settings.advancedSettings.paginationLimitMin'))
     .max(100, t('admin.settings.advancedSettings.paginationLimitMax')),
-}).superRefine((data, ctx) => {
-  if (data.recaptchaEnabled) {
-    if (data.recaptchaSiteKey.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['recaptchaSiteKey'],
-        message: t('admin.settings.advancedSettings.siteKeyRequired'),
-      })
-    }
-    if (data.recaptchaSecretKey.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['recaptchaSecretKey'],
-        message: t('admin.settings.advancedSettings.secretKeyRequired'),
-      })
-    }
-  }
 })
 
 type FormSchema = z.infer<typeof schema>
@@ -53,10 +32,6 @@ type FormSchema = z.infer<typeof schema>
 function createFormState(source?: AdvancedSettings | null): FormSchema {
   return {
     telemetryEnabled: source?.telemetryEnabled ?? true,
-    debugMode: source?.debugMode ?? false,
-    recaptchaEnabled: source?.recaptchaEnabled ?? false,
-    recaptchaSiteKey: source?.recaptchaSiteKey ?? '',
-    recaptchaSecretKey: source?.recaptchaSecretKey ?? '',
     sessionTimeoutMinutes: source?.sessionTimeoutMinutes ?? 60,
     queueConcurrency: source?.queueConcurrency ?? 4,
     queueRetryLimit: source?.queueRetryLimit ?? 5,
@@ -76,8 +51,6 @@ const { data: settings, refresh } = await useLazyAsyncData('admin-settings-advan
 
 const form = reactive<FormSchema>(createFormState(settings.value))
 
-const showRecaptchaFields = computed(() => form.recaptchaEnabled)
-
 watch(settings, (newSettings) => {
   if (!newSettings)
     return
@@ -93,8 +66,6 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
 
   const payload: FormSchema = {
     ...event.data,
-    recaptchaSiteKey: event.data.recaptchaEnabled ? event.data.recaptchaSiteKey : '',
-    recaptchaSecretKey: event.data.recaptchaEnabled ? event.data.recaptchaSecretKey : '',
   }
 
   try {
@@ -157,37 +128,6 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
         <UFormField name="telemetryEnabled">
           <USwitch v-model="form.telemetryEnabled" :label="t('admin.settings.advancedSettings.enableTelemetry')" :disabled="isSubmitting" />
         </UFormField>
-
-        <UFormField name="debugMode">
-          <USwitch v-model="form.debugMode" :label="t('admin.settings.advancedSettings.enableDebugMode')" :description="t('admin.settings.advancedSettings.debugModeDescription')" :disabled="isSubmitting" />
-        </UFormField>
-      </div>
-
-      <div class="space-y-4">
-        <h3 class="text-sm font-semibold">{{ t('admin.settings.advancedSettings.recaptcha') }}</h3>
-
-        <UFormField name="recaptchaEnabled">
-          <USwitch
-            v-model="form.recaptchaEnabled"
-            :label="t('admin.settings.advancedSettings.enableRecaptcha')"
-            :description="t('admin.settings.advancedSettings.recaptchaDescription')"
-            :disabled="isSubmitting"
-          />
-        </UFormField>
-
-        <div v-if="showRecaptchaFields" class="space-y-4">
-          <UFormField :label="t('admin.settings.advancedSettings.siteKey')" name="recaptchaSiteKey" required>
-            <UInput v-model="form.recaptchaSiteKey" :placeholder="t('admin.settings.advancedSettings.siteKeyPlaceholder')" :disabled="isSubmitting" class="w-full" />
-            <template #help>
-              {{ t('admin.settings.advancedSettings.getKeysFrom') }} <a href="https://www.google.com/recaptcha/admin" target="_blank"
-                class="text-primary hover:underline">Google reCAPTCHA</a>
-            </template>
-          </UFormField>
-
-          <UFormField :label="t('admin.settings.advancedSettings.secretKey')" name="recaptchaSecretKey" required>
-            <UInput v-model="form.recaptchaSecretKey" type="password" :placeholder="t('admin.settings.advancedSettings.secretKeyPlaceholder')" :disabled="isSubmitting" class="w-full" />
-          </UFormField>
-        </div>
       </div>
 
       <div class="space-y-4">

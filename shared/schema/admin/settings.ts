@@ -94,9 +94,6 @@ export type AdminMailSettingsUpdateInput = z.infer<typeof adminMailSettingsUpdat
 export const adminAdvancedSettingsFormSchema = z.object({
   telemetryEnabled: z.boolean(),
   debugMode: z.boolean(),
-  recaptchaEnabled: z.boolean(),
-  recaptchaSiteKey: z.string().trim().optional(),
-  recaptchaSecretKey: z.string().trim().optional(),
   sessionTimeoutMinutes: z.number('Session timeout must be a number').int().positive(),
   queueConcurrency: z.number('Queue concurrency must be a number').int().positive(),
   queueRetryLimit: z.number('Queue retry limit must be a number').int().min(0),

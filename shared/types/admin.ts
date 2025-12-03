@@ -420,10 +420,6 @@ export interface MailSettings {
 
 export interface AdvancedSettings {
   telemetryEnabled: boolean
-  debugMode: boolean
-  recaptchaEnabled: boolean
-  recaptchaSiteKey: string
-  recaptchaSecretKey: string
   sessionTimeoutMinutes: number
   queueConcurrency: number
   queueRetryLimit: number
