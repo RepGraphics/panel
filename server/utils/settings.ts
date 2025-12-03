@@ -6,8 +6,6 @@ export const SETTINGS_KEYS = {
   PANEL_URL: 'app:url',
   PANEL_LOCALE: 'app:locale',
   PANEL_TIMEZONE: 'app:timezone',
-  BRAND_TEXT: 'branding:text',
-  BRAND_SHOW_TEXT: 'branding:show_text',
   BRAND_SHOW_LOGO: 'branding:show_logo',
   BRAND_LOGO_PATH: 'branding:logo_path',
 
@@ -23,9 +21,6 @@ export const SETTINGS_KEYS = {
 
   TELEMETRY_ENABLED: 'app:telemetry:enabled',
   DEBUG_MODE: 'app:debug',
-  RECAPTCHA_ENABLED: 'recaptcha:enabled',
-  RECAPTCHA_SITE_KEY: 'recaptcha:website_key',
-  RECAPTCHA_SECRET_KEY: 'recaptcha:secret_key',
   SESSION_TIMEOUT_MINUTES: 'auth:session:timeout_minutes',
   QUEUE_CONCURRENCY: 'queue:concurrency',
   QUEUE_RETRY_LIMIT: 'queue:retry_limit',

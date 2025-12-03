@@ -25,8 +25,6 @@ const adminGeneralSettingsBaseSchema = z.object({
   url: z.string().trim().pipe(z.url('Enter a valid URL')),
   locale: z.enum(localeEnumValues, 'Select a default language'),
   timezone: z.enum(timezoneEnumValues, 'Select a timezone'),
-  brandText: z.string().trim().max(80, 'Brand text must be 80 characters or less'),
-  showBrandText: z.boolean(),
   showBrandLogo: z.boolean(),
   brandLogoUrl: nullableUrl,
 })

@@ -32,14 +32,6 @@ export default defineEventHandler(async (event) => {
     updates[SETTINGS_KEYS.PANEL_TIMEZONE] = body.timezone
   }
 
-  if (body.brandText !== undefined) {
-    updates[SETTINGS_KEYS.BRAND_TEXT] = body.brandText
-  }
-
-  if (body.showBrandText !== undefined) {
-    updates[SETTINGS_KEYS.BRAND_SHOW_TEXT] = body.showBrandText ? 'true' : 'false'
-  }
-
   if (body.showBrandLogo !== undefined) {
     updates[SETTINGS_KEYS.BRAND_SHOW_LOGO] = body.showBrandLogo ? 'true' : 'false'
   }

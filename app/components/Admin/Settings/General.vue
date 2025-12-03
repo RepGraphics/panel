@@ -41,8 +41,6 @@ const baseSchema = z.object({
   url: z.string().trim().pipe(z.url(t('admin.settings.generalSettings.panelUrlInvalid'))),
   locale: z.string(),
   timezone: z.enum(timezoneEnumValues, { message: t('admin.settings.generalSettings.timezoneInvalid') }),
-  brandText: z.string().trim().max(80, t('admin.settings.generalSettings.brandTextMaxLength')),
-  showBrandText: z.boolean(),
   showBrandLogo: z.boolean(),
   brandLogoUrl: z.preprocess(
     (value) => {
@@ -93,8 +91,6 @@ function createFormState(source?: GeneralSettings | null): FormSchema {
     url: source?.url ?? '',
     locale: resolveLocale(source?.locale),
     timezone: resolveTimezone(source?.timezone),
-    brandText: source?.brandText ?? source?.name ?? '',
-    showBrandText: source?.showBrandText ?? true,
     showBrandLogo: source?.showBrandLogo ?? false,
     brandLogoUrl: source?.brandLogoUrl ?? null,
   }
@@ -268,18 +264,7 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
           <p class="text-xs text-muted-foreground">{{ t('admin.settings.generalSettings.brandingDescription') }}</p>
         </div>
 
-        <UFormField :label="t('admin.settings.generalSettings.brandText')" name="brandText">
-          <UInput v-model="form.brandText" :placeholder="t('admin.settings.generalSettings.brandTextPlaceholder')" :disabled="isSubmitting" class="w-full" />
-        </UFormField>
-
         <div class="grid gap-4 md:grid-cols-2">
-          <UFormField :label="t('admin.settings.generalSettings.showBrandText')" name="showBrandText">
-            <div class="flex items-center justify-between rounded-lg border border-default p-3">
-              <p class="text-sm text-muted-foreground">{{ t('admin.settings.generalSettings.showBrandTextDescription') }}</p>
-              <USwitch v-model="form.showBrandText" />
-            </div>
-          </UFormField>
-
           <UFormField :label="t('admin.settings.generalSettings.showBrandLogo')" name="showBrandLogo">
             <div class="flex items-center justify-between rounded-lg border border-default p-3">
               <p class="text-sm text-muted-foreground">{{ t('admin.settings.generalSettings.showBrandLogoDescription') }}</p>
