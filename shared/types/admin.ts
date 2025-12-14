@@ -1,5 +1,6 @@
 import type { BaseActivityEvent } from './audit'
 import type { AdminUserResponse } from './api'
+import type { Allocation } from './server'
 import type { StoredWingsNode, WingsSystemInformation } from './wings'
 import type { Nest, Egg, EggVariable } from './nest'
 
@@ -490,6 +491,10 @@ export interface AdminWingsNodeServersPayload {
 export interface AdminWingsNodeAllocationsPayload {
   data: AdminWingsNodeAllocationSummary[]
   pagination: AdminPaginatedMeta
+}
+
+export interface AdminNodeAllocationsResponse {
+  data: Allocation[]
 }
 
 export interface UpdateWingsNodePayload {

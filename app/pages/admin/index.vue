@@ -76,10 +76,6 @@ fetchDashboard()
             </template>
           </div>
 
-          <div v-if="successMessage" class="p-3 text-sm text-success">
-            {{ successMessage }}
-          </div>
-
           <div class="grid gap-4 xl:grid-cols-2">
             <UCard :ui="{ body: 'space-y-3' }">
               <template #header>
@@ -204,15 +200,7 @@ fetchDashboard()
                   <div>
                     <p class="text-sm font-semibold">{{ operation.label }}</p>
                     <p class="text-xs text-muted-foreground">
-                      <NuxtTime
-                        :datetime="operation.timestamp"
-                        weekday="short"
-                        year="numeric"
-                        month="short"
-                        day="numeric"
-                        hour="2-digit"
-                        minute="2-digit"
-                      />
+                      {{ operation.detail }}
                     </p>
                   </div>
                 </li>

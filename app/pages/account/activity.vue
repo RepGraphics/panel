@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import type { AccountActivityItem, PaginatedAccountActivityResponse } from '#shared/types/account'
 
 definePageMeta({ auth: true })
 
@@ -7,30 +8,39 @@ const { t } = useI18n()
 
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
+const requestFetch = useRequestFetch() as (input: string, init?: Record<string, unknown>) => Promise<unknown>
+
+async function fetchAccountActivity(page: number, limit: number): Promise<PaginatedAccountActivityResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  })
+  const result = await requestFetch(`/api/account/activity?${params.toString()}`) as unknown
+  return result as PaginatedAccountActivityResponse
+}
 
 const {
   data: activityResponse,
   error,
   pending,
   refresh: refreshActivity,
-} = await useFetch('/api/account/activity', {
-  key: 'account-activity',
-  query: computed(() => ({
-    page: currentPage.value,
-    limit: itemsPerPage.value,
-  })),
-  default: () => ({
-    data: [],
-    pagination: {
-      page: 1,
-      perPage: itemsPerPage.value,
-      total: 0,
-      totalPages: 0,
-    },
-    generatedAt: null,
-  }),
-  watch: [currentPage, itemsPerPage],
-})
+} = await useAsyncData<PaginatedAccountActivityResponse>(
+  'account-activity',
+  () => fetchAccountActivity(currentPage.value, itemsPerPage.value),
+  {
+    default: () => ({
+      data: [],
+      pagination: {
+        page: 1,
+        perPage: itemsPerPage.value,
+        total: 0,
+        totalPages: 0,
+      },
+      generatedAt: new Date().toISOString(),
+    }),
+    watch: [currentPage, itemsPerPage],
+  },
+)
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 
@@ -44,7 +54,7 @@ onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval)
 })
 
-const entries = computed(() => activityResponse.value?.data ?? [])
+const entries = computed<AccountActivityItem[]>(() => activityResponse.value?.data ?? [])
 const pagination = computed(() => activityResponse.value?.pagination)
 const generatedAt = computed(() => activityResponse.value?.generatedAt ?? null)
 const generatedAtDate = computed(() =>

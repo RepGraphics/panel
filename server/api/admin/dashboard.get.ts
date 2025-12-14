@@ -96,7 +96,7 @@ export default defineEventHandler(async (): Promise<DashboardResponse> => {
     id: event.id,
     occurredAt: event.occurredAt.toISOString(),
     actor: event.actor,
-    actorUsername: usersMap[event.actor] ?? null, 
+    actorUsername: usersMap[event.actor] ?? undefined,
     action: event.action,
     target: event.targetId ? `${event.targetType}#${event.targetId}` : event.targetType,
     metadata: parseMetadata(event.metadata),
