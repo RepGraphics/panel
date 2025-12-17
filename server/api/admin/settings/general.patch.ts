@@ -37,6 +37,21 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (body.paginationLimit !== undefined) {
+    const value = body.paginationLimit
+    if (!Number.isInteger(value) || value < 10 || value > 100) {
+      throw createError({
+        statusCode: 422,
+        message: 'Pagination limit must be an integer between 10 and 100',
+      })
+    }
+    updates[SETTINGS_KEYS.PAGINATION_LIMIT] = String(value)
+  }
+
+  if (body.telemetryEnabled !== undefined) {
+    updates[SETTINGS_KEYS.TELEMETRY_ENABLED] = body.telemetryEnabled ? 'true' : 'false'
+  }
+
   if (Object.keys(updates).length === 0 && deletions.length === 0) {
     throw createError({
       statusCode: 400,

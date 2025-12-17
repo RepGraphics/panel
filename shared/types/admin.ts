@@ -402,6 +402,8 @@ export interface GeneralSettings {
   showBrandLogo: boolean
   brandLogoUrl: string | null
   customCss?: string
+  paginationLimit: number
+  telemetryEnabled: boolean
 }
 
 export interface MailSettings {
@@ -416,20 +418,15 @@ export interface MailSettings {
   fromName: string
 }
 
-export interface AdvancedSettings {
-  telemetryEnabled: boolean
-  sessionTimeoutMinutes: number
-  queueConcurrency: number
-  queueRetryLimit: number
-  paginationLimit: number
-}
-
 export interface SecuritySettings {
   enforceTwoFactor: boolean
   maintenanceMode: boolean
   maintenanceMessage: string
   announcementEnabled: boolean
   announcementMessage: string
+  sessionTimeoutMinutes: number
+  queueConcurrency: number
+  queueRetryLimit: number
 }
 
 

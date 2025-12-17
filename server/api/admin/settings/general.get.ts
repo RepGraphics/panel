@@ -19,5 +19,7 @@ export default defineEventHandler(async (event) => {
     timezone: getSettingWithDefault(SETTINGS_KEYS.PANEL_TIMEZONE, 'UTC'),
     showBrandLogo: showLogoSetting ? showLogoSetting === 'true' : false,
     brandLogoUrl: logoPath ?? null,
+    paginationLimit: parseInt(getSetting(SETTINGS_KEYS.PAGINATION_LIMIT) ?? '25', 10),
+    telemetryEnabled: getSettingWithDefault(SETTINGS_KEYS.TELEMETRY_ENABLED, 'true') === 'true',
   }
 })
