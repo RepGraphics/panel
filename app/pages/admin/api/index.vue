@@ -169,8 +169,8 @@ function copyToClipboard(text: string) {
               </div>
             </template>
 
-            <UEmpty v-if="apiKeys.length === 0" :icon="'i-lucide-key'" :title="t('admin.api.noApiKeysYet')"
-              :description="t('admin.api.apiKeysDescription')" variant="subtle" />
+            <UEmpty v-if="apiKeys.length === 0" icon="i-lucide-key" :title="t('admin.api.noApiKeysYet')"
+              :description="t('admin.api.apiKeysDescription')" />
 
             <div v-else class="divide-y divide-default">
               <div v-for="key in apiKeys" :key="key.id" class="flex items-center justify-between gap-4 py-4">

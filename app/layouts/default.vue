@@ -211,7 +211,7 @@ async function handleLocaleChange(newLocale: string | undefined) {
               {{ t('auth.signOut') }}
             </UButton>
           </div>
-          <div v-else class="mx-auto w-full max-w-6xl px-6 py-8">
+          <div v-else class="px-6 py-8">
             <slot />
           </div>
         </main>

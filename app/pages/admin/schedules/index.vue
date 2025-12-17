@@ -146,7 +146,6 @@ async function copyJson(schedule: AdminScheduleResponse) {
               icon="i-lucide-calendar-clock"
               :title="t('admin.schedules.noSchedulesFound')"
               :description="t('admin.schedules.noSchedulesFoundDescription')"
-              variant="subtle"
             />
             <template v-else>
               <div class="space-y-3">

@@ -222,7 +222,6 @@ function exportCsv() {
               icon="i-lucide-activity"
               :title="t('admin.activity.noActivityYet')"
               :description="t('admin.activity.noActivityYetDescription')"
-              variant="subtle"
             />
             <template v-else>
               <div class="space-y-3">

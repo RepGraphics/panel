@@ -403,7 +403,7 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
 </script>
 
 <template>
-  <UDashboardGroup class="min-h-screen bg-muted/15" storage="local" storage-key="admin-dashboard">
+  <UDashboardGroup class="admin-layout min-h-screen bg-muted/15" storage="local" storage-key="admin-dashboard">
     <UDashboardSidebar
       collapsible
       :toggle="{ icon: 'i-lucide-menu', label: t('common.navigation'), color: 'neutral', variant: 'ghost' }"
@@ -510,7 +510,7 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
     <UDashboardPanel :ui="{ body: 'flex flex-1 flex-col p-0' }">
       <template #body>
         <header class="border-b border-default bg-background/70 backdrop-blur">
-          <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">
+          <div class="mx-auto flex w-full flex-wrap items-center justify-between gap-4 px-6 py-5">
             <div>
               <h1 class="text-xl font-semibold text-foreground">{{ adminTitle }}</h1>
               <p class="text-xs text-muted-foreground">{{ adminSubtitle }}</p>
@@ -550,7 +550,7 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
         </header>
 
         <main class="flex-1 overflow-y-auto">
-          <div class="mx-auto w-full max-w-7xl px-6 py-10 space-y-6">
+          <div class="mx-auto w-full px-6 py-10 space-y-6">
             <UAlert v-if="showTwoFactorPrompt" color="warning" variant="soft" icon="i-lucide-shield-check">
               <template #title>{{ t('layout.enableTwoFactorAuthentication') }}</template>
               <template #description>
