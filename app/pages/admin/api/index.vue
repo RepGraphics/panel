@@ -140,7 +140,7 @@ function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text)
   toast.add({
     title: t('common.copied'),
-    description: t('admin.api.apiKeyCopiedToClipboard'),
+    description: t('common.copiedToClipboard'),
     color: 'success',
   })
 }

@@ -92,16 +92,13 @@ async function copyJson(entry: typeof entries.value[0]) {
     }
 
     toast.add({
-      title: t('account.activity.copiedToClipboard'),
-      description: t('account.activity.copiedToClipboardDescription'),
+      title: t('common.copied'),
+      description: t('common.copiedToClipboard'),
     })
-  } catch (err) {
+  } catch (error) {
     toast.add({
-      title: t('account.activity.failedToCopy'),
-      description:
-        err instanceof Error
-          ? err.message
-          : t('account.activity.failedToCopyDescription'),
+      title: t('common.failedToCopy'),
+      description: error instanceof Error ? error.message : t('common.failedToCopy'),
       color: 'error',
     })
   }

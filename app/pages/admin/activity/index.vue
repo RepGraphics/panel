@@ -100,12 +100,12 @@ async function copyJson(entry: typeof activities.value[0]) {
       document.body.removeChild(textArea)
     }
     toast.add({
-      title: t('admin.activity.copiedToClipboard'),
-      description: t('admin.activity.auditLogJsonCopied'),
+      title: t('common.copied'),
+      description: t('common.copiedToClipboard'),
     })
   } catch (error) {
     toast.add({
-      title: t('admin.activity.failedToCopy'),
+      title: t('common.failedToCopy'),
       description: error instanceof Error ? error.message : t('common.failedToCopy'),
       color: 'error',
     })
