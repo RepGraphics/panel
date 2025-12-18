@@ -1,6 +1,6 @@
-import { betterAuth } from 'better-auth/minimal'
+import { betterAuth } from "better-auth"
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { username, twoFactor, customSession, apiKey, bearer, haveIBeenPwned, admin, multiSession, captcha } from 'better-auth/plugins'
+import { admin, haveIBeenPwned, bearer, multiSession, customSession, captcha, username, twoFactor } from "better-auth/plugins"
 import { createAuthMiddleware, APIError } from 'better-auth/api'
 import type { AuthContext } from '@better-auth/core'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
@@ -72,11 +72,8 @@ export async function checkPasswordCompromised(userId: string, password: string)
       throw fetchError
     }
   }
-  catch (error) {
-    const isProduction = process.env.NODE_ENV === 'production'
-    if (!isProduction) {
-      console.error(`[Auth] Failed to check password compromise for user ${userId}:`, error)
-    }
+  catch {
+    // Silently fail password compromise check
   }
 }
 
@@ -166,19 +163,21 @@ function createAuth() {
     ? [process.env.BETTER_AUTH_IP_HEADER]
     : ['cf-connecting-ip', 'x-forwarded-for', 'x-real-ip']
   
+  const adapterSchema = {
+    user: tables.users,
+    session: tables.sessions,
+    account: tables.accounts,
+    verificationToken: tables.verificationTokens,
+    rateLimit: tables.rateLimit,
+    apikey: tables.apiKeys,
+    twoFactor: tables.twoFactor,
+    jwks: tables.jwks,
+  }
+
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'sqlite',
-      schema: {
-        user: tables.users,
-        session: tables.sessions,
-        account: tables.accounts,
-        verificationToken: tables.verificationTokens,
-        rateLimit: tables.rateLimit,
-        apikey: tables.apiKeys,
-        twoFactor: tables.twoFactor,
-        jwks: tables.jwks,
-      },
+      schema: adapterSchema,
     }),
     account: {
       fields: {
@@ -377,20 +376,6 @@ function createAuth() {
           if (errorName === 'APIError' || errorName === 'ValidationError') {
             return
           }
-          
-          console.error('[Better Auth Error]', {
-            error: errorName,
-            timestamp: new Date().toISOString(),
-          })
-        } else {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          console.error('[Better Auth Error]', {
-            path: isAuthPath ? '[REDACTED]' : path,
-            method: request?.method || 'unknown',
-            error: errorMessage,
-            stack: error instanceof Error ? error.stack : undefined,
-            timestamp: new Date().toISOString(),
-          })
         }
       },
     },
@@ -468,11 +453,14 @@ function createAuth() {
         defaultBanReason: 'No reason provided',
         bannedUserMessage: 'You have been banned from this application. Please contact support if you believe this is an error.',
       }),
-      apiKey({
-        enableSessionForAPIKeys: false,
-        apiKeyHeaders: ['x-api-key', 'authorization'],
-        enableMetadata: true,
-      }),
+      // API key plugin disabled 
+      // Better Auth's drizzle adapter can't query the apikey table properly
+      // apiKey({
+      //   enableSessionForAPIKeys: true,
+      //   apiKeyHeaders: ['x-api-key', 'authorization'],
+      //   enableMetadata: true,
+      //   disableKeyHashing: true,
+      // }),
       bearer(),
       multiSession({
         maximumSessions: 5,

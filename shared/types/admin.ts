@@ -190,16 +190,18 @@ export interface ApiKeyWithToken extends ApiKey {
   apiKey: string
 }
 
+export type PermissionAction = 'read' | 'write' | 'delete'
+
 export interface ApiKeyPermissions {
-  rServers?: number
-  rNodes?: number
-  rAllocations?: number
-  rUsers?: number
-  rLocations?: number
-  rNests?: number
-  rEggs?: number
-  rDatabaseHosts?: number
-  rServerDatabases?: number
+  servers?: PermissionAction[]
+  nodes?: PermissionAction[]
+  allocations?: PermissionAction[]
+  users?: PermissionAction[]
+  locations?: PermissionAction[]
+  nests?: PermissionAction[]
+  eggs?: PermissionAction[]
+  databaseHosts?: PermissionAction[]
+  serverDatabases?: PermissionAction[]
 }
 
 export interface CreateApiKeyPayload {
