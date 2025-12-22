@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { NavigationMenuItem } from '@nuxt/ui'
 const { t } = useI18n()
@@ -9,6 +9,10 @@ const runtimeConfig = useRuntimeConfig()
 const appName = computed(() => runtimeConfig.public.appName || 'XyraPanel')
 
 const authStore = useAuthStore()
+const isHydrated = ref(false)
+onMounted(() => {
+  isHydrated.value = true
+})
 const { user, isAdmin: isAdminRef, status: authStatus } = storeToRefs(authStore)
 const signOutLoading = ref(false)
 
@@ -28,13 +32,16 @@ const isMaintenanceMode = computed(() => {
 })
 const maintenanceMessage = computed(() => securitySettings.value?.maintenanceMessage?.trim() || t('layout.defaultMaintenanceMessage'))
 
+const fallbackUserLabel = computed(() => t('common.user'))
 const userLabel = computed(() => {
   if (!user.value) return t('common.user')
   return user.value.username || user.value.email || user.value.name || t('common.user')
 })
 
+const displayUserLabel = computed(() => (isHydrated.value ? userLabel.value : fallbackUserLabel.value))
+
 const userAvatar = computed(() => {
-  const label = userLabel.value
+  const label = isHydrated.value ? userLabel.value : fallbackUserLabel.value
   return {
     alt: label,
     text: label === t('common.user') ? 'U' : label.slice(0, 2).toUpperCase(),
@@ -170,7 +177,7 @@ async function handleLocaleChange(newLocale: string | undefined) {
             <template #leading>
               <UAvatar v-bind="userAvatar" size="sm" />
             </template>
-            <span v-if="!collapsed">{{ userLabel }}</span>
+            <span v-if="!collapsed">{{ displayUserLabel }}</span>
           </UButton>
         </UDropdownMenu>
       </template>
@@ -189,7 +196,13 @@ async function handleLocaleChange(newLocale: string | undefined) {
                 class="w-32"
                 @update:model-value="handleLocaleChange($event)"
               />
-              <UButton v-if="isAdminUser" icon="i-lucide-shield" variant="ghost" color="error" to="/admin">
+              <UButton
+                v-if="isHydrated && isAdminUser"
+                icon="i-lucide-shield"
+                variant="ghost"
+                color="error"
+                to="/admin"
+              >
                 {{ t('admin.title') }}
               </UButton>
               <UButton icon="i-lucide-log-out" color="primary" variant="subtle" :loading="signOutLoading"

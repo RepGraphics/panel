@@ -20,9 +20,6 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, payload => accountPasswordUpdateSchema.parse(payload))
 
-  const { useDrizzle, tables, eq } = await import('~~/server/utils/drizzle')
-  const db = useDrizzle()
-  
   try {
     await auth.api.changePassword({
       body: {

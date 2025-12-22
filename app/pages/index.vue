@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import type {
   ClientDashboardMetric,
@@ -75,6 +75,11 @@ definePageMeta({
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+
+const isHydrated = ref(false)
+onMounted(() => {
+  isHydrated.value = true
+})
 
 const {
   data: meData,
@@ -220,7 +225,9 @@ const error = computed<string | null>(() => {
   return null
 })
 
-const userName = computed(() => authStore.displayName || dashboardData.value?.user?.username || dashboardData.value?.user?.email || null)
+const fetchedUserName = computed(() => dashboardData.value?.user?.username || dashboardData.value?.user?.name || dashboardData.value?.user?.email || null)
+const hydratedUserName = computed(() => authStore.displayName || fetchedUserName.value)
+const userName = computed(() => (isHydrated.value ? hydratedUserName.value : fetchedUserName.value))
 
 const welcomeTitle = computed(() => {
   if (userName.value) {

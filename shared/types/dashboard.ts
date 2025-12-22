@@ -79,6 +79,7 @@ export interface ClientDashboardResponse {
 export interface DashboardUserIdentity {
   username?: string | null
   email?: string | null
+  name?: string | null
 }
 
 export interface MeResponse {
