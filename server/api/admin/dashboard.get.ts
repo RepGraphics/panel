@@ -12,6 +12,7 @@ import type {
   DashboardIncident,
   DashboardOperation,
   NodeStatus,
+  NitroTasksResponse,
 } from '#shared/types/admin'
 
 function parseMetadata(raw: string | null): Record<string, unknown> | null {
@@ -25,7 +26,30 @@ function formatHelperRange(current: number, total: number, suffix: string): stri
   return `${current}/${total} ${suffix}`
 }
 
-export default defineEventHandler(async (): Promise<DashboardResponse> => {
+async function fetchNitroTasks(event: Parameters<Parameters<typeof defineEventHandler>[0]>[0]): Promise<NitroTasksResponse> {
+  try {
+    const host = event.node.req.headers.host || 'localhost'
+    const protocol = event.node.req.headers['x-forwarded-proto'] || 'http'
+    const url = `${protocol}://${host}/api/admin/schedules/nitro-tasks`
+    const response = await fetch(url, {
+      headers: {
+        cookie: event.node.req.headers.cookie || '',
+      },
+    })
+
+    if (!response.ok) {
+      return { tasks: {}, scheduledTasks: [] }
+    }
+
+    return await response.json() as NitroTasksResponse
+  }
+  catch (error) {
+    console.error('Failed to fetch Nitro tasks for dashboard:', error)
+    return { tasks: {}, scheduledTasks: [] }
+  }
+}
+
+export default defineEventHandler(async (event): Promise<DashboardResponse> => {
   const db = useDrizzle()
   const nodes = listWingsNodes()
 
@@ -74,7 +98,10 @@ export default defineEventHandler(async (): Promise<DashboardResponse> => {
     nextRunAt: tables.serverSchedules.nextRunAt,
   }).from(tables.serverSchedules).all()
 
-  const activeSchedules = scheduleRows.filter(s => s.enabled).length
+  const nitroTasks = await fetchNitroTasks(event)
+  const nitroScheduleCount = nitroTasks.scheduledTasks.reduce((sum, sched) => sum + sched.tasks.length, 0)
+
+  const activeSchedules = scheduleRows.filter(s => s.enabled).length + nitroScheduleCount
   const soonThreshold = new Date(Date.now() + 30 * 60 * 1000)
   const dueSoonCount = scheduleRows.filter(s => s.enabled && s.nextRunAt && s.nextRunAt <= soonThreshold).length
 
