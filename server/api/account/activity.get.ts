@@ -25,14 +25,14 @@ export default defineEventHandler(async (event) => {
   const userId = session.user.id
   const userEmail = session.user.email
 
-  /** TODO: normalize actor column type */
-  const actorId = String(userId)
-
-  const conditions = [eq(tables.auditEvents.actor, actorId)]
-
-  if (userEmail) {
-    conditions.push(eq(tables.auditEvents.actor, userEmail))
+  const actorIdentifiers = new Set<string>()
+  actorIdentifiers.add(String(userId))
+  if (typeof userEmail === 'string' && userEmail.trim().length > 0) {
+    actorIdentifiers.add(userEmail.trim())
+    actorIdentifiers.add(userEmail.trim().toLowerCase())
   }
+
+  const conditions = Array.from(actorIdentifiers).map(identifier => eq(tables.auditEvents.actor, identifier))
 
   const totalResult = db
     .select({ count: sql<number>`count(*)` })

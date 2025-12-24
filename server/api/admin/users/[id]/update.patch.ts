@@ -3,6 +3,7 @@ import { APIError } from 'better-auth/api'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import { requireAdmin } from '~~/server/utils/security'
+import { auth, normalizeHeadersForAuth } from '~~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -58,8 +59,18 @@ export default defineEventHandler(async (event) => {
       }
     }
 
+    const headers = normalizeHeadersForAuth(event.node.req.headers)
+    const adminAuthApi = auth.api as typeof auth.api & {
+      setRole: (options: { body: { userId: string; role: string | string[] }; headers: Record<string, string> }) => Promise<unknown>
+      setUserPassword: (options: { body: { userId: string; newPassword: string }; headers: Record<string, string> }) => Promise<unknown>
+    }
+
     if (role !== undefined) {
-      // TODO: Use auth.api.setRole() when available in Better Auth API
+      await adminAuthApi.setRole({
+        body: { userId: id, role },
+        headers,
+      })
+
       await db.update(tables.users)
         .set({
           role,
@@ -70,12 +81,13 @@ export default defineEventHandler(async (event) => {
     }
 
     if (password) {
-      // TODO: Use auth.api.setUserPassword() when available in Better Auth API
-      const bcrypt = await import('bcryptjs')
-      const hashedPassword = await bcrypt.default.hash(password, 10)
+      await adminAuthApi.setUserPassword({
+        body: { userId: id, newPassword: password },
+        headers,
+      })
+
       await db.update(tables.users)
         .set({
-          password: hashedPassword,
           passwordResetRequired: false,
           updatedAt: new Date(),
         })
