@@ -187,7 +187,7 @@ function formatIo(io: number | null): string {
                 <p class="text-xs uppercase tracking-wide text-muted-foreground">{{ t('common.status') }}</p>
                 <div class="mt-2 flex items-center gap-2">
                   <UBadge v-if="server?.suspended" color="error" size="sm">{{ t('common.suspended') }}</UBadge>
-                  <UBadge v-else color="primary" size="sm">{{ t('common.active') }}</UBadge>
+                  <UBadge v-else color="success" size="sm">{{ t('common.active') }}</UBadge>
                 </div>
               </div>
             </div>
@@ -239,7 +239,7 @@ function formatIo(io: number | null): string {
             </template>
 
             <div class="space-y-4">
-              <UAlert color="warning" icon="i-lucide-alert-triangle">
+              <UAlert color="error" icon="i-lucide-alert-triangle" variant="subtle">
                 <template #title>{{ t('common.warning') }}</template>
                 <template #description>
                   {{ t('server.settings.reinstallWarningDescription') }}

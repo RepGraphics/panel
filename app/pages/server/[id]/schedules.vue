@@ -642,11 +642,6 @@ function getStatusLabel(enabled: boolean) {
         </section>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
-
     <UModal
       v-model:open="showTaskModal"
       :title="selectedSchedule ? t('server.schedules.manageTasksFor', { name: selectedSchedule.name }) : t('server.schedules.manageTasks')"

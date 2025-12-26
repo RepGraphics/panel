@@ -362,9 +362,5 @@ async function deleteBackup(backupUuid: string) {
         </section>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
   </UPage>
 </template>

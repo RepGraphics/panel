@@ -13,9 +13,7 @@ const serverId = computed(() => route.params.id as string)
 
 const { data: databasesData, pending, error } = await useAsyncData(
   `server-${serverId.value}-databases`,
-  () =>
-    // @ts-expect-error - Nuxt typed routes trigger deep inference
-    $fetch<{ data: ServerDatabase[] }>(`/api/client/servers/${serverId.value}/databases`),
+  () => $fetch<{ data: ServerDatabase[] }>(`/api/client/servers/${serverId.value}/databases`),
   {
     watch: [serverId],
   },
@@ -299,11 +297,6 @@ async function deleteDatabase() {
         </section>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
-
     <UModal
       v-model:open="showCreateModal"
       :title="t('server.databases.createDatabase')"

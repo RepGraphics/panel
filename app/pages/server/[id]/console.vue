@@ -270,14 +270,7 @@ function handleSearch() {
 
         <div class="space-y-4">
 
-          <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-              <UBadge v-if="!connected" color="error" size="sm">
-                <UIcon name="i-lucide-wifi-off" />
-                <span class="ml-1">{{ t('server.console.disconnected') }}</span>
-              </UBadge>
-            </div>
-
+          <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
               <UButton
                 icon="i-lucide-play"
@@ -316,6 +309,13 @@ function handleSearch() {
               >
                 {{ t('server.console.kill') }}
               </UButton>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <UBadge v-if="!connected" color="error" size="sm">
+                <UIcon name="i-lucide-wifi-off" />
+                <span class="ml-1">{{ t('server.console.disconnected') }}</span>
+              </UBadge>
             </div>
           </div>
 
@@ -477,7 +477,7 @@ function handleSearch() {
     </UPageBody>
 
     <template #right>
-      <UPageAside class="hidden lg:block">
+      <UPageAside class="hidden lg:block lg:min-w-[22rem]">
         <UCard>
           <template #header>
             <h3 class="text-sm font-semibold">{{ t('server.console.connected') }}</h3>

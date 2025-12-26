@@ -275,9 +275,5 @@ function getActionColor(action: string): 'primary' | 'error' | 'warning' | 'neut
         </UCard>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
   </UPage>
 </template>

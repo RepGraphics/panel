@@ -1598,6 +1598,7 @@ const isEditorDirty = computed(() => {
                         v-model="editorValue"
                         :lang="editorLanguage"
                         :options="{
+                          theme: 'vs-dark',
                           automaticLayout: true,
                           readOnly: filePending,
                           minimap: { enabled: true },
@@ -1642,7 +1643,6 @@ const isEditorDirty = computed(() => {
     </UPageBody>
 
   </UPage>
-
   <UModal v-model:open="renameModal.open" :title="t('server.files.rename')" :ui="{ footer: 'justify-end gap-2' }">
     <template #body>
       <UForm class="space-y-4" @submit.prevent="submitRename">

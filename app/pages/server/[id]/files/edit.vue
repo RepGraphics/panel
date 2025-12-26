@@ -220,6 +220,7 @@ onBeforeRouteLeave((to, from, next) => {
               v-model="content"
               :lang="language"
               :options="{
+                theme: 'vs-dark',
                 minimap: { enabled: true },
                 fontSize: 14,
                 lineNumbers: 'on',

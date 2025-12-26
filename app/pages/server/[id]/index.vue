@@ -41,13 +41,6 @@ function formatLimit(value: number | null | undefined, suffix: string) {
   return `${value.toLocaleString()} ${suffix}`
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value)
-    return t('common.unknown')
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? t('common.unknown') : date.toLocaleString()
-}
-
 watch(error, (err) => {
   if (err && err.statusCode === 404 && import.meta.client) {
     router.replace('/server')
@@ -66,22 +59,6 @@ watch([pending, error, server], ([isPending, err, serverData]) => {
   router.replace(`/server/${serverId.value}/console`)
 })
 
-const infoStats = computed(() => {
-  const details = server.value
-  if (!details) {
-    return []
-  }
-
-  return [
-    { icon: 'i-lucide-server', label: t('common.status'), value: details.status ?? t('common.unknown') },
-    { icon: 'i-lucide-shield', label: t('common.suspended'), value: details.suspended ? t('common.yes') : t('common.no') },
-    { icon: 'i-lucide-globe', label: t('server.details.primaryAllocation'), value: formatAllocation(primaryAllocation.value) },
-    { icon: 'i-lucide-gauge', label: t('server.details.memory'), value: formatLimit(details.limits.memory, 'MB') },
-    { icon: 'i-lucide-cpu', label: t('server.details.cpu'), value: formatLimit(details.limits.cpu, '%') },
-    { icon: 'i-lucide-disc', label: t('server.details.disk'), value: formatLimit(details.limits.disk, 'MB') },
-    { icon: 'i-lucide-timer', label: t('server.details.createdAt'), value: formatDate(details.createdAt) },
-  ]
-})
 </script>
 
 <template>
@@ -190,25 +167,5 @@ const infoStats = computed(() => {
       </UContainer>
     </UPageBody>
 
-    <template #right>
-      <UPageAside>
-        <div class="space-y-4">
-          <UCard variant="subtle" :ui="{ body: 'space-y-3' }">
-            <h2 class="text-sm font-semibold">{{ t('server.details.atAGlance') }}</h2>
-            <div
-              v-for="stat in infoStats"
-              :key="stat.label"
-              class="rounded-md border border-default bg-background px-3 py-3"
-            >
-              <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                <UIcon :name="stat.icon" class="size-4 text-primary" />
-                <span>{{ stat.label }}</span>
-              </div>
-              <p class="mt-2 text-sm font-semibold text-foreground">{{ stat.value }}</p>
-            </div>
-          </UCard>
-        </div>
-      </UPageAside>
-    </template>
   </UPage>
 </template>

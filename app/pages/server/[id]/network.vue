@@ -55,7 +55,7 @@ function formatIp(allocation: ServerAllocation): string {
           </div>
 
           <template v-else>
-            <UCard variant="subtle">
+            <UCard>
               <template #header>
                 <div class="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -90,7 +90,7 @@ function formatIp(allocation: ServerAllocation): string {
                   </div>
                 </div>
                 <div class="flex-1 space-y-3">
-                  <UAlert :title="t('server.network.connectionString')" icon="i-lucide-info">
+                  <UAlert :title="t('server.network.connectionString')" icon="i-lucide-info" variant="subtle">
                     <template #description>
                       <div class="flex items-center justify-between gap-2">
                         <code class="text-xs">{{ formatIp(primaryAllocation) }}:{{ primaryAllocation.port }}</code>
@@ -108,7 +108,7 @@ function formatIp(allocation: ServerAllocation): string {
               </div>
             </UCard>
 
-            <UCard variant="subtle">
+            <UCard>
               <template #header>
                 <div class="flex items-center justify-between">
                   <h2 class="text-lg font-semibold">{{ t('server.network.additionalAllocations') }}</h2>
@@ -144,9 +144,5 @@ function formatIp(allocation: ServerAllocation): string {
         </section>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
   </UPage>
 </template>

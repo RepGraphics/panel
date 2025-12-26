@@ -148,7 +148,7 @@ async function updateDockerImage() {
           </div>
 
           <template v-else>
-            <UCard variant="subtle">
+            <UCard>
               <template #header>
                 <div class="flex items-center gap-2">
                   <UIcon name="i-lucide-rocket" class="size-5" />
@@ -162,7 +162,7 @@ async function updateDockerImage() {
                   <code class="text-sm font-mono text-foreground">{{ startup }}</code>
                 </div>
 
-                <UAlert color="primary" icon="i-lucide-info">
+                <UAlert color="warning" icon="i-lucide-info" variant="subtle">
                   <template #description>
                     {{ t('server.startup.startupCommandInfo') }}
                   </template>
@@ -170,7 +170,7 @@ async function updateDockerImage() {
               </div>
             </UCard>
 
-            <UCard variant="subtle">
+            <UCard>
               <template #header>
                 <div class="flex items-center gap-2">
                   <UIcon name="i-lucide-container" class="size-5" />
@@ -197,6 +197,7 @@ async function updateDockerImage() {
                     <UButton
                       icon="i-lucide-check"
                       color="primary"
+                      variant="subtle"
                       :loading="isChangingDockerImage"
                       :disabled="isChangingDockerImage || selectedDockerImage === dockerImage"
                       @click="updateDockerImage"
@@ -210,13 +211,13 @@ async function updateDockerImage() {
                   <p class="text-xs uppercase tracking-wide text-muted-foreground mb-2">{{ t('server.startup.currentDockerImage') }}</p>
                   <code class="text-sm font-mono text-foreground">{{ dockerImage }}</code>
                   
-                  <UAlert v-if="isCustomDockerImage" color="warning" icon="i-lucide-alert-triangle" class="mt-4">
+                  <UAlert v-if="isCustomDockerImage" color="warning" icon="i-lucide-alert-triangle" variant="subtle" class="mt-4">
                     <template #description>
                       {{ t('server.startup.dockerImageCustomWarning') }}
                     </template>
                   </UAlert>
 
-                  <UAlert v-else color="primary" icon="i-lucide-info" class="mt-4">
+                  <UAlert v-else color="primary" icon="i-lucide-info" variant="subtle" class="mt-4">
                     <template #description>
                       {{ t('server.startup.dockerImageSingleInfo') }}
                     </template>
@@ -225,7 +226,7 @@ async function updateDockerImage() {
               </div>
             </UCard>
 
-            <UCard variant="subtle">
+            <UCard>
               <template #header>
                 <div class="flex items-center gap-2">
                   <UIcon name="i-lucide-variable" class="size-5" />
@@ -252,7 +253,7 @@ async function updateDockerImage() {
               </div>
 
               <template #footer>
-                <UAlert color="primary" icon="i-lucide-info">
+                <UAlert color="warning" icon="i-lucide-info" variant="subtle">
                   <template #description>
                     {{ t('server.startup.environmentVariablesInfo') }}
                   </template>
@@ -263,9 +264,5 @@ async function updateDockerImage() {
         </section>
       </UContainer>
     </UPageBody>
-
-    <template #right>
-      <UPageAside />
-    </template>
-  </UPage>
+</UPage>
 </template>
