@@ -1,6 +1,7 @@
 import { createError, getQuery } from 'h3'
 import { requireAuth } from '~~/server/utils/security'
 import { useDrizzle, tables, eq, isNotNull, and, desc } from '~~/server/utils/drizzle'
+import { getMultipleServerStatuses } from '~~/server/utils/server-status'
 
 import type { ServerListEntry, ServersResponse } from '#shared/types/server'
 
@@ -32,27 +33,48 @@ export default defineEventHandler(async (event): Promise<ServersResponse> => {
       .select({
         server: tables.servers,
         node: tables.wingsNodes,
+        limits: tables.serverLimits,
+        primaryAllocation: tables.serverAllocations,
       })
       .from(tables.servers)
       .leftJoin(tables.wingsNodes, eq(tables.servers.nodeId, tables.wingsNodes.id))
+      .leftJoin(tables.serverLimits, eq(tables.serverLimits.serverId, tables.servers.id))
+      .leftJoin(
+        tables.serverAllocations,
+        and(
+          eq(tables.serverAllocations.serverId, tables.servers.id),
+          eq(tables.serverAllocations.isPrimary, true),
+        ),
+      )
       .where(and(...whereConditions))
       .orderBy(desc(tables.servers.updatedAt)) 
       .all()
 
+    const serverUuids = servers.map(({ server }) => server.uuid)
+    const liveStatuses = await getMultipleServerStatuses(serverUuids)
+    const statusMap = new Map(liveStatuses.map(status => [status.serverUuid, status.state]))
+
     const records: ServerListEntry[] = servers
-      .map(({ server, node }) => ({
+      .map(({ server, node, limits, primaryAllocation }) => ({
         uuid: server.uuid,
         identifier: server.identifier,
         name: server.name,
         nodeId: server.nodeId!,
         nodeName: node?.name || 'Unknown Node',
         description: server.description || null,
-        limits: null,
+        limits: limits
+          ? {
+              cpu: limits.cpu ?? null,
+              memory: limits.memory ?? null,
+              disk: limits.disk ?? null,
+            }
+          : null,
         featureLimits: null,
-        status: server.status || 'unknown',
+        status: statusMap.get(server.uuid) || server.status || 'unknown',
         ownership: includeAll ? 'shared' : 'mine',
         suspended: server.suspended || false,
         isTransferring: false,
+        primaryAllocation: primaryAllocation ? `${primaryAllocation.ip}:${primaryAllocation.port}` : null,
       }))
 
     return {

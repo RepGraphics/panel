@@ -195,12 +195,12 @@ const scopeToggleText = computed(() => {
             <div
               v-for="server in filteredServers"
               :key="server.uuid"
-              class="group rounded-2xl border border-default/70 bg-background/90 p-5 shadow-sm transition hover:border-primary/40 hover:shadow-md"
+              class="group rounded-2xl border border-default/70 bg-background/90 p-3 shadow-sm transition hover:border-primary/40 hover:shadow-md"
             >
-              <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-                <div class="flex items-start gap-4">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div class="flex flex-1 items-start gap-3">
                   <div
-                    class="flex size-12 items-center justify-center rounded-2xl transition-colors"
+                    class="flex size-10 items-center justify-center rounded-2xl transition-colors"
                     :class="{
                       'bg-success/10 text-success': server.status === 'running' && !server.suspended,
                       'bg-error/10 text-error': server.status === 'offline' || server.suspended,
@@ -209,7 +209,7 @@ const scopeToggleText = computed(() => {
                   >
                     <UIcon name="i-lucide-server" class="size-5" />
                   </div>
-                  <div class="space-y-2">
+                  <div class="space-y-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <NuxtLink :to="`/server/${server.uuid}/console`" class="text-base font-semibold text-foreground hover:text-primary">
                         {{ server.name }}
@@ -217,56 +217,45 @@ const scopeToggleText = computed(() => {
                       <UBadge size="xs" color="neutral">{{ server.identifier }}</UBadge>
                       <UBadge size="xs" color="neutral" variant="soft">{{ server.nodeName }}</UBadge>
                     </div>
-                    <p class="text-sm text-muted-foreground line-clamp-2 min-h-[1.25rem]">
-                      {{ server.description?.trim() || '\u00A0' }}
-                    </p>
-                    <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <div class="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
                       <span class="inline-flex items-center gap-1">
-                        <UIcon name="i-lucide-hash" class="size-3" />
-                        {{ server.uuid }}
+                        <UIcon name="i-lucide-network" class="size-3.5 text-foreground/70" />
+                        {{ t('server.list.primaryAllocationLabel') }}:
+                        <span class="text-foreground">
+                          {{ server.primaryAllocation ?? t('common.na') }}
+                        </span>
                       </span>
                     </div>
+                    <p class="text-sm text-muted-foreground line-clamp-1">
+                      {{ server.description?.trim() || '\u00A0' }}
+                    </p>
                   </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-start gap-2 text-xs lg:justify-end">
+                <div class="flex flex-1 flex-wrap items-center justify-start gap-2 text-[11px] text-muted-foreground md:flex-none md:justify-end">
                   <UBadge :color="statusBadge(server.status, server.suspended).color" size="xs" variant="soft">
                     {{ statusBadge(server.status, server.suspended).label }}
                   </UBadge>
                   <UBadge v-if="server.isTransferring" color="warning" size="xs" variant="soft">
                     {{ t('common.transferring') }}
                   </UBadge>
-                </div>
-              </div>
-
-              <div class="mt-4 grid gap-3 border-t border-dashed border-default/60 pt-4 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
-                <div class="flex items-center justify-between rounded-xl border border-default/60 bg-muted/20 px-3 py-2">
-                  <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">
-                    <UIcon name="i-lucide-gauge" class="size-4 text-foreground/70" />
-                    {{ t('server.list.cpuLimit') }}
-                  </span>
-                  <span class="text-sm font-semibold text-foreground">{{ formatLimit(server.limits, 'cpu') }}</span>
-                </div>
-                <div class="flex items-center justify-between rounded-xl border border-default/60 bg-muted/20 px-3 py-2">
-                  <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">
-                    <UIcon name="i-lucide-memory-stick" class="size-4 text-foreground/70" />
-                    {{ t('server.list.memoryLimit') }}
-                  </span>
-                  <span class="text-sm font-semibold text-foreground">{{ formatLimit(server.limits, 'memory') }}</span>
-                </div>
-                <div class="flex items-center justify-between rounded-xl border border-default/60 bg-muted/20 px-3 py-2">
-                  <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">
-                    <UIcon name="i-lucide-hard-drive" class="size-4 text-foreground/70" />
-                    {{ t('server.list.diskLimit') }}
-                  </span>
-                  <span class="text-sm font-semibold text-foreground">{{ formatLimit(server.limits, 'disk') }}</span>
-                </div>
-                <div class="flex items-center justify-between rounded-xl border border-default/60 bg-muted/20 px-3 py-2">
-                  <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/80">
-                    <UIcon name="i-lucide-network" class="size-4 text-foreground/70" />
-                    {{ t('server.list.primaryAllocationLabel') }}
-                  </span>
-                  <span class="text-sm font-semibold text-foreground">{{ server.primaryAllocation ?? t('common.na') }}</span>
+                  <div class="flex flex-wrap items-center gap-2 text-xs md:text-sm font-medium text-muted-foreground">
+                    <div class="flex items-center gap-1 rounded-xl border border-default/60 bg-muted/20 px-2.5 py-1.5">
+                      <UIcon name="i-lucide-gauge" class="size-4 text-foreground/70" />
+                      <span class="uppercase tracking-wide">{{ t('server.list.cpuLimit') }}</span>
+                      <span class="text-foreground">{{ formatLimit(server.limits, 'cpu') }}</span>
+                    </div>
+                    <div class="flex items-center gap-1 rounded-xl border border-default/60 bg-muted/20 px-2.5 py-1.5">
+                      <UIcon name="i-lucide-memory-stick" class="size-4 text-foreground/70" />
+                      <span class="uppercase tracking-wide">{{ t('server.list.memoryLimit') }}</span>
+                      <span class="text-foreground">{{ formatLimit(server.limits, 'memory') }}</span>
+                    </div>
+                    <div class="flex items-center gap-1 rounded-xl border border-default/60 bg-muted/20 px-2.5 py-1.5">
+                      <UIcon name="i-lucide-hard-drive" class="size-4 text-foreground/70" />
+                      <span class="uppercase tracking-wide">{{ t('server.list.diskLimit') }}</span>
+                      <span class="text-foreground">{{ formatLimit(server.limits, 'disk') }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
