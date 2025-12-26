@@ -8,7 +8,9 @@
   --font-sans: "Inter", sans-serif;
 }
 
-.admin-layout {
+.default-layout,
+.admin-layout,
+.server-layout {
   --ui-container: 100%;
 }
 

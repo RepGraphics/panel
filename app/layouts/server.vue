@@ -6,10 +6,11 @@ const route = useRoute()
 
 const serverId = computed(() => route.params.id as string)
 
+// @ts-expect-error - Nuxt typed routes cause deep type inference
 const { data: serverResponse } = await useFetch(
   `/api/client/servers/${serverId.value}`,
   {
-    key: `server-layout-${serverId.value}`,
+    key: `server-${serverId.value}`,
     watch: [serverId],
   },
 )
@@ -28,8 +29,6 @@ const serverIdentifier = computed(() => {
   const identifier = server.value?.identifier
   return identifier || serverId.value
 })
-
-const settingsPath = computed(() => `/server/${serverId.value}/settings`)
 
 const sidebarToggleProps = computed(() => ({
   icon: 'i-lucide-menu',
@@ -108,7 +107,7 @@ const navItems = computed(() => {
 </script>
 
 <template>
-  <UDashboardGroup class="min-h-screen bg-muted/20" storage="local" storage-key="server-dashboard">
+  <UDashboardGroup class="server-layout min-h-screen bg-muted/20" storage="local" storage-key="server-dashboard">
     <UDashboardSidebar
       collapsible
       :toggle="sidebarToggleProps"
@@ -135,22 +134,17 @@ const navItems = computed(() => {
 
     <UDashboardPanel :ui="{ body: 'flex flex-1 flex-col p-0' }">
       <template #body>
-        <UDashboardNavbar>
-          <div class="flex flex-col gap-1">
-            <h1 class="text-xl font-semibold text-foreground">{{ serverName }}</h1>
-            <p class="text-xs text-muted-foreground">{{ serverIdentifier }}</p>
-          </div>
-          <template #right>
-            <div class="flex flex-wrap items-center gap-2">
-              <UButton icon="i-lucide-cog" variant="ghost" color="neutral" :to="settingsPath">
-                {{ t('server.settings.title') }}
-              </UButton>
+        <UDashboardNavbar :ui="{ root: 'justify-start gap-0 px-6 py-0', left: 'flex flex-col gap-1 text-left' }">
+          <template #left>
+            <div>
+              <h1 class="text-xl font-semibold text-foreground">{{ serverName }}</h1>
+              <p class="text-xs text-muted-foreground">{{ serverIdentifier }}</p>
             </div>
           </template>
         </UDashboardNavbar>
 
         <main class="flex-1 overflow-y-auto">
-          <div class="mx-auto w-full max-w-7xl px-6 py-10">
+          <div class="w-full px-8 pt-0 pb-8 -mt-2">
             <slot />
           </div>
         </main>

@@ -141,7 +141,7 @@ async function handleLocaleChange(newLocale: string | undefined) {
 </script>
 
 <template>
-  <UDashboardGroup class="min-h-screen bg-muted/30" storage="local" storage-key="client-dashboard">
+  <UDashboardGroup class="default-layout min-h-screen bg-muted/30" storage="local" storage-key="client-dashboard">
     <UDashboardSidebar
       collapsible
       :toggle="sidebarToggleProps"
