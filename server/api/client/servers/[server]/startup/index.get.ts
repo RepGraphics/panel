@@ -1,6 +1,7 @@
 import { getServerSession } from '~~/server/utils/session'
 import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import type { ServerStartupVariable } from '#shared/types/server'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -37,6 +38,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const environment: Record<string, string> = {}
+  const variableRecords = new Map<string, typeof envVars[number]>()
+  for (const envVar of envVars) {
+    variableRecords.set(envVar.key, envVar)
+  }
+
+  const variables: ServerStartupVariable[] = []
 
   if (egg?.id) {
     const eggVariables = db
@@ -46,14 +53,40 @@ export default defineEventHandler(async (event) => {
       .all()
 
     for (const eggVar of eggVariables) {
-      const value = serverEnvMap.get(eggVar.envVariable) ?? eggVar.defaultValue ?? ''
-      environment[eggVar.envVariable] = value
+      const variableValue = serverEnvMap.get(eggVar.envVariable) ?? eggVar.defaultValue ?? ''
+      environment[eggVar.envVariable] = variableValue
+
+      const override = variableRecords.get(eggVar.envVariable)
+      variables.push({
+        id: override?.id ?? `env_${server.id}_${eggVar.envVariable}`,
+        serverId: server.id,
+        key: eggVar.envVariable,
+        value: variableValue,
+        description: eggVar.description ?? override?.description ?? null,
+        isEditable: Boolean(eggVar.userEditable ?? override?.isEditable ?? true),
+        createdAt: new Date(override?.createdAt ?? server.createdAt ?? Date.now()).toISOString(),
+        updatedAt: new Date(override?.updatedAt ?? server.updatedAt ?? Date.now()).toISOString(),
+      })
     }
   }
 
   for (const [key, value] of serverEnvMap.entries()) {
     if (!environment[key]) {
       environment[key] = value
+    }
+
+    if (!variables.some(variable => variable.key === key)) {
+      const override = variableRecords.get(key)
+      variables.push({
+        id: override?.id ?? `env_${server.id}_${key}`,
+        serverId: server.id,
+        key,
+        value,
+        description: override?.description ?? null,
+        isEditable: override?.isEditable ?? true,
+        createdAt: new Date(override?.createdAt ?? server.createdAt ?? Date.now()).toISOString(),
+        updatedAt: new Date(override?.updatedAt ?? server.updatedAt ?? Date.now()).toISOString(),
+      })
     }
   }
 
@@ -78,6 +111,7 @@ export default defineEventHandler(async (event) => {
       dockerImage: server.dockerImage || server.image || egg?.dockerImage || '',
       dockerImages,
       environment,
+      variables,
     },
   }
 })

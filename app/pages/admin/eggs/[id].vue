@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, reactive, ref, watch } from 'vue'
 import type { EggWithVariables, CreateEggVariablePayload } from '#shared/types/admin'
 import type { EggVariable } from '#shared/types/nest'
 
@@ -23,6 +24,19 @@ const egg = computed(() => eggData.value?.data)
 const showVariableModal = ref(false)
 const editingVariable = ref<EggVariable | null>(null)
 const isSubmitting = ref(false)
+const isSavingConfig = ref(false)
+
+const configForm = reactive({
+  dockerImage: '',
+  startup: '',
+  configStop: '',
+})
+
+watch(egg, (value) => {
+  configForm.dockerImage = value?.dockerImage ?? ''
+  configForm.startup = value?.startup ?? ''
+  configForm.configStop = value?.configStop ?? ''
+}, { immediate: true })
 
 const variableForm = ref<CreateEggVariablePayload>({
   eggId: eggId.value,
@@ -105,6 +119,38 @@ async function handleVariableSubmit() {
     })
   } finally {
     isSubmitting.value = false
+  }
+}
+
+async function handleSaveConfig() {
+  if (!configForm.dockerImage || !configForm.startup) {
+    toast.add({ title: t('common.error'), description: t('admin.eggs.nameAndEnvVariableRequired'), color: 'error' })
+    return
+  }
+
+  isSavingConfig.value = true
+  try {
+    await $fetch(`/api/admin/eggs/${eggId.value}`, {
+      method: 'PATCH',
+      body: {
+        dockerImage: configForm.dockerImage,
+        startup: configForm.startup,
+        configStop: configForm.configStop || null,
+      },
+    })
+
+    toast.add({ title: t('common.success'), description: t('admin.eggs.configuration'), color: 'success' })
+    await refresh()
+  }
+  catch (err) {
+    toast.add({
+      title: t('common.error'),
+      description: err instanceof Error ? err.message : t('admin.eggs.updateFailed'),
+      color: 'error',
+    })
+  }
+  finally {
+    isSavingConfig.value = false
   }
 }
 
@@ -200,19 +246,42 @@ async function handleExportEgg() {
               </template>
 
               <div class="space-y-4">
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{ t('admin.nests.createEgg.dockerImage') }}</label>
-                  <p class="mt-1 font-mono text-sm">{{ egg.dockerImage }}</p>
-                </div>
+                <UFormField :label="t('admin.nests.createEgg.dockerImage')" name="dockerImage" required>
+                  <UInput
+                    v-model="configForm.dockerImage"
+                    :placeholder="t('admin.nests.createEgg.dockerImage')"
+                    class="w-full"
+                    :disabled="isSavingConfig"
+                  />
+                </UFormField>
 
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{ t('admin.nests.createEgg.startupCommand') }}</label>
-                  <pre class="mt-1 overflow-auto rounded bg-muted/40 p-3 text-xs">{{ egg.startup }}</pre>
-                </div>
+                <UFormField :label="t('admin.nests.createEgg.startupCommand')" name="startup" required>
+                  <UTextarea
+                    v-model="configForm.startup"
+                    :rows="4"
+                    class="font-mono w-full"
+                    :disabled="isSavingConfig"
+                  />
+                </UFormField>
 
-                <div v-if="egg.configStop">
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{ t('admin.eggs.stopCommand') }}</label>
-                  <p class="mt-1 font-mono text-sm">{{ egg.configStop }}</p>
+                <UFormField :label="t('admin.eggs.stopCommand')" name="configStop">
+                  <UInput
+                    v-model="configForm.configStop"
+                    :placeholder="t('admin.eggs.stopCommand')"
+                    class="w-full"
+                    :disabled="isSavingConfig"
+                  />
+                </UFormField>
+
+                <div class="flex justify-end">
+                  <UButton
+                    color="primary"
+                    :loading="isSavingConfig"
+                    :disabled="isSavingConfig"
+                    @click="handleSaveConfig"
+                  >
+                    {{ t('common.save') }}
+                  </UButton>
                 </div>
               </div>
             </UCard>
@@ -310,7 +379,7 @@ async function handleExportEgg() {
       <template #body>
         <form class="space-y-4" @submit.prevent="handleVariableSubmit">
           <UFormField :label="t('common.name')" name="name" required>
-            <UInput v-model="variableForm.name" :placeholder="t('admin.eggs.variableNamePlaceholder')" required :disabled="isSubmitting" />
+            <UInput v-model="variableForm.name" :placeholder="t('admin.eggs.variableNamePlaceholder')" required :disabled="isSubmitting" class="w-full" />
             <template #help>
               {{ t('admin.eggs.variableNameHelp') }}
             </template>
@@ -318,22 +387,23 @@ async function handleExportEgg() {
 
           <UFormField :label="t('common.description')" name="description">
             <UTextarea v-model="variableForm.description" :placeholder="t('admin.eggs.variableDescriptionPlaceholder')"
+              class="w-full"
               :disabled="isSubmitting" />
           </UFormField>
 
           <UFormField :label="t('admin.eggs.environmentVariable')" name="envVariable" required>
-            <UInput v-model="variableForm.envVariable" :placeholder="t('admin.eggs.envVariablePlaceholder')" required :disabled="isSubmitting" />
+            <UInput v-model="variableForm.envVariable" :placeholder="t('admin.eggs.envVariablePlaceholder')" required :disabled="isSubmitting" class="w-full" />
             <template #help>
               {{ t('admin.eggs.envVariableHelp') }}
             </template>
           </UFormField>
 
           <UFormField :label="t('admin.eggs.defaultValue')" name="defaultValue">
-            <UInput v-model="variableForm.defaultValue" :placeholder="t('admin.eggs.defaultValuePlaceholder')" :disabled="isSubmitting" />
+            <UInput v-model="variableForm.defaultValue" :placeholder="t('admin.eggs.defaultValuePlaceholder')" :disabled="isSubmitting" class="w-full" />
           </UFormField>
 
           <UFormField :label="t('admin.eggs.validationRules')" name="rules">
-            <UInput v-model="variableForm.rules" :placeholder="t('admin.eggs.validationRulesPlaceholder')" :disabled="isSubmitting" />
+            <UInput v-model="variableForm.rules" :placeholder="t('admin.eggs.validationRulesPlaceholder')" :disabled="isSubmitting" class="w-full" />
             <template #help>
               {{ t('admin.eggs.validationRulesHelp') }}
             </template>

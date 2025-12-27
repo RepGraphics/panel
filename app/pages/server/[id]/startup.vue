@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ServerStartupVariable } from '#shared/types/server'
+
 const route = useRoute()
 
 definePageMeta({
@@ -10,9 +12,19 @@ const { t } = useI18n()
 const serverId = computed(() => route.params.id as string)
 const toast = useToast()
 
+type ClientStartupResponse = {
+  data: {
+    startup: string
+    dockerImage?: string
+    dockerImages?: Record<string, string>
+    environment?: Record<string, string>
+    variables?: ServerStartupVariable[]
+  }
+}
+
 const { data: startupData, pending, error, refresh } = await useAsyncData(
   `server-${serverId.value}-startup`,
-  () => $fetch<{ data: { startup: string; dockerImage?: string; dockerImages?: Record<string, string>; environment?: Record<string, string> } }>(`/api/client/servers/${serverId.value}/startup`),
+  () => $fetch<ClientStartupResponse>(`/api/client/servers/${serverId.value}/startup`),
   {
     watch: [serverId],
   },
@@ -26,7 +38,7 @@ const startup = computed(() => {
 })
 const dockerImage = computed(() => startupData.value?.data?.dockerImage || '')
 const dockerImages = computed(() => startupData.value?.data?.dockerImages || {})
-const environment = computed(() => startupData.value?.data?.environment || {})
+const startupVariables = computed<ServerStartupVariable[]>(() => startupData.value?.data?.variables ?? [])
 
 const hasMultipleDockerImages = computed(() => Object.keys(dockerImages.value).length > 1)
 
@@ -48,6 +60,59 @@ const dockerImageOptions = computed(() => {
     value: value as string,
   }))
 })
+
+const variableValues = ref<Record<string, string>>({})
+const savingVariables = ref<Record<string, boolean>>({})
+
+watch(
+  startupVariables,
+  (variables) => {
+    const mapped: Record<string, string> = {}
+    variables.forEach(variable => {
+      mapped[variable.key] = variable.value ?? ''
+    })
+    variableValues.value = mapped
+  },
+  { immediate: true },
+)
+
+function hasVariableChanged(variable: ServerStartupVariable) {
+  return (variableValues.value[variable.key] ?? '') !== (variable.value ?? '')
+}
+
+async function saveVariable(variable: ServerStartupVariable) {
+  if (!variable.isEditable || !hasVariableChanged(variable)) return
+
+  savingVariables.value[variable.key] = true
+  try {
+    await $fetch(`/api/client/servers/${serverId.value}/startup/variable`, {
+      method: 'PUT',
+      body: {
+        key: variable.key,
+        value: variableValues.value[variable.key] ?? '',
+      },
+    })
+
+    toast.add({
+      title: t('server.startup.variableUpdated'),
+      description: t('server.startup.variableUpdatedDescription', { key: variable.key }),
+      color: 'success',
+    })
+
+    await refresh()
+  }
+  catch (err) {
+    console.error('[Client Startup] Failed to update variable', err)
+    toast.add({
+      title: t('common.error'),
+      description: (err as { data?: { message?: string } }).data?.message || t('server.startup.variableUpdateFailed'),
+      color: 'error',
+    })
+  }
+  finally {
+    savingVariables.value[variable.key] = false
+  }
+}
 
 async function updateDockerImage() {
   console.log('[Client Startup] Update Docker Image clicked!', {
@@ -234,23 +299,75 @@ async function updateDockerImage() {
                 </div>
               </template>
 
-              <ServerEmptyState
-                v-if="Object.keys(environment).length === 0"
-                icon="i-lucide-variable"
-                :title="t('server.startup.noEnvironmentVariables')"
-                :description="t('server.startup.noEnvironmentVariablesDescription')"
-              />
+              <template v-if="startupVariables.length === 0">
+                <ServerEmptyState
+                  icon="i-lucide-variable"
+                  :title="t('server.startup.noEnvironmentVariables')"
+                  :description="t('server.startup.noEnvironmentVariablesDescription')"
+                />
+              </template>
 
-              <div v-else class="grid gap-3">
-                <div
-                  v-for="(value, key) in environment"
-                  :key="key"
-                  class="rounded-md border border-default bg-muted/30 p-4"
-                >
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground mb-2">{{ key }}</p>
-                  <code class="text-sm font-mono text-foreground break-all">{{ value }}</code>
+              <template v-else>
+                <div class="space-y-3">
+                  <div
+                    v-for="variable in startupVariables"
+                    :key="variable.key"
+                    class="rounded-lg border border-default bg-muted/20 p-4 space-y-3"
+                  >
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="text-xs uppercase tracking-wide text-muted-foreground">{{ variable.key }}</p>
+                      <UBadge v-if="!variable.isEditable" size="xs" variant="subtle" color="neutral">
+                        {{ t('common.readOnly') }}
+                      </UBadge>
+                      <UBadge v-else size="xs" variant="subtle" color="primary">
+                        {{ t('common.userEditable') }}
+                      </UBadge>
+                    </div>
+                    <p v-if="variable.description" class="text-xs text-muted-foreground">
+                      {{ variable.description }}
+                    </p>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <div class="flex-1">
+                        <label class="text-xs text-muted-foreground">{{ t('server.startup.variableValue') }}</label>
+                        <template v-if="variable.isEditable">
+                          <UInput
+                            v-model="variableValues[variable.key]"
+                            size="sm"
+                            class="mt-1"
+                            :disabled="savingVariables[variable.key]"
+                            @keyup.enter="saveVariable(variable)"
+                          />
+                        </template>
+                        <template v-else>
+                          <code class="mt-1 block rounded border border-default bg-muted/40 px-3 py-2 text-sm font-mono text-foreground break-all">
+                            {{ variableValues[variable.key] }}
+                          </code>
+                        </template>
+                      </div>
+                      <div v-if="variable.isEditable" class="flex gap-2">
+                        <UButton
+                          size="sm"
+                          color="primary"
+                          :loading="savingVariables[variable.key]"
+                          :disabled="savingVariables[variable.key] || !hasVariableChanged(variable)"
+                          @click="saveVariable(variable)"
+                        >
+                          {{ t('common.save') }}
+                        </UButton>
+                        <UButton
+                          size="sm"
+                          variant="ghost"
+                          color="neutral"
+                          :disabled="savingVariables[variable.key]"
+                          @click="variableValues[variable.key] = variable.value ?? ''"
+                        >
+                          {{ t('common.reset') }}
+                        </UButton>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </template>
 
               <template #footer>
                 <UAlert color="warning" icon="i-lucide-info" variant="subtle">

@@ -80,11 +80,16 @@ export const createEggSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   dockerImage: z.string().min(1),
+  dockerImages: z.array(z.string()).optional(),
   startup: z.string().min(1),
   configFiles: z.string().optional(),
   configStartup: z.string().optional(),
   configStop: z.string().optional(),
   configLogs: z.string().optional(),
+  scriptContainer: z.string().optional(),
+  scriptEntry: z.string().optional(),
+  scriptInstall: z.string().optional(),
+  copyScriptFrom: z.string().optional(),
 })
 
 export const updateEggSchema = createEggSchema.partial()
