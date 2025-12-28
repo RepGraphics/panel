@@ -2,9 +2,10 @@ import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import type { CreateDatabaseHostPayload } from '#shared/types/admin'
 import { randomUUID } from 'crypto'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   const body = await readBody<CreateDatabaseHostPayload>(event)
 
@@ -34,6 +35,19 @@ export default defineEventHandler(async (event) => {
   }
 
   await db.insert(tables.databaseHosts).values(newHost)
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.database_host.created',
+    targetType: 'settings',
+    targetId: newHost.id,
+    metadata: {
+      hostName: newHost.name,
+      hostname: newHost.hostname,
+      port: newHost.port,
+    },
+  })
 
   return {
     data: {

@@ -2,9 +2,10 @@ import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
   
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.SERVERS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -38,6 +39,18 @@ export default defineEventHandler(async (event) => {
   try {
 
     await client.updateServer(server.uuid, {})
+
+    await recordAuditEventFromRequest(event, {
+      actor: session.user.email || session.user.id,
+      actorType: 'user',
+      action: 'admin.server.synced',
+      targetType: 'server',
+      targetId: id,
+      metadata: {
+        serverName: server.name,
+        serverUuid: server.uuid,
+      },
+    })
 
     return {
       success: true,

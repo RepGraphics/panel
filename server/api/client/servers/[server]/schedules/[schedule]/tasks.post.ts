@@ -6,6 +6,7 @@ import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/se
 import { createTaskSchema } from '#shared/schema/server/operations'
 import { invalidateScheduleCaches } from '~~/server/utils/serversStore'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -86,6 +87,15 @@ export default defineEventHandler(async (event) => {
     .get()
 
   await invalidateScheduleCaches({ serverId: server.id, scheduleId })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.schedule.task.create',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { scheduleId, taskId, action: body.action },
+  })
 
   return {
     data: {

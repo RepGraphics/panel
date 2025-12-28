@@ -2,6 +2,8 @@ import { getServerSession } from '~~/server/utils/session'
 import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { invalidateScheduleCaches } from '~~/server/utils/serversStore'
+import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -17,6 +19,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const { server } = await getServerWithAccess(serverId, session)
+
+  await requireServerPermission(event, {
+    serverId: server.id,
+    requiredPermissions: ['server.schedule.update'],
+  })
 
   const db = useDrizzle()
   const schedule = db
@@ -60,6 +67,15 @@ export default defineEventHandler(async (event) => {
     .run()
 
   await invalidateScheduleCaches({ serverId: server.id, scheduleId })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.schedule.task.delete',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { scheduleId, taskId, action: task.action },
+  })
 
   return {
     success: true,

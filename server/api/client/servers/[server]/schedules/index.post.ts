@@ -5,6 +5,7 @@ import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { invalidateScheduleCaches } from '~~/server/utils/serversStore'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 interface CreateSchedulePayload {
   name: string
@@ -127,6 +128,15 @@ export default defineEventHandler(async (event) => {
     .get()
 
   await invalidateScheduleCaches({ serverId: server.id, scheduleId })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.schedule.create',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { scheduleId, name: body.name, cron: cronString },
+  })
 
   return {
     data: {

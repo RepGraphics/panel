@@ -5,9 +5,10 @@ import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admi
 import type { CreateEggVariablePayload } from '#shared/types/admin'
 import { randomUUID } from 'crypto'
 import { eq } from 'drizzle-orm'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.EGGS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -50,6 +51,19 @@ export default defineEventHandler(async (event) => {
   }
 
   await db.insert(tables.eggVariables).values(newVariable)
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.egg.variable.created',
+    targetType: 'settings',
+    targetId: eggId,
+    metadata: {
+      variableId: newVariable.id,
+      variableName: newVariable.name,
+      envVariable: newVariable.envVariable,
+    },
+  })
 
   return {
     data: {

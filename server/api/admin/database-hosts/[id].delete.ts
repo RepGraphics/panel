@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   const hostId = getRouterParam(event, 'id')
   if (!hostId) {
@@ -37,6 +38,18 @@ export default defineEventHandler(async (event) => {
   }
 
   await db.delete(tables.databaseHosts).where(eq(tables.databaseHosts.id, hostId))
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.database_host.deleted',
+    targetType: 'settings',
+    targetId: hostId,
+    metadata: {
+      hostName: existing.name,
+      hostname: existing.hostname,
+    },
+  })
 
   return { success: true }
 })

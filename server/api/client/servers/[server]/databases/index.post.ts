@@ -82,6 +82,20 @@ export default defineEventHandler(async (event) => {
 
     await invalidateServerCaches({ id: server.id, uuid: server.uuid, identifier: server.identifier })
 
+    await recordAuditEventFromRequest(event, {
+      actor: session?.user?.id || 'unknown',
+      actorType: 'user',
+      action: 'server.database.create',
+      targetType: 'server',
+      targetId: server.id,
+      metadata: {
+        databaseId,
+        databaseName: `s${server.id}_${database}`,
+        username,
+        remote: remote || '%',
+      },
+    })
+
     return {
       object: 'server_database',
       attributes: {

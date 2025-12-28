@@ -4,6 +4,8 @@ import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/security'
 import { updateTaskSchema } from '#shared/schema/server/operations'
 import { invalidateScheduleCaches } from '~~/server/utils/serversStore'
+import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 type ScheduleTaskUpdate = typeof tables.serverScheduleTasks.$inferInsert
 
@@ -21,6 +23,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const { server } = await getServerWithAccess(serverId, session)
+
+  await requireServerPermission(event, {
+    serverId: server.id,
+    requiredPermissions: ['server.schedule.update'],
+  })
 
   const body = await readValidatedBodyWithLimit(
     event,
@@ -86,6 +93,15 @@ export default defineEventHandler(async (event) => {
     .get()
 
   await invalidateScheduleCaches({ serverId: server.id, scheduleId })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.schedule.task.update',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { scheduleId, taskId, updates: Object.keys(updates) },
+  })
 
   return {
     data: {

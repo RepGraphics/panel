@@ -4,6 +4,7 @@ import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const { id: serverId } = event.context.params ?? {}
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing server id' })
   }
 
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
   
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.SERVERS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -110,6 +111,19 @@ export default defineEventHandler(async (event) => {
     const { client } = await getWingsClientForServer(server.uuid)
 
     await client.sendPowerAction(server.uuid, action as 'start' | 'stop' | 'restart' | 'kill')
+
+    await recordAuditEventFromRequest(event, {
+      actor: session.user.email || session.user.id,
+      actorType: 'user',
+      action: `admin.server.power.${action}`,
+      targetType: 'server',
+      targetId: serverId,
+      metadata: {
+        serverName: server.name,
+        serverUuid: server.uuid,
+        powerAction: action,
+      },
+    })
 
     return {
       success: true,

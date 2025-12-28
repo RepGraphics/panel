@@ -4,9 +4,10 @@ import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { updateEggSchema } from '#shared/schema/admin/infrastructure'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.EGGS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -67,6 +68,18 @@ export default defineEventHandler(async (event) => {
   if (!updatedEgg) {
     throw createError({ statusCode: 404, statusMessage: 'Not Found', message: 'Egg not found after update' })
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.egg.updated',
+    targetType: 'settings',
+    targetId: eggId,
+    metadata: {
+      eggName: updatedEgg.name,
+      updatedFields: Object.keys(body),
+    },
+  })
 
   return {
     data: {

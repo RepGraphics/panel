@@ -3,9 +3,10 @@ import { useDrizzle, tables } from '~~/server/utils/drizzle'
 import type { CreateMountPayload } from '#shared/types/admin'
 import { randomUUID } from 'crypto'
 import { inArray } from 'drizzle-orm'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   const body = await readBody<CreateMountPayload>(event)
 
@@ -76,6 +77,21 @@ export default defineEventHandler(async (event) => {
       })),
     )
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.mount.created',
+    targetType: 'settings',
+    targetId: mountId,
+    metadata: {
+      mountName: newMount.name,
+      source: newMount.source,
+      target: newMount.target,
+      nodeCount: body.nodes?.length || 0,
+      eggCount: body.eggs?.length || 0,
+    },
+  })
 
   return {
     data: {

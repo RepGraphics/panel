@@ -6,6 +6,7 @@ import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '~~/server/utils/se
 import { createSubuserSchema } from '#shared/schema/server/subusers'
 import { invalidateServerSubusersCache } from '~~/server/utils/subusers'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -85,6 +86,20 @@ export default defineEventHandler(async (event) => {
     .get()
 
   await invalidateServerSubusersCache(server.id, [targetUser.id])
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.user.add',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: {
+      subuserId,
+      targetUserId: targetUser.id,
+      targetUserEmail: targetUser.email,
+      permissions: body.permissions,
+    },
+  })
 
   return {
     data: {

@@ -3,6 +3,7 @@ import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables, eq, and } from '~~/server/utils/drizzle'
 import { invalidateScheduleCaches } from '~~/server/utils/serversStore'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 function calculateNextRun(cronExpression: string): Date {
   const now = new Date()
@@ -147,6 +148,15 @@ export default defineEventHandler(async (event) => {
     .get()
 
   await invalidateScheduleCaches({ serverId: server.id, scheduleId })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.schedule.update',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { scheduleId, updates: Object.keys(updates) },
+  })
 
   const tasks = await db
     .select()

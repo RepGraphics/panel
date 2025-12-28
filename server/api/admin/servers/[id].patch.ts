@@ -5,6 +5,7 @@ import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissi
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import type { UpdateAdminServerPayload } from '#shared/types/admin'
 import { requireRouteParam } from '~~/server/utils/http/params'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 const MAX_BODY_SIZE = 16 * 1024
 
@@ -131,6 +132,19 @@ export default defineEventHandler(async (event) => {
     id: updated.id,
     uuid: updated.uuid,
     identifier: updated.identifier,
+  })
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.server.updated',
+    targetType: 'server',
+    targetId: serverId,
+    metadata: {
+      serverName: updated.name,
+      serverUuid: updated.uuid,
+      updatedFields: Object.keys(body),
+    },
   })
 
   console.info('[admin][servers:update]', {

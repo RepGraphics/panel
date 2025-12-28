@@ -2,6 +2,7 @@ import { getServerSession } from '~~/server/utils/session'
 import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { getWingsClientForServer } from '~~/server/utils/wings-client'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -34,6 +35,15 @@ export default defineEventHandler(async (event) => {
   try {
     const { client } = await getWingsClientForServer(server.uuid)
     await client.pullFile(server.uuid, url, directory || '/', filename, use_header, true)
+
+    await recordAuditEventFromRequest(event, {
+      actor: session?.user?.id || 'unknown',
+      actorType: 'user',
+      action: 'server.file.pull',
+      targetType: 'server',
+      targetId: server.id,
+      metadata: { url, directory: directory || '/', filename },
+    })
 
     return {
       success: true,

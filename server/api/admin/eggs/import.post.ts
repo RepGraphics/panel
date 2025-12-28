@@ -5,9 +5,10 @@ import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import type { EggImportData, EggImportResponse } from '#shared/types/admin'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event): Promise<EggImportResponse> => {
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
 
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.EGGS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -76,6 +77,19 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
       }).run()
     }
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.egg.imported',
+    targetType: 'settings',
+    targetId: eggId,
+    metadata: {
+      eggName: eggData.name,
+      nestId,
+      variableCount: eggData.variables?.length || 0,
+    },
+  })
 
   return {
     success: true,

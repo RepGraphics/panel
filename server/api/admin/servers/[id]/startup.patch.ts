@@ -4,11 +4,12 @@ import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { updateServerStartupSchema } from '~~/shared/schema/admin/server'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PATCH')
 
-  await requireAdmin(event)
+  const session = await requireAdmin(event)
   
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.SERVERS, ADMIN_ACL_PERMISSIONS.WRITE)
 
@@ -121,6 +122,18 @@ export default defineEventHandler(async (event) => {
         .run()
     }
   }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.server.startup.updated',
+    targetType: 'server',
+    targetId: serverId,
+    metadata: {
+      serverUuid: server.uuid,
+      updatedFields: Object.keys(body).filter(k => body[k as keyof typeof body] !== undefined),
+    },
+  })
 
   return {
     success: true,

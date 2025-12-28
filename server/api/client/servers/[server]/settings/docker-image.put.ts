@@ -2,6 +2,7 @@ import { getServerSession } from '~~/server/utils/session'
 import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
+import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await getServerSession(event)
@@ -70,6 +71,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const oldImage = server.dockerImage || server.image
+
   db.update(tables.servers)
     .set({
       dockerImage: docker_image,
@@ -78,6 +81,15 @@ export default defineEventHandler(async (event) => {
     })
     .where(eq(tables.servers.id, server.id))
     .run()
+
+  await recordAuditEventFromRequest(event, {
+    actor: session?.user?.id || 'unknown',
+    actorType: 'user',
+    action: 'server.settings.docker_image.update',
+    targetType: 'server',
+    targetId: server.id,
+    metadata: { oldImage, newImage: docker_image },
+  })
 
   return {
     object: 'server',
