@@ -118,7 +118,7 @@ async function handleIssueToken(node: WingsNodeSummary) {
     const commandParts = [
       'wings configure',
       `--panel-url ${panelOrigin.value}`,
-      `--node ${node.id}`,
+      `--node ${node.uuid}`,
       `--token ${token}`,
     ]
 
