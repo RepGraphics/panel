@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request', message: 'No form data received' })
   }
 
-  const file = formData.find((field) => field.name === 'logo' && field.type === 'file')
+  const file = formData.find((field) => field.name === 'logo' && field.data)
 
   if (!file) {
     throw createError({ statusCode: 422, statusMessage: 'Unprocessable Entity', message: 'Logo file is required' })
@@ -67,8 +67,8 @@ export default defineEventHandler(async (event) => {
       try {
         await fs.unlink(existingPath)
       }
-      catch (error) {
-        console.error('Failed to delete existing logo:', error)
+      catch {
+        // Swallow deletion errors but continue
       }
     }
   }

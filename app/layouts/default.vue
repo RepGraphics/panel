@@ -40,6 +40,14 @@ const { data: securitySettings } = await useFetch('/api/admin/settings/security'
   } as { maintenanceMode: boolean; maintenanceMessage: string }),
 })
 
+const { data: brandingSettings } = await useFetch('/api/branding', {
+  key: 'default-layout-branding-settings',
+  default: () => ({
+    showBrandLogo: false,
+    brandLogoUrl: null,
+  } as { showBrandLogo: boolean; brandLogoUrl: string | null }),
+})
+
 const isMaintenanceMode = computed(() => {
   if (!securitySettings.value?.maintenanceMode) return false
   if (authStatus.value === 'loading' || authStatus.value === 'unauthenticated') return false
@@ -74,8 +82,7 @@ async function handleSignOut() {
     await authStore.logout()
     await navigateTo(localePath('/auth/login'))
   }
-  catch (error) {
-    console.error('Failed to sign out', error)
+  catch {
     signOutLoading.value = false
   }
 }
@@ -165,7 +172,8 @@ async function handleLocaleChange(newLocale: string | undefined) {
     >
       <template #header="{ collapsed }">
         <NuxtLink v-if="!collapsed" :to="localePath('index')" class="group inline-flex items-center gap-2">
-          <h1 class="text-lg font-semibold text-muted-foreground group-hover:text-foreground transition">
+          <img v-if="brandingSettings?.showBrandLogo && brandingSettings?.brandLogoUrl" :src="brandingSettings.brandLogoUrl" :alt="appName" class="h-12 w-auto" >
+          <h1 v-else class="text-lg font-semibold text-muted-foreground group-hover:text-foreground transition">
             {{ appName }}
           </h1>
         </NuxtLink>

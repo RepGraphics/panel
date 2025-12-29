@@ -117,12 +117,18 @@ watch(logoFile, async (file) => {
     const body = new FormData()
     body.append('logo', file)
 
-    const response = await $fetch<{ url: string }>('/api/admin/settings/branding/logo', {
+    const response = await fetch('/api/admin/settings/branding/logo', {
       method: 'POST',
       body,
     })
 
-    form.brandLogoUrl = response.url
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.message || 'Upload failed')
+    }
+
+    const data = await response.json() as { url: string }
+    form.brandLogoUrl = data.url
     form.showBrandLogo = true
 
     toast.add({
@@ -134,10 +140,10 @@ watch(logoFile, async (file) => {
     await refresh()
   }
   catch (error) {
-    const err = error as { data?: { message?: string } }
+    const message = error instanceof Error ? error.message : t('admin.settings.generalSettings.uploadFailedDescription')
     toast.add({
       title: t('admin.settings.generalSettings.uploadFailed'),
-      description: err.data?.message || t('admin.settings.generalSettings.uploadFailedDescription'),
+      description: message,
       color: 'error',
     })
   }
@@ -267,30 +273,41 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
               <USwitch v-model="form.showBrandLogo" />
             </div>
           </UFormField>
+
+          <div class="space-y-3">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ t('admin.settings.generalSettings.logo') }}</p>
+            <div class="flex items-center gap-3">
+              <UAvatar :src="form.brandLogoUrl || undefined" icon="i-lucide-image" size="xl" />
+              <div class="text-xs text-muted-foreground">
+                <p v-if="form.brandLogoUrl" class="font-medium">{{ t('admin.settings.generalSettings.currentLogo') }}</p>
+                <p v-else class="font-medium">{{ t('admin.settings.generalSettings.noLogoUploaded') }}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="space-y-3">
-          <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ t('admin.settings.generalSettings.logo') }}</p>
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-3">
-              <UAvatar :src="form.brandLogoUrl || undefined" icon="i-lucide-image" size="lg" />
-              <div class="text-xs text-muted-foreground">
-                <p v-if="form.brandLogoUrl">{{ t('admin.settings.generalSettings.currentLogo') }}</p>
-                <p v-else>{{ t('admin.settings.generalSettings.noLogoUploaded') }}</p>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <UFileUpload v-model="logoFile" accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
-                class="w-56" :label="t('admin.settings.generalSettings.uploadLogo')" :description="t('admin.settings.generalSettings.logoDescription')"
-                :disabled="logoUploading" />
-              <UButton v-if="form.brandLogoUrl" variant="ghost" color="error" size="sm" icon="i-lucide-trash"
-                @click="removeLogo">
-                {{ t('admin.settings.generalSettings.removeLogo') }}
-              </UButton>
-            </div>
+          <UFileUpload 
+            v-model="logoFile" 
+            accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+            class="w-full" 
+            :label="t('admin.settings.generalSettings.uploadLogo')" 
+            :description="t('admin.settings.generalSettings.logoDescription')"
+            :disabled="logoUploading" 
+          />
+          <div class="flex items-center justify-between">
+            <p class="text-[11px] text-muted-foreground">{{ t('admin.settings.generalSettings.logoStoredAt') }}</p>
+            <UButton 
+              v-if="form.brandLogoUrl" 
+              variant="ghost" 
+              color="error" 
+              size="sm" 
+              icon="i-lucide-trash"
+              @click="removeLogo"
+            >
+              {{ t('admin.settings.generalSettings.removeLogo') }}
+            </UButton>
           </div>
-          <p class="text-[11px] text-muted-foreground">{{ t('admin.settings.generalSettings.logoStoredAt') }}</p>
         </div>
       </div>
 

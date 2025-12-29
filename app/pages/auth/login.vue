@@ -10,6 +10,13 @@ const authStore = useAuthStore()
 const { status } = storeToRefs(authStore)
 const runtimeConfig = useRuntimeConfig()
 const appName = computed(() => runtimeConfig.public.appName || 'XyraPanel')
+const { data: brandingSettings } = await useFetch('/api/branding', {
+  key: 'auth-login-branding-settings',
+  default: () => ({
+    showBrandLogo: false,
+    brandLogoUrl: null,
+  } as { showBrandLogo: boolean; brandLogoUrl: string | null }),
+})
 const route = useRoute()
 const toast = useToast()
 
@@ -182,9 +189,17 @@ async function onSubmit(payload: FormSubmitEvent<Schema>) {
     <div class="space-y-6">
       <UAuthForm :schema="schema" :fields="fields" :submit="submitProps" @submit="onSubmit as any">
         <template #title>
-          <h1 class="text-3xl font-semibold text-white">
-            {{ appName }}
-          </h1>
+          <div class="flex flex-col items-center gap-3">
+            <img
+              v-if="brandingSettings?.showBrandLogo && brandingSettings?.brandLogoUrl"
+              :src="brandingSettings.brandLogoUrl"
+              :alt="appName"
+              class="h-16 w-auto"
+            >
+            <h1 v-else class="text-3xl font-semibold text-white">
+              {{ appName }}
+            </h1>
+          </div>
         </template>
         <template #password-hint>
           <NuxtLink to="/auth/password/request" class="text-primary font-medium" tabindex="-1">

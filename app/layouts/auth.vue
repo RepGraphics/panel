@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 
 const { t, locale, locales } = useI18n()
-
 const { data: maintenanceStatus } = await useFetch('/api/maintenance-status', {
   key: 'auth-layout-maintenance-status',
   default: () => ({

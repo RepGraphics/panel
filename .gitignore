@@ -25,3 +25,5 @@ logs
 # Drizzle auto-generated snapshot files (keep SQL migrations and journal)
 server/database/migrations/meta/*_snapshot.json
 
+# Branding uploads
+public/uploads/branding
