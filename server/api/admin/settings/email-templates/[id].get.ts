@@ -1,0 +1,45 @@
+import { requireAdmin } from '~~/server/utils/security'
+import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+
+export default defineEventHandler(async (event) => {
+  await requireAdmin(event)
+
+  const id = getRouterParam(event, 'id')
+  if (!id) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Template ID is required',
+    })
+  }
+
+  try {
+    const db = useDrizzle()
+    const template = db
+      .select()
+      .from(tables.emailTemplates)
+      .where(eq(tables.emailTemplates.templateId, id))
+      .get() as { htmlContent: string; updatedAt: Date } | undefined
+
+    if (!template) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: `Template "${id}" not found`,
+      })
+    }
+
+    return {
+      id,
+      content: template.htmlContent,
+      updatedAt: template.updatedAt,
+    }
+  }
+  catch (err) {
+    if (err instanceof Error && 'statusCode' in err) {
+      throw err
+    }
+    throw createError({
+      statusCode: 500,
+      statusMessage: `Failed to retrieve template: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    })
+  }
+})

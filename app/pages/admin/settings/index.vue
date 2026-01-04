@@ -48,6 +48,14 @@ const baseSections = computed<SettingsSection[]>(() => [
     component: defineAsyncComponent(() => import('~/components/Admin/Settings/Mail.vue')),
     order: 20,
   },
+  {
+    id: 'email-templates',
+    label: 'Email Templates',
+    description: 'Customize email templates sent to users',
+    icon: 'i-lucide-mail',
+    component: defineAsyncComponent(() => import('~/components/Admin/Settings/EmailTemplates.vue')),
+    order: 25,
+  },
 ])
 
 const availableSections = computed(() => {

@@ -619,6 +619,19 @@ export const jwks = sqliteTable('jwks', {
   expiresAt: integer('expires_at', { mode: 'timestamp' }),
 })
 
+export const emailTemplates = sqliteTable('email_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  templateId: text('template_id').notNull().unique(),
+  subject: text('subject').notNull(),
+  htmlContent: text('html_content').notNull(),
+  isCustom: integer('is_custom', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  index('email_templates_template_id_index').on(table.templateId),
+])
+
 export const tables = {
   users,
   accounts,
@@ -628,6 +641,7 @@ export const tables = {
   rateLimit,
   twoFactor,
   jwks,
+  emailTemplates,
   locations,
   wingsNodes,
   serverAllocations,
