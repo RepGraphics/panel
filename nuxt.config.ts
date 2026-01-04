@@ -1,4 +1,4 @@
-/// <reference types="nuxt-csurf" />
+/// <reference types="@vite-pwa/nuxt" />
 
 const redisStorageConfig = {
   host: process.env.REDIS_HOST || 'localhost',
@@ -55,6 +55,7 @@ export default defineNuxtConfig({
     'nuxt-qrcode',
     '@nuxt/eslint',
     'nuxt-security',
+    '@vite-pwa/nuxt',
     ...(isDev ? ['@nuxt/test-utils/module'] : []), // Only include test utils in development
     ...(enableHintsModule ? ['@nuxt/hints'] : []),
     'nuxt-charts',
@@ -66,6 +67,38 @@ export default defineNuxtConfig({
     '@nuxt/scripts',
     '@nuxtjs/i18n',
   ],
+
+  pwa: {
+    strategies: 'generateSW',
+    registerType: 'autoUpdate',
+    manifest: {
+      name: process.env.APP_NAME || 'XyraPanel',
+      short_name: process.env.APP_NAME || 'XyraPanel',
+      description: `${process.env.APP_NAME || 'XyraPanel'} - Server Management Dashboard`,
+      theme_color: '#ffffff',
+      background_color: '#ffffff',
+      display: 'standalone',
+      scope: '/',
+      start_url: '/',
+      icons: [
+        {
+          src: '/favicon.ico',
+          sizes: '64x64 32x32 24x24 16x16',
+          type: 'image/x-icon',
+        },
+      ],
+    },
+    client: {
+      installPrompt: true,
+      periodicSyncForUpdates: 3600,
+    },
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,png,svg,ico,woff,woff2}'],
+      navigateFallback: '/',
+      cleanupOutdatedCaches: true,
+      maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
+    },
+  },
 
   i18n: {
     strategy: 'prefix_except_default',

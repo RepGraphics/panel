@@ -4,5 +4,6 @@ onlyBuiltDependencies:
   - core-js
   - esbuild
   - maplibre-gl
+  - sharp
   - unrs-resolver
   - vue-demi
