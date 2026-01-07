@@ -56,6 +56,7 @@ export default defineNuxtConfig({
     '@nuxt/eslint',
     'nuxt-security',
     '@vite-pwa/nuxt',
+    '@nuxt/a11y',
     ...(isDev ? ['@nuxt/test-utils/module'] : []), // Only include test utils in development
     ...(enableHintsModule ? ['@nuxt/hints'] : []),
     'nuxt-charts',
