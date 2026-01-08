@@ -3,6 +3,7 @@ import type { Permission, PermissionCheck, UserPermissions } from '#shared/types
 import { invalidateServerSubusersCache } from './subusers'
 import { buildUserPermissionsMapCacheKey } from './cache-keys'
 import { withCache } from './cache'
+import { randomUUID } from 'node:crypto'
 
 type PermissionHierarchy = Record<string, Permission[]>
 
@@ -140,7 +141,10 @@ export class PermissionManager {
     for (const subuser of subusers) {
       try {
         const permissions = JSON.parse(subuser.permissions) as Permission[]
-        const expandedPermissions = this.expandPermissions(permissions)
+        const validPermissions = permissions.filter(p => 
+          this.getAllPermissions().includes(p)
+        )
+        const expandedPermissions = this.expandPermissions(validPermissions)
         serverPermissions.set(subuser.serverId, expandedPermissions)
       } catch (error) {
         console.error(`Failed to parse permissions for subuser ${subuser.id}:`, error)
@@ -235,7 +239,7 @@ export class PermissionManager {
 
     const now = new Date()
     await this.db.insert(tables.serverSubusers).values({
-      id: `subuser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: randomUUID(),
       serverId,
       userId,
       permissions: JSON.stringify(permissions),

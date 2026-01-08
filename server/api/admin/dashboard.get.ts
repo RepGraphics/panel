@@ -3,6 +3,8 @@ import { desc } from 'drizzle-orm'
 
 import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
+import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { listWingsNodes } from '~~/server/utils/wings/nodesStore'
 import { remotePaginateServers } from '~~/server/utils/wings/registry'
 
@@ -52,6 +54,8 @@ async function fetchNitroTasks(event: Parameters<Parameters<typeof defineEventHa
 
 export default defineEventHandler(async (event): Promise<DashboardResponse> => {
   await requireAdmin(event)
+  
+  await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.DASHBOARD, ADMIN_ACL_PERMISSIONS.READ)
   
   const db = useDrizzle()
   const nodes = listWingsNodes()

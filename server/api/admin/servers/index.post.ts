@@ -4,7 +4,7 @@ import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissi
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import type { CreateServerPayload } from '#shared/types/admin'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
 import { provisionServerOnWings } from '~~/server/utils/server-provisioning'
 import { sendServerCreatedEmail } from '~~/server/utils/email'

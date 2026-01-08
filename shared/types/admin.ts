@@ -202,6 +202,12 @@ export interface ApiKeyPermissions {
   eggs?: PermissionAction[]
   databaseHosts?: PermissionAction[]
   serverDatabases?: PermissionAction[]
+  mounts?: PermissionAction[]
+  audit?: PermissionAction[]
+  dashboard?: PermissionAction[]
+  panel_settings?: PermissionAction[]
+  schedules?: PermissionAction[]
+  api_keys?: PermissionAction[]
 }
 
 export interface CreateApiKeyPayload {

@@ -3,7 +3,7 @@ import { getWingsClientForServer } from '~~/server/utils/wings-client'
 import { recordAuditEvent } from '~~/server/utils/audit'
 import { sendBackupCompletedEmail } from '~~/server/utils/email'
 import { invalidateServerBackupsCache } from '~~/server/utils/backups'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import type { BackupManagerOptions, CreateBackupOptions, BackupInfo } from '#shared/types/server'
 
 export class BackupManager {

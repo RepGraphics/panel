@@ -1,6 +1,6 @@
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { recordAuditEvent } from '~~/server/utils/audit'
-import { randomUUID, createHash } from 'crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import type {
   SSHKeyManagerOptions,
   SSHKeyInfo,

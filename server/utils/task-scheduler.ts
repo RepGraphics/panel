@@ -3,7 +3,7 @@ import { getWingsClientForServer } from '~~/server/utils/wings-client'
 import { serverManager } from '~~/server/utils/server-manager'
 import { backupManager } from '~~/server/utils/backup-manager'
 import { recordAuditEvent } from '~~/server/utils/audit'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import type {
   ScheduleTask,
   ScheduleInfo,

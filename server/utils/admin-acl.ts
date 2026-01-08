@@ -16,6 +16,12 @@ export const ADMIN_ACL_RESOURCES = {
   EGGS: 'eggs',
   DATABASE_HOSTS: 'database_hosts',
   SERVER_DATABASES: 'server_databases',
+  MOUNTS: 'mounts',
+  AUDIT: 'audit',
+  DASHBOARD: 'dashboard',
+  PANEL_SETTINGS: 'panel_settings',
+  SCHEDULES: 'schedules',
+  API_KEYS: 'api_keys',
 }
 
 export type AdminAclResource = typeof ADMIN_ACL_RESOURCES[keyof typeof ADMIN_ACL_RESOURCES]
@@ -28,16 +34,22 @@ export function canPerformAction(
   return (permission & action) !== 0
 }
 
-const RESOURCE_TO_PERMISSION_KEY: Record<AdminAclResource, keyof ApiKeyPermissions> = {
-  [ADMIN_ACL_RESOURCES.SERVERS]: 'rServers',
-  [ADMIN_ACL_RESOURCES.NODES]: 'rNodes',
-  [ADMIN_ACL_RESOURCES.ALLOCATIONS]: 'rAllocations',
-  [ADMIN_ACL_RESOURCES.USERS]: 'rUsers',
-  [ADMIN_ACL_RESOURCES.LOCATIONS]: 'rLocations',
-  [ADMIN_ACL_RESOURCES.NESTS]: 'rNests',
-  [ADMIN_ACL_RESOURCES.EGGS]: 'rEggs',
-  [ADMIN_ACL_RESOURCES.DATABASE_HOSTS]: 'rDatabaseHosts',
-  [ADMIN_ACL_RESOURCES.SERVER_DATABASES]: 'rServerDatabases',
+const RESOURCE_TO_PERMISSION_KEY: Record<AdminAclResource, keyof ApiKeyPermissions | undefined> = {
+  [ADMIN_ACL_RESOURCES.SERVERS]: 'servers',
+  [ADMIN_ACL_RESOURCES.NODES]: 'nodes',
+  [ADMIN_ACL_RESOURCES.ALLOCATIONS]: 'allocations',
+  [ADMIN_ACL_RESOURCES.USERS]: 'users',
+  [ADMIN_ACL_RESOURCES.LOCATIONS]: 'locations',
+  [ADMIN_ACL_RESOURCES.NESTS]: 'nests',
+  [ADMIN_ACL_RESOURCES.EGGS]: 'eggs',
+  [ADMIN_ACL_RESOURCES.DATABASE_HOSTS]: 'databaseHosts',
+  [ADMIN_ACL_RESOURCES.SERVER_DATABASES]: 'serverDatabases',
+  [ADMIN_ACL_RESOURCES.MOUNTS]: 'mounts',
+  [ADMIN_ACL_RESOURCES.AUDIT]: 'audit',
+  [ADMIN_ACL_RESOURCES.DASHBOARD]: 'dashboard',
+  [ADMIN_ACL_RESOURCES.PANEL_SETTINGS]: 'panel_settings',
+  [ADMIN_ACL_RESOURCES.SCHEDULES]: 'schedules',
+  [ADMIN_ACL_RESOURCES.API_KEYS]: 'api_keys',
 }
 
 export function checkApiKeyPermission(
@@ -52,8 +64,14 @@ export function checkApiKeyPermission(
     return false
   }
   
-  const permissionValue = permissions[permissionKey] ?? ADMIN_ACL_PERMISSIONS.NONE
-  return canPerformAction(permissionValue, action)
+  const permissionActions = permissions[permissionKey as keyof ApiKeyPermissions] ?? []
+  
+  if (!Array.isArray(permissionActions)) {
+    return false
+  }
+  
+  const actionName = action === ADMIN_ACL_PERMISSIONS.READ ? 'read' : 'write'
+  return permissionActions.includes(actionName as 'read' | 'write')
 }
 
 export function getResourceList(): AdminAclResource[] {

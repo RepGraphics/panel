@@ -1,12 +1,16 @@
 import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables } from '~~/server/utils/drizzle'
+import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
+import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import type { CreateMountPayload } from '#shared/types/admin'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { inArray } from 'drizzle-orm'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
+
+  await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.MOUNTS, ADMIN_ACL_PERMISSIONS.WRITE)
 
   const body = await readBody<CreateMountPayload>(event)
 

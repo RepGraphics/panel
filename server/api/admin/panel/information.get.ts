@@ -3,6 +3,8 @@ import { resolve } from 'node:path'
 import { defineEventHandler } from 'h3'
 
 import { requireAdmin } from '~~/server/utils/security'
+import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
+import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import type { PanelInformation } from '#shared/types/admin'
 
 function getPackageVersion(): string {
@@ -26,6 +28,8 @@ const REPOSITORY_URL = process.env.XYRA_REPOSITORY_URL ?? 'https://github.com/Xy
 
 export default defineEventHandler(async (event): Promise<PanelInformation> => {
   await requireAdmin(event)
+
+  await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.PANEL_SETTINGS, ADMIN_ACL_PERMISSIONS.READ)
 
   return {
     panelVersion: packageVersion,

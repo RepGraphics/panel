@@ -1,7 +1,7 @@
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
 import { getWingsClient } from '~~/server/utils/wings-client'
 import type { WingsNode } from '#shared/types/wings-client'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import type { ServerTransferConfig, TransferStatus } from '#shared/types/server'
 
 async function _initiateServerTransfer(
@@ -141,9 +141,10 @@ async function processServerTransfer(transferId: string): Promise<void> {
     const sourceClient = getWingsClient(sourceWingsNode)
     const targetClient = getWingsClient(targetWingsNode)
 
-    const backup = await sourceClient.createBackup(server.uuid, `Transfer backup ${transferId}`)
+    const backupUuid = transferId
+    await sourceClient.createBackup(server.uuid, backupUuid)
 
-    const downloadUrl = sourceClient.getBackupDownloadUrl(server.uuid, backup.uuid)
+    const downloadUrl = sourceClient.getBackupDownloadUrl(server.uuid, backupUuid)
 
     await targetClient.pullFile(
       server.uuid,
@@ -186,7 +187,7 @@ async function processServerTransfer(transferId: string): Promise<void> {
 
     await sourceClient.deleteServer(server.uuid)
 
-    await sourceClient.deleteBackup(server.uuid, backup.uuid)
+    await sourceClient.deleteBackup(server.uuid, backupUuid)
 
     await db
       .update(tables.serverTransfers)

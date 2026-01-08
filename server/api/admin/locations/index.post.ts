@@ -4,7 +4,7 @@ import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissi
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import type { CreateLocationPayload } from '#shared/types/admin'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)

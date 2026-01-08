@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '~~/server/utils/security'
 import { useDrizzle, tables, eq } from '~~/server/utils/drizzle'
+import { requireAdminApiKeyPermission } from '~~/server/utils/admin-api-permissions'
+import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '~~/server/utils/admin-acl'
 import { generateIdentifier, generateApiToken, formatApiKey } from '~~/server/utils/apiKeys'
 import { recordAuditEventFromRequest } from '~~/server/utils/audit'
 import type { CreateApiKeyPayload, CreateApiKeyResponse } from '#shared/types/admin'
 
 export default defineEventHandler(async (event): Promise<CreateApiKeyResponse> => {
   const session = await requireAdmin(event)
+
+  await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.API_KEYS, ADMIN_ACL_PERMISSIONS.WRITE)
 
   const user = session.user
 
