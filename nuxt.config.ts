@@ -312,10 +312,11 @@ export default defineNuxtConfig({
       },
     ],
     scheduledTasks: {
-      // Run task every minute
       '* * * * *': ['scheduler:process'],
-      // Run resource collection every 2 minutes
-      '*/2 * * * *': ['monitoring:collect-resources']
+      '*/2 * * * *': ['monitoring:collect-resources'],
+      '0 * * * *': ['maintenance:prune-rate-limits'],
+      '0 2 * * *': ['maintenance:archive-audit-logs', 'maintenance:prune-sessions', 'maintenance:prune-tokens', 'maintenance:prune-backups'],
+      '0 3 * * 0': ['maintenance:prune-transfers'],
     },
     storage: {
       cache: {

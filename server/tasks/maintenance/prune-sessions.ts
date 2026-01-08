@@ -1,0 +1,35 @@
+import { useDrizzle, tables, lt } from '~~/server/utils/drizzle'
+import { debugLog, debugError } from '~~/server/utils/logger'
+
+export default defineTask({
+  meta: {
+    name: 'maintenance:prune-sessions',
+    description: 'Prune expired user sessions from the database',
+  },
+  async run({ payload: _payload, context: _context }) {
+    const db = useDrizzle()
+    const now = new Date()
+
+    try {
+      debugLog(`[${now.toISOString()}] Starting session pruning...`)
+
+      const result = await db
+        .delete(tables.sessions)
+        .where(lt(tables.sessions.expires, now))
+        .run()
+
+      debugLog(`[${now.toISOString()}] Session pruning complete. Deleted ${result.changes} expired sessions.`)
+
+      return {
+        result: {
+          prunedAt: now.toISOString(),
+          deletedCount: result.changes,
+        },
+      }
+    } catch (error) {
+      const errorMsg = `Session pruning failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      debugError(errorMsg)
+      throw new Error(errorMsg)
+    }
+  },
+})
