@@ -74,8 +74,15 @@ export class ResourceMonitor {
 
     const client = getWingsClient(wingsNode)
 
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new WingsConnectionError('Node health check timeout')), 5000)
+    )
+
     try {
-      const systemInfo = await client.getSystemInfo()
+      const systemInfo = await Promise.race([
+        client.getSystemInfo(),
+        timeoutPromise,
+      ])
 
       const serverCount = await this.db
         .select()
@@ -85,14 +92,20 @@ export class ResourceMonitor {
 
       const lastSeenAt = new Date()
 
-      await this.db
-        .update(tables.wingsNodes)
-        .set({
-          lastSeenAt,
-          updatedAt: new Date(),
-        })
-        .where(eq(tables.wingsNodes.id, nodeId))
-        .run()
+      Promise.resolve().then(() => {
+        try {
+          this.db
+            .update(tables.wingsNodes)
+            .set({
+              lastSeenAt,
+              updatedAt: new Date(),
+            })
+            .where(eq(tables.wingsNodes.id, nodeId))
+            .run()
+        } catch (err) {
+          debugError('Failed to update node status:', err)
+        }
+      })
 
       const status: NodeHealthStatus = node.maintenanceMode ? 'maintenance' : 'online'
 
@@ -125,14 +138,20 @@ export class ResourceMonitor {
         message = error.message
       }
 
-      await this.db
-        .update(tables.wingsNodes)
-        .set({
-          lastSeenAt: node.lastSeenAt ?? null,
-          updatedAt: new Date(),
-        })
-        .where(eq(tables.wingsNodes.id, nodeId))
-        .run()
+      Promise.resolve().then(() => {
+        try {
+          this.db
+            .update(tables.wingsNodes)
+            .set({
+              lastSeenAt: node.lastSeenAt ?? null,
+              updatedAt: new Date(),
+            })
+            .where(eq(tables.wingsNodes.id, nodeId))
+            .run()
+        } catch (err) {
+          debugError('Failed to update node status:', err)
+        }
+      })
 
       return {
         nodeId: node.id,

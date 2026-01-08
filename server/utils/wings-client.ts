@@ -19,8 +19,8 @@ export class WingsAuthError extends Error {
 export class WingsClient {
   private baseUrl: string
   private encryptedToken: string
-  private timeout: number = 30000
-  private maxRetries = 3
+  private timeout: number = 10000
+  private maxRetries = 1
 
   constructor(node: WingsNode) {
     this.baseUrl = `${node.scheme}://${node.fqdn}:${node.daemonListen}`
@@ -182,21 +182,35 @@ export class WingsClient {
     filePath: string
   ): Promise<string> {
     const params = new URLSearchParams({ file: filePath })
-    const response = await fetch(
-      `${this.baseUrl}/api/servers/${serverUuid}/files/contents?${params}`,
-      {
-        headers: {
-          'Authorization': this.getToken(),
-          'Accept': 'application/json',
-        },
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/api/servers/${serverUuid}/files/contents?${params}`,
+        {
+          headers: {
+            'Authorization': this.getToken(),
+            'Accept': 'application/json',
+          },
+          signal: controller.signal,
+        }
+      )
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.status}`)
       }
-    )
 
-    if (!response.ok) {
-      throw new Error(`Failed to read file: ${response.status}`)
+      return response.text()
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new WingsConnectionError(`Request timeout after ${this.timeout}ms`)
+      }
+      throw error
     }
-
-    return response.text()
   }
 
   async writeFileContents(
@@ -205,17 +219,30 @@ export class WingsClient {
     content: string
   ): Promise<void> {
     const params = new URLSearchParams({ file: filePath })
-    await fetch(
-      `${this.baseUrl}/api/servers/${serverUuid}/files/write?${params}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': this.getToken(),
-          'Content-Type': 'text/plain',
-        },
-        body: content,
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    try {
+      await fetch(
+        `${this.baseUrl}/api/servers/${serverUuid}/files/write?${params}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': this.getToken(),
+            'Content-Type': 'text/plain',
+          },
+          body: content,
+          signal: controller.signal,
+        }
+      )
+      clearTimeout(timeoutId)
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new WingsConnectionError(`Request timeout after ${this.timeout}ms`)
       }
-    )
+      throw error
+    }
   }
 
   async deleteFiles(
@@ -327,19 +354,33 @@ export class WingsClient {
 
   async downloadFileStream(serverUuid: string, filePath: string): Promise<Response> {
     const signedUrl = await this.getFileDownloadUrl(serverUuid, filePath)
-    const response = await fetch(signedUrl, {
-      method: 'GET',
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    if (!response.ok) {
-      throw new WingsConnectionError(`Failed to download file contents: ${response.status}`)
+    try {
+      const response = await fetch(signedUrl, {
+        method: 'GET',
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new WingsConnectionError(`Failed to download file contents: ${response.status}`)
+      }
+
+      if (!response.body) {
+        throw new WingsConnectionError('Wings responded without a stream body for file download')
+      }
+
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new WingsConnectionError(`Request timeout after ${this.timeout}ms`)
+      }
+      throw error
     }
-
-    if (!response.body) {
-      throw new WingsConnectionError('Wings responded without a stream body for file download')
-    }
-
-    return response
   }
 
   async getFileUploadUrl(serverUuid: string, directory?: string): Promise<string> {
@@ -399,18 +440,32 @@ export class WingsClient {
 
   async streamBackupDownload(serverUuid: string, backupUuid: string): Promise<Response> {
     const downloadUrl = this.getBackupDownloadUrl(serverUuid, backupUuid)
-    const response = await fetch(downloadUrl, {
-      headers: {
-        Authorization: this.getAuthHeader(),
-        Accept: 'application/octet-stream',
-      },
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    if (!response.ok || !response.body) {
-      throw new WingsConnectionError(`Failed to download backup: ${response.status}`)
+    try {
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: this.getAuthHeader(),
+          Accept: 'application/octet-stream',
+        },
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok || !response.body) {
+        throw new WingsConnectionError(`Failed to download backup: ${response.status}`)
+      }
+
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new WingsConnectionError(`Request timeout after ${this.timeout}ms`)
+      }
+      throw error
     }
-
-    return response
   }
 
   getBackupDownloadUrl(serverUuid: string, backupUuid: string): string {
