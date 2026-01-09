@@ -3,7 +3,7 @@ import { debugLog, debugError } from '~~/server/utils/logger'
 
 export default defineTask({
   meta: {
-    name: 'maintenance:archive-audit-logs',
+    name: 'maintenance:prune-audit-logs',
     description: 'Archive old audit events to maintain database performance while preserving audit trail',
   },
   async run({ payload: _payload, context: _context }) {

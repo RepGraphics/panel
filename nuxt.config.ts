@@ -315,7 +315,7 @@ export default defineNuxtConfig({
       '* * * * *': ['scheduler:process'],
       '*/2 * * * *': ['monitoring:collect-resources'],
       '0 * * * *': ['maintenance:prune-rate-limits'],
-      '0 2 * * *': ['maintenance:archive-audit-logs', 'maintenance:prune-sessions', 'maintenance:prune-tokens', 'maintenance:prune-backups'],
+      '0 2 * * *': ['maintenance:prune-audit-logs', 'maintenance:prune-sessions', 'maintenance:prune-tokens', 'maintenance:prune-backups'],
       '0 3 * * 0': ['maintenance:prune-transfers'],
     },
     storage: {
