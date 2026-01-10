@@ -54,9 +54,8 @@ export default defineEventHandler(async (event) => {
     try {
       await client.getFileContents(server.uuid as string, file)
       hadExistingFile = true
-      await client.copyFile(server.uuid as string, file)
     } catch {
-      // Backup creation failed, continue with write operation
+      // File doesn't exist, will be created
     }
     
     await client.writeFileContents(server.uuid as string, file, content)
