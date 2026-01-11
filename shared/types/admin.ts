@@ -453,6 +453,7 @@ export interface PanelInformation {
 export interface AdminWingsNodeAllocationSummary {
   id: string
   ip: string
+  ipAlias: string | null
   port: number
   isPrimary: boolean
   serverId: string | null

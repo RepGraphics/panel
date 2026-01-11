@@ -785,8 +785,9 @@ async function handleCreateAllocations() {
                 <thead class="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th class="px-3 py-2 text-left">{{ t('admin.nodes.ip') }}</th>
+                    <th class="px-3 py-2 text-left">{{ t('admin.nodes.allocations.ipAlias') }}</th>
                     <th class="px-3 py-2 text-left">{{ t('admin.nodes.port') }}</th>
-                    <th class="px-3 py-2 text-left">{{ t('admin.nodes.primary') }}</th>
+                    <th class="px-3 py-2 text-left">{{ t('common.status') }}</th>
                     <th class="px-3 py-2 text-left">{{ t('common.server') }}</th>
                     <th class="px-3 py-2 text-left">{{ t('admin.nodes.identifier') }}</th>
                     <th class="px-3 py-2 text-right">{{ t('common.actions') }}</th>
@@ -794,18 +795,23 @@ async function handleCreateAllocations() {
                 </thead>
                 <tbody>
                   <tr v-if="allocationTable.pending.value" class="text-center text-sm text-muted-foreground">
-                    <td colspan="6" class="px-3 py-6">{{ t('admin.nodes.loadingAllocations') }}</td>
+                    <td colspan="7" class="px-3 py-6">{{ t('admin.nodes.loadingAllocations') }}</td>
                   </tr>
                   <tr v-else-if="allocationRows.length === 0" class="text-center text-sm text-muted-foreground">
-                    <td colspan="6" class="px-3 py-6">{{ t('admin.nodes.noAllocationsFound') }}</td>
+                    <td colspan="7" class="px-3 py-6">{{ t('admin.nodes.noAllocationsFound') }}</td>
                   </tr>
                   <tr v-for="allocation in allocationRows" :key="allocation.id"
                     class="border-b border-default text-sm even:bg-muted/20">
                     <td class="px-3 py-2 font-mono text-xs">{{ allocation.ip }}</td>
+                    <td class="px-3 py-2 text-xs text-muted-foreground">{{ allocation.ipAlias || '—' }}</td>
                     <td class="px-3 py-2 font-mono text-xs">{{ allocation.port }}</td>
                     <td class="px-3 py-2">
-                      <UBadge :color="'neutral'" variant="outline" size="xs">
-                        {{ allocation.isPrimary ? t('admin.nodes.primary') : t('admin.nodes.secondary') }}
+                      <UBadge 
+                        :color="!allocation.serverId ? 'success' : (allocation.isPrimary ? 'primary' : 'neutral')" 
+                        variant="outline" 
+                        size="xs"
+                      >
+                        {{ !allocation.serverId ? t('admin.nodes.allocations.available') : (allocation.isPrimary ? t('admin.nodes.primary') : t('admin.nodes.allocations.additional')) }}
                       </UBadge>
                     </td>
                     <td class="px-3 py-2">{{ allocation.serverName || 'N/A' }}</td>

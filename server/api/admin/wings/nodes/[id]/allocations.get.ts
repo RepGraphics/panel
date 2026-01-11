@@ -32,6 +32,7 @@ export default defineEventHandler(async (event): Promise<AdminWingsNodeAllocatio
   const rows = db.select({
     id: tables.serverAllocations.id,
     ip: tables.serverAllocations.ip,
+    ipAlias: tables.serverAllocations.ipAlias,
     port: tables.serverAllocations.port,
     isPrimary: tables.serverAllocations.isPrimary,
     createdAt: tables.serverAllocations.createdAt,
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event): Promise<AdminWingsNodeAllocatio
   const data: AdminWingsNodeAllocationSummary[] = rows.map(row => ({
     id: row.id,
     ip: row.ip,
+    ipAlias: row.ipAlias ?? null,
     port: row.port,
     isPrimary: Boolean(row.isPrimary),
     serverId: row.serverId ?? null,

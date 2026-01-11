@@ -1355,7 +1355,9 @@
         "server": "Server",
         "identifier": "Identifier",
         "ipAlias": "IP alias",
-        "actions": "Actions"
+        "actions": "Actions",
+        "available": "Available",
+        "additional": "Additional"
       },
       "servers": {
         "searchNameOrIdentifier": "Search name or identifier",
