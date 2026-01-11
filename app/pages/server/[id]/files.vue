@@ -491,16 +491,16 @@ const isEditorDirty = computed(() => {
             v-if="currentDirectoryLabel !== '/' || breadcrumbs.length"
             class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
           >
-            <span class="font-mono text-sm text-foreground">{{ currentDirectoryLabel }}</span>
-            <span v-if="breadcrumbs.length" class="text-muted-foreground/70">/</span>
+            <span v-if="!breadcrumbs.length" class="font-mono text-sm text-foreground">{{ currentDirectoryLabel }}</span>
             <div v-if="breadcrumbs.length" class="flex flex-wrap items-center gap-1">
-              <span
-                v-for="crumb in breadcrumbs"
-                :key="crumb.path"
-                class="rounded border border-default/60 px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground"
-              >
-                {{ crumb.label }}
-              </span>
+              <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
+                <span v-if="index > 0" class="text-muted-foreground/50">/</span>
+                <span
+                  class="rounded border border-default/60 px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground"
+                >
+                  {{ crumb.label }}
+                </span>
+              </template>
             </div>
           </div>
 

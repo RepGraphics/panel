@@ -571,6 +571,7 @@
       "noFiles": "No files",
       "noFilesDescription": "This directory is empty.",
       "upload": "Upload",
+      "uploadInProgress": "Uploading file…",
       "newFolder": "New Folder",
       "newFile": "New File",
       "refresh": "Refresh",
