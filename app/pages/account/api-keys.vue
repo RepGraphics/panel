@@ -21,6 +21,7 @@ const newKeyToken = ref<string | null>(null)
 const isCreating = ref(false)
 const copySuccess = ref(false)
 const createError = ref<string | null>(null)
+const currentPage = ref(1)
 
 const keySchema = z.object({
   memo: z.string().trim().max(255, t('validation.memoMaxLength')).optional().default(''),
@@ -50,10 +51,17 @@ const untypedFetch = $fetch as (input: string, init?: Record<string, unknown>) =
 type AccountApiKey = ApiKeyResponse['data']
 interface AccountApiKeysResponse {
   data: AccountApiKey[]
+  pagination?: { page: number; perPage: number; total: number; totalPages: number }
 }
 
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
+
 async function fetchApiKeys(): Promise<AccountApiKeysResponse> {
-  const result = await keysFetch('/api/account/api-keys') as unknown
+  const result = await keysFetch('/api/account/api-keys?page=' + currentPage.value + '&limit=' + itemsPerPage.value) as unknown
   return result as AccountApiKeysResponse
 }
 
@@ -66,11 +74,13 @@ const {
   'account-api-keys',
   () => fetchApiKeys(),
   {
-    default: () => ({ data: [] }),
+    default: () => ({ data: [], pagination: { page: 1, perPage: itemsPerPage.value, total: 0, totalPages: 0 } }),
+    watch: [currentPage, itemsPerPage],
   },
 )
 
 const apiKeys = computed<AccountApiKey[]>(() => keysData.value?.data ?? [])
+const apiKeysPagination = computed(() => (keysData.value as AccountApiKeysResponse | null)?.pagination)
 const showSkeleton = computed(() => keysPending.value && apiKeys.value.length === 0)
 const loadError = computed(() => {
   const err = keysError.value
@@ -566,6 +576,24 @@ async function copyToken() {
                   <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullKeyData(key)) }}</code></pre>
                 </div>
               </div>
+            </div>
+
+            <div
+              v-if="apiKeysPagination && apiKeysPagination.totalPages > 1"
+              class="flex items-center justify-between border-t border-default pt-4"
+            >
+              <div class="text-sm text-muted-foreground">
+                {{ t('account.apiKeys.showingKeys', { 
+                    count: apiKeysPagination.total
+                }) }}
+              </div>
+
+              <UPagination
+                v-model:page="currentPage"
+                :total="apiKeysPagination.total"
+                :items-per-page="apiKeysPagination.perPage"
+                size="sm"
+              />
             </div>
           </div>
         </UCard>

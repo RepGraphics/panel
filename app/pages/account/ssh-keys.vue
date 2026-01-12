@@ -15,17 +15,32 @@ const showCreateModal = ref(false)
 const showDeleteModal = ref(false)
 const keyToDelete = ref<string | null>(null)
 const isDeleting = ref(false)
+const currentPage = ref(1)
 
 const createForm = reactive({
   name: '',
   publicKey: '',
 })
 
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
+
 const { data: keysData, refresh } = await useAsyncData('account-ssh-keys', () => 
-  $fetch('/api/account/ssh-keys')
-)
+  $fetch('/api/account/ssh-keys', {
+    query: {
+      page: currentPage.value,
+      limit: itemsPerPage.value,
+    },
+  })
+, {
+  watch: [currentPage, itemsPerPage],
+})
 
 const sshKeys = computed(() => keysData.value?.data || [])
+const sshKeysPagination = computed(() => (keysData.value as { pagination?: { page: number; perPage: number; total: number; totalPages: number } } | null)?.pagination)
 const expandedKeys = ref<Set<string>>(new Set())
 
 function toggleKey(id: string) {
@@ -339,6 +354,24 @@ async function confirmDelete() {
                   <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullKeyData(key)) }}</code></pre>
                 </div>
               </div>
+            </div>
+
+            <div
+              v-if="sshKeysPagination && sshKeysPagination.totalPages > 1"
+              class="flex items-center justify-between border-t border-default pt-4"
+            >
+              <div class="text-sm text-muted-foreground">
+                {{ t('account.sshKeys.showingKeys', { 
+                    count: sshKeysPagination.total
+                }) }}
+              </div>
+
+              <UPagination
+                v-model:page="currentPage"
+                :total="sshKeysPagination.total"
+                :items-per-page="sshKeysPagination.perPage"
+                size="sm"
+              />
             </div>
           </div>
         </UCard>

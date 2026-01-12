@@ -15,8 +15,13 @@ const router = useRouter()
 const route = useRoute()
 
 const page = ref(Number.parseInt(route.query.page as string ?? '1', 10) || 1)
-const itemsPerPage = ref(50)
 const showSearchModal = ref(false)
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 const {
   data: usersData,

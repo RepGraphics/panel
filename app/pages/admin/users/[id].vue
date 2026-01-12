@@ -95,8 +95,8 @@ const { data: serversData } = await useFetch<PaginatedServersResponse>(
   () => `/api/admin/users/${userId.value}/servers`,
   {
     key: `admin-user-servers-${userId.value}`,
-    query: computed(() => ({ page: 1, limit: 1 })),
-    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+    query: computed(() => ({ page: 1, limit: itemsPerPage.value })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: itemsPerPage.value, total: 0, totalPages: 0 } }),
   },
 )
 
@@ -104,8 +104,8 @@ const { data: apiKeysData } = await useFetch<PaginatedApiKeysResponse>(
   () => `/api/admin/users/${userId.value}/api-keys`,
   {
     key: `admin-user-api-keys-${userId.value}`,
-    query: computed(() => ({ page: 1, limit: 1 })),
-    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+    query: computed(() => ({ page: 1, limit: itemsPerPage.value })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: itemsPerPage.value, total: 0, totalPages: 0 } }),
   },
 )
 
@@ -113,8 +113,8 @@ const { data: activityData } = await useFetch<PaginatedActivityResponse>(
   () => `/api/admin/users/${userId.value}/activity`,
   {
     key: `admin-user-activity-${userId.value}`,
-    query: computed(() => ({ page: 1, limit: 1 })),
-    default: () => ({ data: [], pagination: { page: 1, perPage: 1, total: 0, totalPages: 0 } }),
+    query: computed(() => ({ page: 1, limit: itemsPerPage.value })),
+    default: () => ({ data: [], pagination: { page: 1, perPage: itemsPerPage.value, total: 0, totalPages: 0 } }),
   },
 )
 

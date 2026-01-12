@@ -9,47 +9,28 @@ definePageMeta({
   adminSubtitle: 'Track panel-wide events mirrored from Wings',
 })
 
-const limit = ref(100)
-const page = ref(1)
-const allActivities = ref<AdminActivityEntry[]>([])
-const loadedPages = ref<Set<number>>(new Set())
+const currentPage = ref(1)
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 const {
   data,
   pending,
   error: fetchError,
-  refresh,
 } = await useFetch('/api/admin/audit', {
-  query: { limit, page },
+  query: computed(() => ({ limit: itemsPerPage.value, page: currentPage.value })),
   key: 'admin-activity',
+  watch: [currentPage, itemsPerPage],
 })
 
 const auditData = computed(() => data.value as AuditEventsPayload | null)
 
-watch(auditData, (newData) => {
-  if (newData?.data) {
-    if (page.value === 1) {
-      allActivities.value = newData.data
-      loadedPages.value = new Set([1])
-    } else if (!loadedPages.value.has(page.value)) {
-      allActivities.value = [...allActivities.value, ...newData.data]
-      loadedPages.value.add(page.value)
-    } else {
-      const startIndex = (page.value - 1) * limit.value
-      allActivities.value.splice(startIndex, newData.data.length, ...newData.data)
-    }
-  }
-}, { immediate: true })
-
-const activities = computed<AdminActivityEntry[]>(() => allActivities.value)
+const activities = computed<AdminActivityEntry[]>(() => auditData.value?.data ?? [])
 const pagination = computed(() => auditData.value?.pagination)
-const hasMore = computed(() => Boolean(pagination.value?.hasMore))
-
-async function loadMore() {
-  if (!hasMore.value || pending.value) return
-  page.value += 1
-  await refresh()
-}
 
 const { t } = useI18n()
 const error = computed(() => {
@@ -186,7 +167,6 @@ function exportCsv() {
               <div class="flex items-center justify-between">
                 <p v-if="pagination" class="text-xs text-muted-foreground">
                   {{ t('admin.activity.showingEvents', { count: activities.length, total: pagination.total }) }}
-                  <span v-if="hasMore">{{ t('admin.activity.loadMoreToSeeAdditional') }}</span>
                 </p>
                 <div class="flex items-center gap-2">
                   <UBadge v-if="pending" color="primary" variant="soft">{{ t('common.loading') }}</UBadge>
@@ -283,17 +263,20 @@ function exportCsv() {
                   </div>
                 </div>
               </div>
-              
-              <div v-if="hasMore" class="flex justify-center pt-4">
-                <UButton
-                  variant="outline"
-                  color="primary"
-                  :loading="pending"
-                  :disabled="pending"
-                  @click="loadMore"
-                >
-                  {{ t('admin.activity.loadMore') }}
-                </UButton>
+
+              <div v-if="pagination && pagination.total > itemsPerPage" class="flex items-center justify-between border-t border-default pt-4">
+                <div class="text-sm text-muted-foreground">
+                  {{ t('admin.activity.showingEvents', { 
+                      count: pagination.total
+                  }) }}
+                </div>
+
+                <UPagination
+                  v-model:page="currentPage"
+                  :total="pagination.total"
+                  :items-per-page="itemsPerPage"
+                  size="sm"
+                />
               </div>
             </template>
           </UCard>

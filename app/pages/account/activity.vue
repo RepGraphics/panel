@@ -11,8 +11,13 @@ definePageMeta({
 const { t } = useI18n()
 
 const currentPage = ref(1)
-const itemsPerPage = ref(10)
 const requestFetch = useRequestFetch() as (input: string, init?: Record<string, unknown>) => Promise<unknown>
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 async function fetchAccountActivity(page: number, limit: number): Promise<PaginatedAccountActivityResponse> {
   const params = new URLSearchParams({

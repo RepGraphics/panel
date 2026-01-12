@@ -14,8 +14,13 @@ definePageMeta({
 
 const serverId = computed(() => route.params.id as string)
 const currentPage = ref(1)
-const itemsPerPage = ref(10)
 const expandedEntries = ref<Set<string>>(new Set())
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 watch(serverId, () => {
   currentPage.value = 1

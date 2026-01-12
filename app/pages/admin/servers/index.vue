@@ -47,13 +47,24 @@ const NuxtLink = resolveComponent('NuxtLink')
 const toast = useToast()
 const router = useRouter()
 
+const currentPage = ref(1)
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
+
 const {
   data: serversResponse,
   pending: serversPending,
   refresh: refreshServers,
-} = await useFetch<{ data: AdminServerRow[]; meta: { pagination: { total: number; count: number; per_page: number; current_page: number; total_pages: number } } }>('/api/admin/servers')
+} = await useFetch<{ data: AdminServerRow[]; meta: { pagination: { total: number; count: number; per_page: number; current_page: number; total_pages: number } } }>(
+  () => `/api/admin/servers?page=${currentPage.value}&limit=${itemsPerPage.value}`
+)
 
 const servers = computed(() => serversResponse.value?.data ?? [])
+const serversPagination = computed(() => (serversResponse.value?.meta?.pagination as { total: number; count: number; per_page: number; current_page: number; total_pages: number } | undefined))
 
 const isDeleting = ref<Record<string, boolean>>({})
 const deleteConfirmOpen = ref(false)
@@ -281,6 +292,23 @@ const table = useTemplateRef('table')
                   </div>
                 </template>
               </UTable>
+
+              <div v-if="serversPagination && serversPagination.total_pages > 1" class="flex items-center justify-between border-t border-default pt-4">
+                <div class="text-sm text-muted-foreground">
+                  {{ t('admin.servers.showingServers', { 
+                      start: (currentPage - 1) * itemsPerPage + 1,
+                      end: Math.min(currentPage * itemsPerPage, serversPagination.total),
+                      total: serversPagination.total
+                  }) }}
+                </div>
+
+                <UPagination
+                  v-model:page="currentPage"
+                  :total="serversPagination.total"
+                  :items-per-page="itemsPerPage"
+                  size="sm"
+                />
+              </div>
             </UCard>
           </section>
         </UContainer>

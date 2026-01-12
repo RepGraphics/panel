@@ -11,9 +11,14 @@ const props = defineProps<{
 const { t } = useI18n()
 const toast = useToast()
 const page = ref(1)
-const pageSize = ref(50)
 const filter = ref<'all' | 'assigned' | 'unassigned'>('all')
 const isCreating = ref(false)
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const pageSize = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 const allocationsData = ref<AdminNodeAllocationsResponse | null>(null)
 const pending = ref(false)

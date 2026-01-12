@@ -11,10 +11,17 @@ definePageMeta({
 })
 
 const { t } = useI18n()
+const currentPage = ref(1)
 const sessions = ref<UserSessionSummary[]>([])
 const sessionsError = ref<string | null>(null)
 const currentSessionToken = ref<string | null>(null)
 const updatingSessions = ref(false)
+
+const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
+  key: 'admin-settings-general',
+  default: () => ({ paginationLimit: 25 }),
+})
+const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
 
 const hasSessions = computed(() => sessions.value.length > 0)
 const toast = useToast()
@@ -29,8 +36,17 @@ const {
   execute: fetchSessions,
   refresh: refreshSessions,
 } = useLazyAsyncData('account-sessions', () => 
-  $fetch<AccountSessionsResponse>('/api/account/sessions')
-)
+  $fetch<AccountSessionsResponse>('/api/account/sessions', {
+    query: {
+      page: currentPage.value,
+      limit: itemsPerPage.value,
+    },
+  })
+, {
+  watch: [currentPage, itemsPerPage],
+})
+
+const sessionsPagination = computed(() => (sessionsResponse.value as { pagination?: { page: number; perPage: number; total: number; totalPages: number } } | null)?.pagination)
 
 watch(sessionsResponse, (response) => {
   if (!response)
@@ -73,10 +89,6 @@ onMounted(async () => {
 async function loadSessions() {
   await refreshSessions()
 }
-
-const sortedSessions = computed(() => (
-  [...sessions.value].sort((a, b) => b.expiresAtTimestamp - a.expiresAtTimestamp)
-))
 
 const expandedSessions = ref<Set<string>>(new Set())
 
@@ -295,7 +307,7 @@ async function handleSignOutAll(includeCurrent = false) {
           />
           <div v-else class="space-y-3">
             <div
-              v-for="session in sortedSessions"
+              v-for="session in sessions"
               :key="session.token"
               class="rounded-lg border border-default overflow-hidden"
             >
@@ -389,6 +401,24 @@ async function handleSignOutAll(includeCurrent = false) {
                   <pre class="text-xs font-mono bg-default rounded-lg p-3 overflow-x-auto border border-default"><code>{{ formatJson(getFullSessionData(session)) }}</code></pre>
                 </div>
               </div>
+            </div>
+
+            <div
+              v-if="sessionsPagination && sessionsPagination.totalPages > 1"
+              class="flex items-center justify-between border-t border-default pt-4"
+            >
+              <div class="text-sm text-muted-foreground">
+                {{ t('account.sessions.showingEvents', { 
+                    count: sessionsPagination.total
+                }) }}
+              </div>
+
+              <UPagination
+                v-model:page="currentPage"
+                :total="sessionsPagination.total"
+                :items-per-page="sessionsPagination.perPage"
+                size="sm"
+              />
             </div>
           </div>
         </UCard>
