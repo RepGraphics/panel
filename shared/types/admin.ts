@@ -769,9 +769,11 @@ export interface TestDatabaseConnectionPayload {
 export interface AdminNavItem {
   id: string
   label: string
-  to: string
+  to?: string
   order?: number
   permission?: string | string[]
+  icon?: string
+  children?: AdminNavItem[]
 }
 
 export type AdminNavItems = AdminNavItem[]
