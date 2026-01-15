@@ -21,14 +21,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: lts/*
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Lint (with auto-fix)
-        run: pnpm lint --fix
+      - name: Lint with Oxlint
+        run: pnpm run lint
 
       - name: Run unit tests
         run: pnpm test

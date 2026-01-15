@@ -4,11 +4,11 @@ import { getServerWithAccess } from '~~/server/utils/server-helpers'
 import { requireServerPermission } from '~~/server/utils/permission-middleware'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
-const BINARY_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.exe', '.bin']
+const BINARY_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.exe', '.bin'])
 
 function isBinaryFile(filename: string): boolean {
   const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
-  return BINARY_EXTENSIONS.includes(ext)
+  return BINARY_EXTENSIONS.has(ext)
 }
 
 function sanitizeFilePath(path: string): string {

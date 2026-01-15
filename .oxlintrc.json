@@ -1,0 +1,75 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "vitest", "promise"],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "globals": {
+    "defineNuxtConfig": "readonly",
+    "defineNuxtPlugin": "readonly",
+    "defineEventHandler": "readonly",
+    "defineNuxtRouteMiddleware": "readonly",
+    "navigateTo": "readonly",
+    "useRuntimeConfig": "readonly",
+    "useFetch": "readonly",
+    "$fetch": "readonly"
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "perf": "warn",
+    "style": "off",
+    "restriction": "off"
+  },
+  "rules": {
+    "no-console": "off",
+    "no-debugger": "error",
+    "no-alert": "off",
+    "no-eval": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "eqeqeq": "off",
+    "import/no-cycle": "error",
+    "vitest/no-focused-tests": "error",
+    "vitest/no-disabled-tests": "warn",
+    "unicorn/no-null": "off",
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/no-array-for-each": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+    "preserve-caught-error": "off",
+    "no-await-in-loop": "off",
+    "import/no-named-as-default-member": "off",
+    "promise/always-return": "off",
+    "unicorn/prefer-array-find": "off",
+    "typescript/explicit-function-return-type": "off",
+    "typescript/no-explicit-any": "off",
+    "typescript/no-non-null-assertion": "off"
+  },
+  "overrides": [
+    {
+      "files": ["server/**/*.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    ".nuxt",
+    ".output",
+    "dist",
+    "coverage"
+  ]
+}

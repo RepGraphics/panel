@@ -1,0 +1,12 @@
+node_modules
+.nuxt
+dist
+.output
+.data
+coverage
+build
+*.min.js
+pnpm-lock.yaml
+.git
+.vscode
+.idea

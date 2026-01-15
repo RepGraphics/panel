@@ -67,7 +67,7 @@ async function onSubmit(payload: FormSubmitEvent<PasswordRequestBody>) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(fetchOptions.headers || {}),
+        ...fetchOptions.headers,
       },
       body: JSON.stringify(body),
     })

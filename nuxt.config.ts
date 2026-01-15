@@ -53,7 +53,6 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/ui',
     'nuxt-qrcode',
-    '@nuxt/eslint',
     'nuxt-security',
     '@vite-pwa/nuxt',
     // '@nuxt/a11y', // Disabled due to crypto.randomUUID browser compatibility issue

@@ -117,12 +117,12 @@ function normalizePermissionList(payload: unknown): string[] {
 
 function resolveServerOwnerPermissions(): Array<keyof typeof PERMISSIONS> {
   const allPermissions = Object.keys(PERMISSIONS) as Array<keyof typeof PERMISSIONS>
-  const wingsPermissions = [
+  const wingsPermissions = new Set([
     'file.write',
     'file.update',
-  ]
+  ])
 
-  return allPermissions.filter(permission => !wingsPermissions.includes(permission))
+  return allPermissions.filter(permission => !wingsPermissions.has(permission))
 }
 
 async function resolveUserPermissions(
