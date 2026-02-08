@@ -1,0 +1,383 @@
+#!/usr/bin/env node
+import { defineCommand, runMain } from 'citty';
+import { consola } from 'consola';
+import { execa } from 'execa';
+import { access, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'pathe';
+import { colors } from 'consola/utils';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(__dirname, '..');
+const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const logger = consola.withDefaults({
+  tag: 'xyra',
+  fancy: process.stdout.isTTY,
+  formatOptions: { compact: true },
+});
+const defaultEcosystemFile = 'ecosystem.config.cjs';
+const defaultPm2App = 'xyrapanel';
+const accent = colors.redBright;
+const accentSoft = colors.red;
+const divider = colors.dim('─'.repeat(58));
+
+const coreCommandSummaries = [
+  ['deploy', 'Build and reload/start via PM2'],
+  ['pm2', 'Process controls (start/reload/logs)'],
+  ['build', 'Nuxt build for Nitro output'],
+];
+
+const toolingCommandSummaries = [
+  ['nuxt dev', 'Nuxt dev server with HMR'],
+  ['lint', 'oxlint suite (fix/type-aware)'],
+  ['fmt', 'oxfmt formatters'],
+  ['test', 'Vitest run/watch/coverage'],
+  ['db', 'Drizzle schema helpers'],
+  ['pwa', 'PWA asset generation'],
+];
+
+const formatCommandList = (entries) => {
+  const longest = entries.reduce((max, [label]) => Math.max(max, label.length), 0) + 2;
+  return entries
+    .map(
+      ([label, description]) =>
+        `  ${accent(label.padEnd(longest))}${colors.gray('•')} ${description}`,
+    )
+    .join('\n');
+};
+
+const renderRootHelp = () =>
+  [
+    `${accent('██╗  ██╗ ██╗   ██╗ ██████╗  █████╗ ██████╗  █████╗ ███╗   ██╗███████╗██╗')} ${colors.dim(`v${pkg.version}`)}`,
+    `${accent('╚██╗██╔╝ ╚██╗ ██╔╝ ██╔══██╗██╔══██╗██╔══██╗██╔══██╗████╗  ██║██╔════╝██║')} ${colors.dim('by @26bz & contributors')}`,
+    accent(' ╚███╔╝   ╚████╔╝  ██████╔╝███████║██████╔╝███████║██╔██╗ ██║█████╗  ██║'),
+    accent(' ██╔██╗    ╚██╔╝   ██╔══██╗██╔══██║██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║'),
+    `${accent('██╔╝ ██╗    ██║    ██║  ██║██║  ██║██║     ██║  ██║██║ ╚████║███████╗███████╗')}`,
+    accent('╚═╝  ╚═╝    ╚═╝    ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝'),
+    divider,
+    `${accentSoft('Usage')}\n  ${colors.white('xyra <command> [options]')}`,
+    '',
+    accentSoft('Core workflows'),
+    formatCommandList(coreCommandSummaries),
+    '',
+    accentSoft('Nuxt & tooling'),
+    formatCommandList(toolingCommandSummaries),
+    '',
+    colors.dim('Tip: run `pnpm link --global` to expose xyra everywhere on your VPS.'),
+  ].join('\n');
+
+const envArg = {
+  type: 'string',
+  default: 'production',
+  description: 'PM2 environment block to use (env or env_production)',
+};
+
+const nameArg = {
+  type: 'string',
+  default: defaultPm2App,
+  description: 'PM2 process name to target',
+};
+
+const ecosystemArg = {
+  type: 'string',
+  default: defaultEcosystemFile,
+  description: 'Path to a PM2 ecosystem config (relative to the repo root)',
+};
+
+const resolvePath = (maybeRelative) =>
+  maybeRelative.startsWith('/') ? maybeRelative : resolve(projectRoot, maybeRelative);
+
+async function ensureFile(path) {
+  try {
+    await access(path);
+  } catch {
+    logger.error(`Cannot find ecosystem config at: ${path}`);
+    process.exit(1);
+  }
+}
+
+async function runBinary(bin, args, options = {}) {
+  const command = `${bin} ${args.join(' ')}`;
+  logger.start(command);
+  try {
+    return await execa(bin, args, {
+      stdio: 'inherit',
+      preferLocal: true,
+      cwd: projectRoot,
+      ...options,
+    });
+  } catch (error) {
+    logger.error(error);
+    throw error;
+  }
+}
+
+function createPm2Command(name, description, args, buildArgs) {
+  return defineCommand({
+    meta: { name, description },
+    args,
+    run: async (ctx) => {
+      const cliArgs = await buildArgs(ctx.args);
+      await runBinary('pm2', cliArgs);
+    },
+  });
+}
+
+const runPnpmScript = (script, extraArgs = []) => runBinary('pnpm', ['run', script, ...extraArgs]);
+
+const createPnpmCommand = (name, description, script) =>
+  defineCommand({
+    meta: { name, description },
+    run: async () => {
+      await runPnpmScript(script);
+    },
+  });
+
+const buildCommand = defineCommand({
+  meta: {
+    name: 'build',
+    description: 'Run pnpm build to produce the Nitro output',
+  },
+  run: async () => {
+    await runBinary('pnpm', ['run', 'build']);
+  },
+});
+
+const nuxtCommand = defineCommand({
+  meta: {
+    name: 'nuxt',
+    description: 'Nuxt runtime helpers (dev, preview, generate)',
+  },
+  subCommands: {
+    dev: createPnpmCommand('dev', 'Start Nuxt dev server with HMR', 'dev'),
+    preview: createPnpmCommand('preview', 'Preview the production build', 'preview'),
+    generate: createPnpmCommand('generate', 'Generate static site output', 'generate'),
+  },
+});
+
+const lintCommand = defineCommand({
+  meta: {
+    name: 'lint',
+    description: 'Run oxlint checks (optionally fix/type-aware)',
+  },
+  run: async () => {
+    await runPnpmScript('lint');
+  },
+  subCommands: {
+    fix: createPnpmCommand('fix', 'Run oxlint --fix', 'lint:fix'),
+    'type-aware': createPnpmCommand('type-aware', 'Type-aware linting', 'lint:type-aware'),
+    'type-check': createPnpmCommand(
+      'type-check',
+      'Type-aware lint + type-check',
+      'lint:type-check',
+    ),
+  },
+});
+
+const fmtCommand = defineCommand({
+  meta: {
+    name: 'fmt',
+    description: 'Format codebase with oxfmt',
+  },
+  run: async () => {
+    await runPnpmScript('fmt');
+  },
+  subCommands: {
+    check: createPnpmCommand('check', 'Verify formatting without writing', 'fmt:check'),
+  },
+});
+
+const testCommand = defineCommand({
+  meta: {
+    name: 'test',
+    description: 'Vitest runners (watch / coverage)',
+  },
+  run: async () => {
+    await runPnpmScript('test');
+  },
+  subCommands: {
+    watch: createPnpmCommand('watch', 'Run Vitest in watch mode', 'test:watch'),
+    coverage: createPnpmCommand('coverage', 'Run Vitest with coverage enabled', 'test:coverage'),
+  },
+});
+
+const dbCommand = defineCommand({
+  meta: {
+    name: 'db',
+    description: 'Drizzle schema migrations',
+  },
+  subCommands: {
+    generate: createPnpmCommand('generate', 'Generate new Drizzle migrations', 'db:generate'),
+    push: createPnpmCommand('push', 'Push schema to database', 'db:push'),
+  },
+});
+
+const pwaCommand = createPnpmCommand('pwa', 'Generate PWA assets', 'generate-pwa-assets');
+
+const deployCommand = defineCommand({
+  meta: {
+    name: 'deploy',
+    description: 'Build the app and reload/start it through PM2',
+  },
+  args: {
+    env: envArg,
+    name: nameArg,
+    ecosystem: ecosystemArg,
+    skipBuild: {
+      type: 'boolean',
+      default: false,
+      description: 'Skip the pnpm build step (useful when artifacts already exist)',
+    },
+  },
+  run: async ({ args }) => {
+    const ecosystemPath = resolvePath(args.ecosystem);
+    await ensureFile(ecosystemPath);
+
+    if (!args.skipBuild) {
+      await runBinary('pnpm', ['run', 'build']);
+    }
+
+    const processName = String(args.name ?? '');
+    logger.start(`Reloading PM2 process: ${processName}`);
+    try {
+      await runBinary('pm2', ['reload', processName, '--env', args.env, '--update-env']);
+      logger.success('Reloaded existing PM2 process');
+    } catch (error) {
+      logger.warn('Reload failed, attempting clean start');
+      logger.debug(error);
+      await runBinary('pm2', [
+        'start',
+        ecosystemPath,
+        '--env',
+        args.env,
+        '--only',
+        processName,
+        '--update-env',
+      ]);
+      logger.success('PM2 process started');
+    }
+  },
+});
+
+const pm2StartCommand = createPm2Command(
+  'start',
+  'Start PM2 using the ecosystem config',
+  { env: envArg, name: nameArg, ecosystem: ecosystemArg },
+  async (args) => {
+    const ecosystemPath = resolvePath(args.ecosystem);
+    await ensureFile(ecosystemPath);
+    return ['start', ecosystemPath, '--env', args.env, '--only', args.name, '--update-env'];
+  },
+);
+
+const pm2ReloadCommand = createPm2Command(
+  'reload',
+  'Reload the running PM2 process',
+  { env: envArg, name: nameArg },
+  (args) => ['reload', args.name, '--env', args.env, '--update-env'],
+);
+
+const pm2RestartCommand = createPm2Command(
+  'restart',
+  'Restart the PM2 process',
+  { env: envArg, name: nameArg },
+  (args) => ['restart', args.name, '--env', args.env, '--update-env'],
+);
+
+const pm2StopCommand = createPm2Command(
+  'stop',
+  'Stop the PM2 process',
+  { name: nameArg },
+  (args) => ['stop', args.name],
+);
+
+const pm2DeleteCommand = createPm2Command(
+  'delete',
+  'Delete the PM2 process and its metadata',
+  { name: nameArg },
+  (args) => ['delete', args.name],
+);
+
+const pm2StatusCommand = createPm2Command(
+  'status',
+  'Show the PM2 status table',
+  {
+    name: {
+      type: 'string',
+      description: 'Optionally filter to a single process name',
+      default: '',
+    },
+  },
+  (args) => (args.name ? ['status', args.name] : ['status']),
+);
+
+const pm2LogsCommand = createPm2Command(
+  'logs',
+  'Tail PM2 logs for the process',
+  {
+    name: nameArg,
+    lines: {
+      type: 'number',
+      default: 50,
+      description: 'How many lines to show before tailing',
+    },
+    timestamp: {
+      type: 'boolean',
+      default: false,
+      description: 'Show timestamps for each log line',
+    },
+  },
+  (args) => {
+    const logArgs = ['logs', args.name, '--lines', String(args.lines)];
+    if (args.timestamp) {
+      logArgs.push('--timestamp');
+    }
+    return logArgs;
+  },
+);
+
+const pm2Command = defineCommand({
+  meta: {
+    name: 'pm2',
+    description: 'PM2 helpers for the XyraPanel deployment',
+  },
+  subCommands: {
+    start: pm2StartCommand,
+    reload: pm2ReloadCommand,
+    restart: pm2RestartCommand,
+    stop: pm2StopCommand,
+    delete: pm2DeleteCommand,
+    status: pm2StatusCommand,
+    logs: pm2LogsCommand,
+  },
+});
+
+const rootCommand = defineCommand({
+  meta: {
+    name: 'xyra',
+    version: pkg.version,
+    description: 'Xyra CLI',
+  },
+  subCommands: {
+    build: buildCommand,
+    deploy: deployCommand,
+    pm2: pm2Command,
+    nuxt: nuxtCommand,
+    lint: lintCommand,
+    fmt: fmtCommand,
+    test: testCommand,
+    db: dbCommand,
+    pwa: pwaCommand,
+  },
+});
+
+const userArgs = process.argv.slice(2);
+const wantsRootHelp =
+  userArgs.length === 0 || (userArgs.length === 1 && ['--help', '-h'].includes(userArgs[0]));
+
+if (wantsRootHelp) {
+  console.log(renderRootHelp());
+  process.exit(0);
+}
+
+await runMain(rootCommand);
