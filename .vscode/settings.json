@@ -4,7 +4,7 @@
   },
   "oxc.fmt.configPath": ".oxfmtrc.json",
   "editor.defaultFormatter": "oxc.oxc-vscode",
-  "editor.formatOnSave": true,
+  "editor.formatOnSave": false,
   "oxc.typeAware": true,
   "conventionalCommits.scopes": [
     "auth",
@@ -29,5 +29,5 @@
     "test",
     "deps",
     "pages"
-  ],
+  ]
 }
