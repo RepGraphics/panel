@@ -28,7 +28,6 @@ export default defineEventHandler(async (event) => {
     .leftJoin(tables.eggs, eq(tables.eggs.nestId, tables.nests.id))
     .groupBy(tables.nests.id)
     .orderBy(tables.nests.name)
-    .all()
 
   const data: NestWithEggCount[] = nests.map(nest => ({
     id: nest.id,

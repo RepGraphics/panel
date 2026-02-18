@@ -1,5 +1,5 @@
 import { requireAdmin } from '#server/utils/security'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
@@ -20,14 +20,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
   const auth = getAuth()
 
-  const key = db
+  const keyResult = await db
     .select()
     .from(tables.apiKeys)
     .where(eq(tables.apiKeys.id, keyId))
-    .get()
+    .limit(1)
+
+  const key = keyResult[0]
 
   if (!key) {
     throw createError({

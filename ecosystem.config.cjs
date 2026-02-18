@@ -1,47 +1,36 @@
-const env = {
-  ...process.env,
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: process.env.PORT || process.env.NITRO_PORT || 3000,
-  HOST: process.env.HOST || process.env.NITRO_HOST || '0.0.0.0',
-  DB_DIALECT: process.env.DB_DIALECT || 'sqlite',
-  DATABASE_URL: process.env.DATABASE_URL || 'file:./data/XyraPanel.sqlite',
-}
-
-const env_production = {
-  ...process.env,
-  NODE_ENV: 'production',
-  PORT: process.env.PORT || process.env.NITRO_PORT || 3000,
-  HOST: process.env.HOST || process.env.NITRO_HOST || '0.0.0.0',
-  BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
-  BETTER_AUTH_URL: process.env.BETTER_AUTH_URL || process.env.AUTH_ORIGIN || process.env.NUXT_PUBLIC_APP_URL || process.env.APP_URL,
-  REDIS_HOST: process.env.REDIS_HOST,
-  REDIS_PORT: process.env.REDIS_PORT,
-  REDIS_USERNAME: process.env.REDIS_USERNAME,
-  REDIS_PASSWORD: process.env.REDIS_PASSWORD,
-  REDIS_TLS: process.env.REDIS_TLS,
-  NUXT_SECURITY_CORS_ORIGIN: process.env.NUXT_SECURITY_CORS_ORIGIN,
-  APP_NAME: process.env.APP_NAME,
-  NUXT_MAX_REQUEST_SIZE_MB: process.env.NUXT_MAX_REQUEST_SIZE_MB,
-  NUXT_MAX_UPLOAD_SIZE_MB: process.env.NUXT_MAX_UPLOAD_SIZE_MB,
-  BETTER_AUTH_TRUSTED_ORIGINS: process.env.BETTER_AUTH_TRUSTED_ORIGINS,
-  DB_DIALECT: process.env.DB_DIALECT || 'postgresql',
-  DATABASE_URL: process.env.DATABASE_URL,
-}
-
 module.exports = {
-  apps: [{
-    name: 'xyrapanel',
-    script: '.output/server/index.mjs',
-    instances: 'max',
-    exec_mode: 'cluster',
-    env,
-    env_production,
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    merge_logs: true,
-    autorestart: true,
-    max_memory_restart: '1G',
-    watch: false,
-  }],
+  apps: [
+    {
+      name: 'xyrapanel',
+      script: '.output/server/index.mjs',
+      exec_mode: 'cluster',
+      instances: 'max', 
+      autorestart: true,
+      
+      // Resource Management
+      max_memory_restart: '1G',
+      
+      // Control Flow & Graceful signals
+      // Matches the Nitro plugin 'ready' hook for zero-downtime
+      kill_timeout: 4000,     
+      wait_ready: true,       
+      listen_timeout: 15000,  
+      
+      // Advanced Stability
+      instance_var: 'NODE_APP_INSTANCE',
+      max_restarts: 10,
+      min_uptime: '15s',      // Consider app "up" after 15s
+      restart_delay: 2000,    // Delay between restarts if it crashes
+      
+      // Logging
+      // Docker-centric logging configuration
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      time: true,             // Prefix logs with timestamp (good for forensics)
+      
+      // Ensure logs go to stdout/stderr for Docker logging drivers
+      out_file: '/dev/stdout',
+      error_file: '/dev/stderr',
+    },
+  ],
 }

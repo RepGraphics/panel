@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const keys = db
+  const keys = await db
     .select({
       id: tables.apiKeys.id,
       name: tables.apiKeys.name,
@@ -18,7 +18,6 @@ export default defineEventHandler(async (event) => {
     .from(tables.apiKeys)
     .where(eq(tables.apiKeys.userId, user.id))
     .orderBy(tables.apiKeys.createdAt)
-    .all()
 
   if (!keys.length) {
     await recordAuditEventFromRequest(event, {
@@ -35,7 +34,7 @@ export default defineEventHandler(async (event) => {
 
   const keyIds = keys.map(key => key.id)
 
-  const keyPermissions = db
+  const keyPermissions = await db
     .select({
       apiKeyId: tables.apiKeyMetadata.apiKeyId,
       memo: tables.apiKeyMetadata.memo,
@@ -44,7 +43,6 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.apiKeyMetadata)
     .where(inArray(tables.apiKeyMetadata.apiKeyId, keyIds))
-    .all()
 
   const permsByKeyId = new Map(keyPermissions.map(p => [p.apiKeyId, p]))
 

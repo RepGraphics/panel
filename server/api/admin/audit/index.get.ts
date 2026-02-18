@@ -47,16 +47,13 @@ export default defineEventHandler(async (event) => {
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
-  const countResult = await db
-    .select({ total: count() })
+  const countResult = await db.select({ total: count() })
     .from(tables.auditEvents)
     .where(whereClause)
-    .all()
 
   const total = countResult[0]?.total ?? 0
 
-  const events = await db
-    .select({
+  const events = await db.select({
       id: tables.auditEvents.id,
       occurredAt: tables.auditEvents.occurredAt,
       actor: tables.auditEvents.actor,
@@ -71,7 +68,6 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(tables.auditEvents.occurredAt))
     .limit(limit)
     .offset(offset)
-    .all()
 
   const parseMetadata = (value: string | null) => {
     if (!value) {
@@ -120,7 +116,6 @@ export default defineEventHandler(async (event) => {
         })
         .from(tables.users)
         .where(inArray(tables.users.id, userIds))
-        .all()
       
       users.forEach(user => {
         userMap.set(user.id, { id: user.id, username: user.username, email: user.email })
@@ -135,7 +130,7 @@ export default defineEventHandler(async (event) => {
     const emails = Array.from(actorEmails)
     for (const email of emails) {
       if (!userMap.has(email)) {
-        const user = await db
+        const userResult = await db
           .select({
             id: tables.users.id,
             username: tables.users.username,
@@ -143,8 +138,9 @@ export default defineEventHandler(async (event) => {
           })
           .from(tables.users)
           .where(eq(tables.users.email, email))
-          .get()
+          .limit(1)
         
+        const user = userResult[0]
         if (user) {
           userMap.set(user.id, { id: user.id, username: user.username, email: user.email })
           userMap.set(email, { id: user.id, username: user.username, email: user.email })

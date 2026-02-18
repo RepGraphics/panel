@@ -32,16 +32,19 @@ function formatCombinedToken(identifier: string, secret: string): string {
   return `${identifier}.${secret}`
 }
 
-function generateNodeId(name: string) {
+async function generateNodeId(name: string) {
   const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
   const base = slug.length > 0 ? slug : 'node'
   const db = useDrizzle()
 
-  const exists = (id: string) => db.select({ id: tables.wingsNodes.id }).from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).get()
+  const exists = async (id: string) => {
+    const result = await db.select({ id: tables.wingsNodes.id }).from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1)
+    return result[0] ?? null
+  }
 
   let candidate = base
   let index = 1
-  while (exists(candidate)) {
+  while (await exists(candidate)) {
     candidate = `${base}-${index}`
     index += 1
   }
@@ -91,8 +94,8 @@ function mapRowToStored(row: typeof tables.wingsNodes.$inferSelect): StoredWings
   }
 }
 
-export function resolveNodeConnection(id: string) {
-  const row = requireNodeRow(id)
+export async function resolveNodeConnection(id: string) {
+  const row = await requireNodeRow(id)
   const combinedToken = buildCombinedToken(row)
   let plainSecret: string | null = null
 
@@ -113,9 +116,10 @@ export function resolveNodeConnection(id: string) {
   }
 }
 
-export function requireNodeRow(id: string) {
+export async function requireNodeRow(id: string) {
   const db = useDrizzle()
-  const row = db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1).get()
+  const result = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1)
+  const row = result[0]
   if (!row) {
     throw new Error(`Node ${id} not found`)
   }
@@ -123,15 +127,10 @@ export function requireNodeRow(id: string) {
 }
 
 export async function syncWingsNodeConfiguration(id: string, panelUrl: string): Promise<void> {
-  const { stored, connection } = resolveNodeConnection(id)
-  const configuration = getWingsNodeConfigurationById(id, panelUrl)
+  const { stored, connection } = await resolveNodeConnection(id)
+  const configuration = await getWingsNodeConfigurationById(id, panelUrl)
 
   const requestUrl = new URL('/api/update', stored.baseURL)
-
-  // Allow insecure connections for local/development Wings instances
-  // if (stored.allowInsecure) {
-  //   throw new Error('Insecure Wings connections are not supported. Disable "allowInsecure" on this node.')
-  // }
 
   const response = await fetch(requestUrl.toString(), {
     method: 'POST',
@@ -149,20 +148,21 @@ export async function syncWingsNodeConfiguration(id: string, panelUrl: string): 
   }
 }
 
-export function listWingsNodes(): StoredWingsNode[] {
+export async function listWingsNodes(): Promise<StoredWingsNode[]> {
   const db = useDrizzle()
-  const rows = db.select().from(tables.wingsNodes).all()
+  const rows = await db.select().from(tables.wingsNodes)
   return rows.map(mapRowToStored)
 }
 
-export function findWingsNode(id: string): StoredWingsNode | undefined {
+export async function findWingsNode(id: string): Promise<StoredWingsNode | undefined> {
   const db = useDrizzle()
-  const row = db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).get()
+  const result = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1)
+  const row = result[0]
   return row ? mapRowToStored(row) : undefined
 }
 
-export function getWingsNode(id: string): StoredWingsNode {
-  return mapRowToStored(requireNodeRow(id))
+export async function getWingsNode(id: string): Promise<StoredWingsNode> {
+  return mapRowToStored(await requireNodeRow(id))
 }
 
 export function toWingsNodeSummary(node: StoredWingsNode): WingsNodeSummary {
@@ -173,19 +173,19 @@ export function toWingsNodeSummary(node: StoredWingsNode): WingsNodeSummary {
   }
 }
 
-export function listWingsNodeSummaries(): WingsNodeSummary[] {
-  return listWingsNodes().map(toWingsNodeSummary)
+export async function listWingsNodeSummaries(): Promise<WingsNodeSummary[]> {
+  return (await listWingsNodes()).map(toWingsNodeSummary)
 }
 
-export function ensureNodeHasToken(id: string): void {
+export async function ensureNodeHasToken(id: string): Promise<void> {
   const db = useDrizzle()
-  const row = requireNodeRow(id)
+  const row = await requireNodeRow(id)
 
   if (!row.tokenSecret || row.tokenSecret.trim().length === 0 || !row.tokenIdentifier || row.tokenIdentifier.trim().length === 0) {
     const token = generateTokenParts()
     const now = new Date()
 
-    db.update(tables.wingsNodes)
+    await db.update(tables.wingsNodes)
       .set({
         tokenIdentifier: token.identifier,
         tokenSecret: token.secret,
@@ -193,13 +193,12 @@ export function ensureNodeHasToken(id: string): void {
         updatedAt: now,
       })
       .where(eq(tables.wingsNodes.id, id))
-      .run()
   }
 }
 
-export function getWingsNodeConfigurationById(id: string, panelUrl: string): WingsNodeConfiguration {
-  ensureNodeHasToken(id)
-  const row = requireNodeRow(id)
+export async function getWingsNodeConfigurationById(id: string, panelUrl: string): Promise<WingsNodeConfiguration> {
+  await ensureNodeHasToken(id)
+  const row = await requireNodeRow(id)
 
   if (!row.tokenSecret || row.tokenSecret.trim().length === 0) {
     throw new Error(`Node ${id} does not have a token secret. Please generate a token first.`)
@@ -326,9 +325,9 @@ function resolveTokenParts(inputToken?: string) {
   }
 }
 
-export function createWingsNode(input: CreateWingsNodeInput): StoredWingsNode {
+export async function createWingsNode(input: CreateWingsNodeInput): Promise<StoredWingsNode> {
   const db = useDrizzle()
-  const id = input.id?.trim() || generateNodeId(input.name)
+  const id = input.id?.trim() || await generateNodeId(input.name)
 
   const now = new Date()
 
@@ -363,9 +362,10 @@ export function createWingsNode(input: CreateWingsNodeInput): StoredWingsNode {
     updatedAt: now,
   }
 
-  db.insert(tables.wingsNodes).values(record).run()
+  await db.insert(tables.wingsNodes).values(record)
 
-  const inserted = db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).get()
+  const insertedResult = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1)
+  const inserted = insertedResult[0]
   if (!inserted) {
     throw new Error('Failed to persist Wings node')
   }
@@ -373,9 +373,9 @@ export function createWingsNode(input: CreateWingsNodeInput): StoredWingsNode {
   return mapRowToStored(inserted)
 }
 
-export function updateWingsNode(id: string, input: UpdateWingsNodeInput): StoredWingsNode {
+export async function updateWingsNode(id: string, input: UpdateWingsNodeInput): Promise<StoredWingsNode> {
   const db = useDrizzle()
-  const existing = requireNodeRow(id)
+  const existing = await requireNodeRow(id)
 
   const baseUrlUpdates = input.baseURL !== undefined
     ? parseBaseUrl(input.baseURL)
@@ -413,9 +413,10 @@ export function updateWingsNode(id: string, input: UpdateWingsNodeInput): Stored
     updatedAt: new Date(),
   }
 
-  db.update(tables.wingsNodes).set(updated).where(eq(tables.wingsNodes.id, id)).run()
+  await db.update(tables.wingsNodes).set(updated).where(eq(tables.wingsNodes.id, id))
 
-  const refreshed = db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).get()
+  const refreshedResult = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).limit(1)
+  const refreshed = refreshedResult[0]
   if (!refreshed) {
     throw new Error(`Node ${id} not found after update`)
   }
@@ -423,12 +424,11 @@ export function updateWingsNode(id: string, input: UpdateWingsNodeInput): Stored
   return mapRowToStored(refreshed)
 }
 
-export function deleteWingsNode(id: string): void {
+export async function deleteWingsNode(id: string): Promise<void> {
   const db = useDrizzle()
-  const result = db.delete(tables.wingsNodes).where(eq(tables.wingsNodes.id, id)).run()
-  if ((result?.changes ?? 0) === 0) {
+  const result = await db.delete(tables.wingsNodes).where(eq(tables.wingsNodes.id, id))
+  const changes = (result as any)?.rowCount ?? 0
+  if (changes === 0) {
     throw new Error(`Node ${id} not found`)
   }
 }
-
-

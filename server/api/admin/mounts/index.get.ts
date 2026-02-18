@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const mounts = await db.select().from(tables.mounts).orderBy(tables.mounts.name).all()
+  const mounts = await db.select().from(tables.mounts).orderBy(tables.mounts.name)
 
   const data: MountWithRelations[] = await Promise.all(
     mounts.map(async (mount) => {
@@ -21,19 +21,16 @@ export default defineEventHandler(async (event) => {
         .select({ eggId: tables.mountEgg.eggId })
         .from(tables.mountEgg)
         .where(eq(tables.mountEgg.mountId, mount.id))
-        .all()
 
       const nodes = await db
         .select({ nodeId: tables.mountNode.nodeId })
         .from(tables.mountNode)
         .where(eq(tables.mountNode.mountId, mount.id))
-        .all()
 
       const servers = await db
         .select({ serverId: tables.mountServer.serverId })
         .from(tables.mountServer)
         .where(eq(tables.mountServer.mountId, mount.id))
-        .all()
 
       return {
         id: mount.id,

@@ -100,11 +100,13 @@ export class PermissionManager {
   }
 
   private async computeUserPermissions(userId: string): Promise<UserPermissions> {
-    const user = await this.db
+    const result = await this.db
       .select()
       .from(tables.users)
       .where(eq(tables.users.id, userId))
-      .get()
+      .limit(1)
+
+    const user = result[0]
 
     if (!user) {
       throw new Error('User not found')
@@ -126,7 +128,6 @@ export class PermissionManager {
       .select()
       .from(tables.servers)
       .where(eq(tables.servers.ownerId, userId))
-      .all()
 
     for (const server of ownedServers) {
       serverPermissions.set(server.id, this.defaultPermissionSets.owner)
@@ -136,7 +137,6 @@ export class PermissionManager {
       .select()
       .from(tables.serverSubusers)
       .where(eq(tables.serverSubusers.userId, userId))
-      .all()
 
     for (const subuser of subusers) {
       try {
@@ -214,26 +214,26 @@ export class PermissionManager {
       throw new Error('Permission denied: Cannot manage server users')
     }
 
-    const existingSubuser = await this.db
+    const existingResult = await this.db
       .select()
       .from(tables.serverSubusers)
       .where(and(
         eq(tables.serverSubusers.serverId, serverId),
         eq(tables.serverSubusers.userId, userId)
       ))
-      .get()
+      .limit(1)
 
-    if (existingSubuser) {
+    if (existingResult[0]) {
       throw new Error('User already has access to this server')
     }
 
-    const server = await this.db
+    const serverResult = await this.db
       .select()
       .from(tables.servers)
       .where(eq(tables.servers.id, serverId))
-      .get()
+      .limit(1)
 
-    if (server?.ownerId === userId) {
+    if (serverResult[0]?.ownerId === userId) {
       throw new Error('User is already the server owner')
     }
 
@@ -261,15 +261,16 @@ export class PermissionManager {
       throw new Error('Permission denied: Cannot manage server users')
     }
 
-    const subuser = await this.db
+    const result = await this.db
       .select()
       .from(tables.serverSubusers)
       .where(and(
         eq(tables.serverSubusers.serverId, serverId),
         eq(tables.serverSubusers.userId, userId)
       ))
-      .get()
+      .limit(1)
 
+    const subuser = result[0]
     if (!subuser) {
       throw new Error('Subuser not found')
     }
@@ -281,7 +282,6 @@ export class PermissionManager {
         updatedAt: new Date(),
       })
       .where(eq(tables.serverSubusers.id, subuser.id))
-      .run()
 
     await invalidateServerSubusersCache(serverId, [userId])
   }
@@ -296,15 +296,16 @@ export class PermissionManager {
       throw new Error('Permission denied: Cannot manage server users')
     }
 
-    const subuser = await this.db
+    const result = await this.db
       .select()
       .from(tables.serverSubusers)
       .where(and(
         eq(tables.serverSubusers.serverId, serverId),
         eq(tables.serverSubusers.userId, userId)
       ))
-      .get()
+      .limit(1)
 
+    const subuser = result[0]
     if (!subuser) {
       throw new Error('Subuser not found')
     }
@@ -312,7 +313,6 @@ export class PermissionManager {
     await this.db
       .delete(tables.serverSubusers)
       .where(eq(tables.serverSubusers.id, subuser.id))
-      .run()
 
     await invalidateServerSubusersCache(serverId, [userId])
   }
@@ -336,7 +336,6 @@ export class PermissionManager {
       .from(tables.serverSubusers)
       .leftJoin(tables.users, eq(tables.serverSubusers.userId, tables.users.id))
       .where(eq(tables.serverSubusers.serverId, serverId))
-      .all()
 
     return subusers.map(subuser => ({
       id: subuser.id,

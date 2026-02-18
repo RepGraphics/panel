@@ -6,15 +6,15 @@ export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
 
   const data = {
-    driver: getSettingWithDefault(SETTINGS_KEYS.MAIL_DRIVER, 'smtp'),
-    service: getSettingWithDefault(SETTINGS_KEYS.MAIL_SERVICE, ''),
-    host: getSettingWithDefault(SETTINGS_KEYS.MAIL_HOST, 'localhost'),
-    port: getSettingWithDefault(SETTINGS_KEYS.MAIL_PORT, '587'),
-    username: getSettingWithDefault(SETTINGS_KEYS.MAIL_USERNAME, ''),
-    password: getSettingWithDefault(SETTINGS_KEYS.MAIL_PASSWORD, ''),
-    encryption: getSettingWithDefault(SETTINGS_KEYS.MAIL_ENCRYPTION, 'tls'),
-    fromAddress: getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_ADDRESS, 'noreply@xyrapanel.local'),
-    fromName: getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_NAME, useRuntimeConfig().public.appName || 'XyraPanel'),
+    driver: await getSettingWithDefault(SETTINGS_KEYS.MAIL_DRIVER, 'smtp'),
+    service: await getSettingWithDefault(SETTINGS_KEYS.MAIL_SERVICE, ''),
+    host: await getSettingWithDefault(SETTINGS_KEYS.MAIL_HOST, 'localhost'),
+    port: await getSettingWithDefault(SETTINGS_KEYS.MAIL_PORT, '587'),
+    username: await getSettingWithDefault(SETTINGS_KEYS.MAIL_USERNAME, ''),
+    password: await getSettingWithDefault(SETTINGS_KEYS.MAIL_PASSWORD, ''),
+    encryption: await getSettingWithDefault(SETTINGS_KEYS.MAIL_ENCRYPTION, 'tls'),
+    fromAddress: await getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_ADDRESS, 'noreply@xyrapanel.local'),
+    fromName: await getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_NAME, useRuntimeConfig().public.appName || 'XyraPanel'),
   }
 
   await recordAuditEventFromRequest(event, {

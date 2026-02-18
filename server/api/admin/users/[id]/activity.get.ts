@@ -17,12 +17,13 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const page = Math.max(1, Number.parseInt(query.page as string ?? '1', 10) || 1)
-  const limit = Math.min(100, Math.max(10, Number.parseInt(query.limit as string ?? String(getNumericSetting(SETTINGS_KEYS.PAGINATION_LIMIT, 25)), 10) || 25))
+  const defaultLimit = await getNumericSetting(SETTINGS_KEYS.PAGINATION_LIMIT, 25)
+  const limit = Math.min(100, Math.max(10, Number.parseInt(query.limit as string ?? String(defaultLimit), 10) || 25))
   const offset = (page - 1) * limit
 
   const db = useDrizzle()
 
-  const user = db
+  const userResult = await db
     .select({
       id: tables.users.id,
       email: tables.users.email,
@@ -30,7 +31,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, id))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({
@@ -47,14 +50,14 @@ export default defineEventHandler(async (event) => {
     activityConditions.push(eq(tables.auditEvents.actor, user.username))
   }
 
-  const totalResult = db
+  const totalResult = await db
     .select({ count: count() })
     .from(tables.auditEvents)
     .where(or(...activityConditions))
-    .get()
-  const totalCount = totalResult?.count ?? 0
 
-  const activityEvents = db
+  const totalCount = Number(totalResult[0]?.count ?? 0)
+
+  const activityEvents = await db
     .select({
       id: tables.auditEvents.id,
       occurredAt: tables.auditEvents.occurredAt,
@@ -69,7 +72,6 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(tables.auditEvents.occurredAt))
     .limit(limit)
     .offset(offset)
-    .all()
 
   const formatTimestamp = (value: number | Date | null | undefined) => {
     if (!value) {
@@ -113,7 +115,7 @@ export default defineEventHandler(async (event) => {
   })
 
   return {
-    data: activityEvents.map(entry => ({
+    data: activityEvents.map((entry) => ({
       id: entry.id,
       occurredAt: formatTimestamp(entry.occurredAt)!,
       action: entry.action,
@@ -129,4 +131,3 @@ export default defineEventHandler(async (event) => {
     },
   }
 })
-

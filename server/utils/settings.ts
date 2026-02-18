@@ -32,20 +32,17 @@ export const SETTINGS_KEYS = {
 
 export type SettingKey = typeof SETTINGS_KEYS[keyof typeof SETTINGS_KEYS]
 
-export function getSetting(key: SettingKey): string | null {
+export async function getSetting(key: SettingKey): Promise<string | null> {
   const db = useDrizzle()
-
-  const result = db
-    .select({ value: tables.settings.value })
-    .from(tables.settings)
-    .where(eq(tables.settings.key, key))
-    .get()
-
+  const result = await db.query.settings.findFirst({
+    where: (s, { eq }) => eq(s.key, key),
+    columns: { value: true }
+  })
   return result?.value ?? null
 }
 
-export function getNumericSetting(key: SettingKey, fallback: number): number {
-  const value = getSetting(key)
+export async function getNumericSetting(key: SettingKey, fallback: number): Promise<number> {
+  const value = await getSetting(key)
   if (!value)
     return fallback
 
@@ -56,81 +53,59 @@ export function getNumericSetting(key: SettingKey, fallback: number): number {
   return parsed
 }
 
-export function getSettings(keys: SettingKey[]): Record<string, string | null> {
+export async function getSettings(keys: SettingKey[]): Promise<Record<string, string | null>> {
+  if (keys.length === 0) return {}
   const db = useDrizzle()
-
-  if (keys.length === 0) {
-    return {}
-  }
-
-  const results = db
-    .select()
-    .from(tables.settings)
-    .where(inArray(tables.settings.key, keys))
-    .all()
+  const results = await db.query.settings.findMany({
+    where: (s, { inArray }) => inArray(s.key, keys)
+  })
 
   const settingsMap: Record<string, string | null> = {}
-
   for (const key of keys) {
     const result = results.find(r => r.key === key)
     settingsMap[key] = result?.value ?? null
   }
-
   return settingsMap
 }
 
-export function getAllSettings(): Record<string, string> {
+export async function getAllSettings(): Promise<Record<string, string>> {
   const db = useDrizzle()
-
-  const results = db
-    .select()
-    .from(tables.settings)
-    .all()
-
+  const results = await db.query.settings.findMany()
   const settingsMap: Record<string, string> = {}
-
   for (const result of results) {
     settingsMap[result.key] = result.value
   }
-
   return settingsMap
 }
 
-export function setSetting(key: SettingKey, value: string): void {
+export async function setSetting(key: SettingKey, value: string): Promise<void> {
   const db = useDrizzle()
-
-  const existing = db
-    .select()
-    .from(tables.settings)
-    .where(eq(tables.settings.key, key))
-    .get()
+  const existing = await db.query.settings.findFirst({
+    where: (s, { eq }) => eq(s.key, key),
+    columns: { key: true }
+  })
 
   if (existing) {
-    db.update(tables.settings)
+    await db.update(tables.settings)
       .set({ value })
       .where(eq(tables.settings.key, key))
-      .run()
   } else {
-    db.insert(tables.settings)
+    await db.insert(tables.settings)
       .values({ key, value })
-      .run()
   }
 }
 
-export function setSettings(settings: Record<SettingKey, string>): void {
+export async function setSettings(settings: Record<SettingKey, string>): Promise<void> {
   for (const [key, value] of Object.entries(settings)) {
-    setSetting(key as SettingKey, value)
+    await setSetting(key as SettingKey, value)
   }
 }
 
-export function deleteSetting(key: SettingKey): void {
+export async function deleteSetting(key: SettingKey): Promise<void> {
   const db = useDrizzle()
-
-  db.delete(tables.settings)
-    .where(eq(tables.settings.key, key))
-    .run()
+  await db.delete(tables.settings).where(eq(tables.settings.key, key))
 }
 
-export function getSettingWithDefault(key: SettingKey, defaultValue: string): string {
-  return getSetting(key) ?? defaultValue
+export async function getSettingWithDefault(key: SettingKey, defaultValue: string): Promise<string> {
+  return (await getSetting(key)) ?? defaultValue
 }

@@ -41,9 +41,9 @@ function joinServerPath(base: string, segment: string): string {
 
 export async function remoteGetSystemInformation(nodeId?: string, version?: number) {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     const resolvedNodeId = nodeId || node.id
-    const plainSecret = getPlainTokenSecret(resolvedNodeId)
+    const plainSecret = await getPlainTokenSecret(resolvedNodeId)
     const query = typeof version === 'number' && !Number.isNaN(version) ? { v: version } : undefined
     const data = await wingsFetch<WingsSystemInformation>('/api/system', {
       baseURL: node.baseURL,
@@ -84,8 +84,8 @@ export async function remoteDeleteFiles(serverUuid: string, root: string, files:
   }
 
   try {
-    const node = requireNode(nodeId)
-    const { connection } = resolveNodeConnection(node.id)
+    const node = await requireNode(nodeId)
+    const { connection } = await resolveNodeConnection(node.id)
     
     await wingsFetch(`/api/servers/${serverUuid}/files/delete`, {
       baseURL: node.baseURL,
@@ -105,7 +105,7 @@ export async function remoteDeleteFiles(serverUuid: string, root: string, files:
 
 export async function remoteCreateDirectory(serverUuid: string, root: string, name: string, nodeId?: string): Promise<void> {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/create-directory`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -144,7 +144,7 @@ export async function remoteRenameFiles(
   }
 
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/rename`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -172,7 +172,7 @@ export async function remoteChmodFiles(
   }
 
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/chmod`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -201,7 +201,7 @@ export async function remoteCopyFile(
   }
 
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/copy`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -224,7 +224,7 @@ export async function remoteCompressFiles(serverUuid: string, root: string, file
   }
 
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     return await wingsFetch<{ file: string }>(`/api/servers/${serverUuid}/files/compress`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -243,7 +243,7 @@ export async function remoteCompressFiles(serverUuid: string, root: string, file
 
 export async function remoteDecompressFile(serverUuid: string, root: string, file: string, nodeId?: string): Promise<void> {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/decompress`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -262,7 +262,7 @@ export async function remoteDecompressFile(serverUuid: string, root: string, fil
 
 export async function remotePullFile(serverUuid: string, url: string, directory: string, nodeId?: string): Promise<void> {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     await wingsFetch(`/api/servers/${serverUuid}/files/pull`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -289,7 +289,7 @@ export async function remoteUploadFiles(
     throw new Error('No files provided for upload')
   }
 
-  const node = requireNode(nodeId)
+  const node = await requireNode(nodeId)
 
   const formData = new FormData()
   formData.set('directory', normalizeRoot(root))
@@ -327,7 +327,7 @@ export async function remoteUploadFiles(
 
 export async function remoteGetFileDownloadUrl(serverUuid: string, file: string, nodeId?: string): Promise<{ url: string }> {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     const response = await wingsFetch<{ url: string }>(`/api/servers/${serverUuid}/files/download`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -426,16 +426,16 @@ async function wingsFetch<T = unknown>(url: string, options: WingsHttpRequestOpt
   }
 }
 
-function requireNode(nodeId?: string): StoredWingsNode {
+async function requireNode(nodeId?: string): Promise<StoredWingsNode> {
   if (nodeId) {
-    const node = findWingsNode(nodeId)
+    const node = await findWingsNode(nodeId)
     if (!node) {
       throw new Error(`Node ${nodeId} not found`)
     }
     return node
   }
 
-  const availableNodes = listWingsNodes()
+  const availableNodes = await listWingsNodes()
   if (availableNodes.length === 0) {
     throw new Error('No Wings node configured')
   }
@@ -452,16 +452,16 @@ function requireNode(nodeId?: string): StoredWingsNode {
   return node
 }
 
-function getPlainTokenSecret(nodeId: string): string {
-  const row = requireNodeRow(nodeId)
+async function getPlainTokenSecret(nodeId: string): Promise<string> {
+  const row = await requireNodeRow(nodeId)
   return decryptToken(row.tokenSecret)
 }
 
 export async function remoteListServers(nodeId?: string) {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     const resolvedNodeId = nodeId || node.id
-    const plainSecret = getPlainTokenSecret(resolvedNodeId)
+    const plainSecret = await getPlainTokenSecret(resolvedNodeId)
     const data = await wingsFetch<WingsRemoteServer[]>('/api/servers', {
       baseURL: node.baseURL,
       token: plainSecret,
@@ -476,7 +476,7 @@ export async function remoteListServers(nodeId?: string) {
 
 export async function remoteGetServerConfiguration(uuid: string, nodeId?: string) {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     const data = await wingsFetch<WingsServerConfigurationResponse>(`/api/servers/${uuid}`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -491,7 +491,7 @@ export async function remoteGetServerConfiguration(uuid: string, nodeId?: string
 
 export async function remoteGetInstallationScript(uuid: string, nodeId?: string) {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     return await wingsFetch(`/api/servers/${uuid}/install`, {
       baseURL: node.baseURL,
       token: node.apiToken,
@@ -505,9 +505,9 @@ export async function remoteGetInstallationScript(uuid: string, nodeId?: string)
 
 export async function remotePaginateServers(page: number, perPage: number, nodeId?: string) {
   try {
-    const node = requireNode(nodeId)
+    const node = await requireNode(nodeId)
     const resolvedNodeId = nodeId || node.id
-    const plainSecret = getPlainTokenSecret(resolvedNodeId)
+    const plainSecret = await getPlainTokenSecret(resolvedNodeId)
     const response = await wingsFetch<WingsPaginatedResponse<WingsRemoteServer> | WingsRemoteServer[]>('/api/servers', {
       baseURL: node.baseURL,
       token: plainSecret,
@@ -541,8 +541,8 @@ export async function remotePaginateServers(page: number, perPage: number, nodeI
 
 export async function remoteListServerDirectory(serverUuid: string, directory: string, nodeId?: string): Promise<ServerDirectoryListing> {
   try {
-    const node = requireNode(nodeId)
-    const { connection } = resolveNodeConnection(node.id)
+    const node = await requireNode(nodeId)
+    const { connection } = await resolveNodeConnection(node.id)
     const directoryPath = normalizeServerPath(directory)
     
     // Pterodactyl uses node's decrypted token secret (just the secret, not tokenId.tokenSecret)
@@ -577,12 +577,11 @@ export async function remoteListServerDirectory(serverUuid: string, directory: s
         const { syncWingsNodeConfiguration } = await import('./nodesStore')
         const runtimeConfig = useRuntimeConfig()
         const panelConfig = (runtimeConfig.public?.app ?? {}) as { baseUrl?: string }
-        const panelUrl = panelConfig.baseUrl || 'http://174.48.191.194:3000'
+        const panelUrl = panelConfig.baseUrl
+        if (panelUrl) await syncWingsNodeConfiguration(nodeId || 'test', panelUrl)
         
-        await syncWingsNodeConfiguration(nodeId || 'test', panelUrl)
-        
-        const node = requireNode(nodeId)
-        const { connection } = resolveNodeConnection(node.id)
+        const node = await requireNode(nodeId)
+        const { connection } = await resolveNodeConnection(node.id)
         const directoryPath = normalizeServerPath(directory)
         
         const entries = await wingsFetch<{ name: string, created: string, modified: string, mode: string, mode_bits: string, size: number, directory: boolean, file: boolean, symlink: boolean, mime: string }[]>(`/api/servers/${serverUuid}/files/list-directory`, {
@@ -620,8 +619,8 @@ export async function remoteListServerDirectory(serverUuid: string, directory: s
 
 export async function remoteGetFileContents(serverUuid: string, file: string, nodeId?: string): Promise<ServerFileContentResponse> {
   try {
-    const node = requireNode(nodeId)
-    const { connection } = resolveNodeConnection(node.id)
+    const node = await requireNode(nodeId)
+    const { connection } = await resolveNodeConnection(node.id)
     const filePath = normalizeServerPath(file)
     
     const fullUrl = new URL(`/api/servers/${serverUuid}/files/contents`, node.baseURL)
@@ -654,8 +653,8 @@ export async function remoteGetFileContents(serverUuid: string, file: string, no
 
 export async function remoteWriteFile(serverUuid: string, file: string, contents: string, nodeId?: string): Promise<void> {
   try {
-    const node = requireNode(nodeId)
-    const { connection } = resolveNodeConnection(node.id)
+    const node = await requireNode(nodeId)
+    const { connection } = await resolveNodeConnection(node.id)
     const filePath = normalizeServerPath(file)
     const fullUrl = new URL(`/api/servers/${serverUuid}/files/write`, node.baseURL)
     fullUrl.searchParams.append('file', filePath)

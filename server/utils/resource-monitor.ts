@@ -39,11 +39,13 @@ export class ResourceMonitor {
   }
 
   async getNodeResources(nodeId: string): Promise<NodeResourceStats> {
-    const node = await this.db
+    const result = await this.db
       .select()
       .from(tables.wingsNodes)
       .where(eq(tables.wingsNodes.id, nodeId))
-      .get()
+      .limit(1)
+
+    const node = result[0]
 
     if (!node) {
       return {
@@ -88,20 +90,15 @@ export class ResourceMonitor {
         .select()
         .from(tables.servers)
         .where(eq(tables.servers.nodeId, nodeId))
-        .all()
 
       const lastSeenAt = new Date()
 
-      Promise.resolve().then(() => {
+      Promise.resolve().then(async () => {
         try {
-          this.db
+          await this.db
             .update(tables.wingsNodes)
-            .set({
-              lastSeenAt,
-              updatedAt: new Date(),
-            })
+            .set({ lastSeenAt, updatedAt: new Date() })
             .where(eq(tables.wingsNodes.id, nodeId))
-            .run()
         } catch (err) {
           debugError('Failed to update node status:', err)
         }
@@ -138,16 +135,12 @@ export class ResourceMonitor {
         message = error.message
       }
 
-      Promise.resolve().then(() => {
+      Promise.resolve().then(async () => {
         try {
-          this.db
+          await this.db
             .update(tables.wingsNodes)
-            .set({
-              lastSeenAt: node.lastSeenAt ?? null,
-              updatedAt: new Date(),
-            })
+            .set({ lastSeenAt: node.lastSeenAt ?? null, updatedAt: new Date() })
             .where(eq(tables.wingsNodes.id, nodeId))
-            .run()
         } catch (err) {
           debugError('Failed to update node status:', err)
         }
@@ -170,10 +163,7 @@ export class ResourceMonitor {
   }
 
   async getAllServerResources(): Promise<ServerResourceStats[]> {
-    const servers = await this.db
-      .select()
-      .from(tables.servers)
-      .all()
+    const servers = await this.db.select().from(tables.servers)
 
     const resources: ServerResourceStats[] = []
 
@@ -192,10 +182,7 @@ export class ResourceMonitor {
   }
 
   async getAllNodeResources(): Promise<NodeResourceStats[]> {
-    const nodes = await this.db
-      .select()
-      .from(tables.wingsNodes)
-      .all()
+    const nodes = await this.db.select().from(tables.wingsNodes)
 
     const resources: NodeResourceStats[] = []
 
@@ -256,23 +243,15 @@ export class ResourceMonitor {
       for (const node of nodeResources) {
         await this.db
           .update(tables.wingsNodes)
-          .set({
-            lastSeenAt: node.lastUpdated ?? null,
-            updatedAt: new Date(),
-          })
+          .set({ lastSeenAt: node.lastUpdated ?? null, updatedAt: new Date() })
           .where(eq(tables.wingsNodes.id, node.nodeId))
-          .run()
       }
 
       for (const resource of serverResources) {
         await this.db
           .update(tables.servers)
-          .set({
-            status: resource.state,
-            updatedAt: new Date(),
-          })
+          .set({ status: resource.state, updatedAt: new Date() })
           .where(eq(tables.servers.id, resource.serverId))
-          .run()
       }
 
       const duration = Date.now() - startTime

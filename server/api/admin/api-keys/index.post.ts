@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
@@ -26,10 +26,9 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
   }
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const dbUser = db.select().from(tables.users).where(eq(tables.users.id, user.id)).get()
-  if (!dbUser) {
+  const dbUserResult = await db.select().from(tables.users).where(eq(tables.users.id, user.id)).limit(1)
+  if (!dbUserResult[0]) {
     throw createError({
       status: 404,
       statusText: 'User not found in database. Please log out and log back in.',
@@ -79,7 +78,7 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
 
   const apiKeyId = created.id
 
-  db.insert(tables.apiKeyMetadata).values({
+  await db.insert(tables.apiKeyMetadata).values({
     id: randomUUID(),
     apiKeyId: apiKeyId,
     keyType: 1,
@@ -87,18 +86,17 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
     memo: trimmedMemo,
     createdAt: now,
     updatedAt: now,
-  }).run()
+  })
 
   const permissionValues = Object.values(permissions)
   const hasAnyPermissions = permissionValues.some(actions => Array.isArray(actions) && actions.length > 0)
 
   if (hasAnyPermissions) {
-    db.update(tables.apiKeys)
+    await db.update(tables.apiKeys)
       .set({
         metadata: JSON.stringify(permissions),
       })
       .where(eq(tables.apiKeys.id, apiKeyId))
-      .run()
   }
 
   await recordAuditEventFromRequest(event, {

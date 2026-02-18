@@ -16,14 +16,15 @@ export default defineTask({
       const result = await db
         .delete(tables.sessions)
         .where(lt(tables.sessions.expires, now))
-        .run()
 
-      debugLog(`[${now.toISOString()}] Session pruning complete. Deleted ${result.changes} expired sessions.`)
+      const deletedCount = (result as any).changes ?? (result as any).rowCount ?? 0
+
+      debugLog(`[${now.toISOString()}] Session pruning complete. Deleted ${deletedCount} expired sessions.`)
 
       return {
         result: {
           prunedAt: now.toISOString(),
-          deletedCount: result.changes,
+          deletedCount,
         },
       }
     } catch (error) {

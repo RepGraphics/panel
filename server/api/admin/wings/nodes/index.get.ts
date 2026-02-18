@@ -13,7 +13,6 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.wingsNodes)
     .orderBy(tables.wingsNodes.name)
-    .all()
 
   await recordAuditEventFromRequest(event, {
     actor: session.user.email || session.user.id,

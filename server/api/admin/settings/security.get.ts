@@ -6,19 +6,19 @@ import type { SecuritySettings } from '#shared/types/admin'
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
 
-  const enforceTwoFactor = getSetting(SETTINGS_KEYS.ENFORCE_TWO_FACTOR) === 'true'
-  const maintenanceMode = getSetting(SETTINGS_KEYS.MAINTENANCE_MODE) === 'true'
-  const announcementEnabled = getSetting(SETTINGS_KEYS.ANNOUNCEMENT_ENABLED) === 'true'
+  const enforceTwoFactor = await getSetting(SETTINGS_KEYS.ENFORCE_TWO_FACTOR) === 'true'
+  const maintenanceMode = await getSetting(SETTINGS_KEYS.MAINTENANCE_MODE) === 'true'
+  const announcementEnabled = await getSetting(SETTINGS_KEYS.ANNOUNCEMENT_ENABLED) === 'true'
 
   const data: SecuritySettings = {
     enforceTwoFactor,
     maintenanceMode,
-    maintenanceMessage: getSetting(SETTINGS_KEYS.MAINTENANCE_MESSAGE) ?? '',
+    maintenanceMessage: (await getSetting(SETTINGS_KEYS.MAINTENANCE_MESSAGE)) ?? '',
     announcementEnabled,
-    announcementMessage: getSetting(SETTINGS_KEYS.ANNOUNCEMENT_MESSAGE) ?? '',
-    sessionTimeoutMinutes: parseInt(getSetting(SETTINGS_KEYS.SESSION_TIMEOUT_MINUTES) ?? '60', 10),
-    queueConcurrency: parseInt(getSetting(SETTINGS_KEYS.QUEUE_CONCURRENCY) ?? '4', 10),
-    queueRetryLimit: parseInt(getSetting(SETTINGS_KEYS.QUEUE_RETRY_LIMIT) ?? '5', 10),
+    announcementMessage: (await getSetting(SETTINGS_KEYS.ANNOUNCEMENT_MESSAGE)) ?? '',
+    sessionTimeoutMinutes: parseInt((await getSetting(SETTINGS_KEYS.SESSION_TIMEOUT_MINUTES)) ?? '60', 10),
+    queueConcurrency: parseInt((await getSetting(SETTINGS_KEYS.QUEUE_CONCURRENCY)) ?? '4', 10),
+    queueRetryLimit: parseInt((await getSetting(SETTINGS_KEYS.QUEUE_RETRY_LIMIT)) ?? '5', 10),
   }
 
   await recordAuditEventFromRequest(event, {

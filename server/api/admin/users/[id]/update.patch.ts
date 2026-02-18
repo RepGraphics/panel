@@ -1,6 +1,6 @@
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { auth, normalizeHeadersForAuth } from '#server/utils/auth'
@@ -36,10 +36,9 @@ export default defineEventHandler(async (event) => {
 
   try {
     const db = useDrizzle()
-    assertSqliteDatabase(db)
     const now = new Date()
 
-    let userRecord = db
+    const userRecordResult = await db
       .select({
         id: tables.users.id,
         email: tables.users.email,
@@ -48,7 +47,9 @@ export default defineEventHandler(async (event) => {
       })
       .from(tables.users)
       .where(eq(tables.users.id, id))
-      .get()
+      .limit(1)
+
+    let userRecord = userRecordResult[0]
 
     if (!userRecord) {
       throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })
@@ -58,14 +59,13 @@ export default defineEventHandler(async (event) => {
 
     if (email !== undefined) {
       if (userRecord.email !== email) {
-        db.update(tables.users)
+        await db.update(tables.users)
           .set({
             email,
             emailVerified: null,
             updatedAt: now,
           })
           .where(eq(tables.users.id, id))
-          .run()
         userRecord = { ...userRecord, email }
         changedFields.add('email')
       }
@@ -79,13 +79,12 @@ export default defineEventHandler(async (event) => {
         headers,
       })
 
-      db.update(tables.users)
+      await db.update(tables.users)
         .set({
           role,
           updatedAt: now,
         })
         .where(eq(tables.users.id, id))
-        .run()
       userRecord = { ...userRecord, role }
       changedFields.add('role')
     }
@@ -96,13 +95,12 @@ export default defineEventHandler(async (event) => {
         headers,
       })
 
-      db.update(tables.users)
+      await db.update(tables.users)
         .set({
           passwordResetRequired: false,
           updatedAt: now,
         })
         .where(eq(tables.users.id, id))
-        .run()
       changedFields.add('password')
     }
 
@@ -136,10 +134,9 @@ export default defineEventHandler(async (event) => {
     }
 
     if (Object.keys(updates).length > 1) {
-      db.update(tables.users)
+      await db.update(tables.users)
         .set(updates)
         .where(eq(tables.users.id, id))
-        .run()
     }
 
     await recordAuditEventFromRequest(event, {
@@ -153,7 +150,7 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    const user = db
+    const updatedResult = await db
       .select({
         id: tables.users.id,
         username: tables.users.username,
@@ -170,7 +167,9 @@ export default defineEventHandler(async (event) => {
       })
       .from(tables.users)
       .where(eq(tables.users.id, id))
-      .get()
+      .limit(1)
+
+    const user = updatedResult[0]
 
     if (!user) {
       throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })

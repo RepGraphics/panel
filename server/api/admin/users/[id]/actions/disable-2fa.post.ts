@@ -1,4 +1,4 @@
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
@@ -17,9 +17,8 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBodyWithLimit(event, disableTwoFactorActionSchema, BODY_SIZE_LIMITS.SMALL)
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const existing = db
+  const existingResult = await db
     .select({
       id: tables.users.id,
       username: tables.users.username,
@@ -27,14 +26,16 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
-    .get()
+    .limit(1)
+
+  const existing = existingResult[0]
 
   if (!existing) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })
   }
 
   try {
-    db.update(tables.users)
+    await db.update(tables.users)
       .set({
         twoFactorEnabled: false,
         useTotp: false,
@@ -43,15 +44,12 @@ export default defineEventHandler(async (event) => {
         updatedAt: new Date(),
       })
       .where(eq(tables.users.id, userId))
-      .run()
 
-    db.delete(tables.twoFactor)
+    await db.delete(tables.twoFactor)
       .where(eq(tables.twoFactor.userId, userId))
-      .run()
 
-    db.delete(tables.recoveryTokens)
+    await db.delete(tables.recoveryTokens)
       .where(eq(tables.recoveryTokens.userId, userId))
-      .run()
 
     await recordAuditEventFromRequest(event, {
       actor: session.user.email || session.user.id,

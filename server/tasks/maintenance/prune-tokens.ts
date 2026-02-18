@@ -16,22 +16,24 @@ export default defineTask({
       const verificationResult = await db
         .delete(tables.verificationTokens)
         .where(lt(tables.verificationTokens.expires, now))
-        .run()
+
+      const verificationDeleted = (verificationResult as any).changes ?? (verificationResult as any).rowCount ?? 0
 
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
       const recoveryResult = await db
         .delete(tables.recoveryTokens)
         .where(lt(tables.recoveryTokens.createdAt, thirtyDaysAgo))
-        .run()
 
-      const totalDeleted = verificationResult.changes + recoveryResult.changes
+      const recoveryDeleted = (recoveryResult as any).changes ?? (recoveryResult as any).rowCount ?? 0
+
+      const totalDeleted = verificationDeleted + recoveryDeleted
       debugLog(`[${now.toISOString()}] Token pruning complete. Deleted ${totalDeleted} total tokens.`)
 
       return {
         result: {
           prunedAt: now.toISOString(),
-          verificationTokensDeleted: verificationResult.changes,
-          recoveryTokensDeleted: recoveryResult.changes,
+          verificationTokensDeleted: verificationDeleted,
+          recoveryTokensDeleted: recoveryDeleted,
           totalDeleted,
         },
       }

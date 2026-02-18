@@ -30,15 +30,14 @@ export default defineEventHandler(async (event) => {
 
   const conditions = Array.from(actorIdentifiers).map(identifier => eq(tables.auditEvents.actor, identifier))
 
-  const totalResult = db
+  const totalResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(tables.auditEvents)
     .where(or(...conditions))
-    .get()
 
-  const total = Number(totalResult?.count ?? 0)
+  const total = Number(totalResult[0]?.count ?? 0)
 
-  const rows = db
+  const rows = await db
     .select({
       id: tables.auditEvents.id,
       occurredAt: tables.auditEvents.occurredAt,
@@ -53,7 +52,6 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(tables.auditEvents.occurredAt))
     .limit(limit)
     .offset(offset)
-    .all()
 
   const data = rows.map((row) => ({
     id: row.id,

@@ -7,11 +7,10 @@ export default defineEventHandler(async (event) => {
   const user = accountContext.user
 
   const db = useDrizzle()
-  const keys = db
+  const keys = await db
     .select()
     .from(tables.sshKeys)
     .where(eq(tables.sshKeys.userId, user.id))
-    .all()
 
   const data = keys.map(key => ({
     id: key.id,

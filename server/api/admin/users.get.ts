@@ -1,4 +1,4 @@
-import { useDrizzle, tables, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables } from '#server/utils/drizzle'
 import { count, desc, inArray } from 'drizzle-orm'
 import { requireAdmin } from '#server/utils/security'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
@@ -19,24 +19,21 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
   const offset = (page - 1) * limit
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const totalResult = db
+  const totalResult = await db
     .select({ count: count() })
     .from(tables.users)
-    .all()
 
   const total = totalResult[0]?.count ?? 0
 
-  const rows = db
+  const rows = await db
     .select()
     .from(tables.users)
     .orderBy(desc(tables.users.createdAt))
     .limit(limit)
     .offset(offset)
-    .all()
 
-  const userIds = rows.map(user => user.id)
+  const userIds = rows.map((user) => user.id)
   const serverCounts = new Map<string, { owned: number; accessible: number }>()
 
   if (userIds.length > 0) {
@@ -44,7 +41,7 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
       serverCounts.set(userId, { owned: 0, accessible: 0 })
     }
 
-    const ownedCounts = db
+    const ownedCounts = await db
       .select({
         userId: tables.servers.ownerId,
         count: count(),
@@ -52,9 +49,8 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
       .from(tables.servers)
       .where(inArray(tables.servers.ownerId, userIds))
       .groupBy(tables.servers.ownerId)
-      .all()
 
-    const accessibleCounts = db
+    const accessibleCounts = await db
       .select({
         userId: tables.serverSubusers.userId,
         count: count(),
@@ -62,7 +58,6 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
       .from(tables.serverSubusers)
       .where(inArray(tables.serverSubusers.userId, userIds))
       .groupBy(tables.serverSubusers.userId)
-      .all()
 
     for (const row of ownedCounts) {
       if (row.userId) {
@@ -79,7 +74,7 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
     }
   }
 
-  const users = rows.map(user => {
+  const users = rows.map((user) => {
     const counts = serverCounts.get(user.id) || { owned: 0, accessible: 0 }
     
     return {
@@ -90,7 +85,7 @@ export default defineEventHandler(async (event): Promise<AdminUsersPayload> => {
         ? `${user.nameFirst} ${user.nameLast}`
         : user.nameFirst || user.nameLast || '',
       role: user.rootAdmin ? 'admin' : 'user',
-      createdAt: user.createdAt.toISOString(),
+      createdAt: new Date(user.createdAt).toISOString(),
       rootAdmin: Boolean(user.rootAdmin),
       suspended: Boolean(user.banned || user.suspended),
       emailVerified: Boolean(user.emailVerified),

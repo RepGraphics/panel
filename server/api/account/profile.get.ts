@@ -8,16 +8,15 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const profile = db
-    .select({
-      id: tables.users.id,
-      username: tables.users.username,
-      email: tables.users.email,
-      role: tables.users.role,
-    })
-    .from(tables.users)
-    .where(eq(tables.users.id, sessionUser.id))
-    .get()
+  const profile = await db.query.users.findFirst({
+    where: (u, { eq }) => eq(u.id, sessionUser.id),
+    columns: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+    }
+  })
 
   if (!profile) {
     throw createError({ status: 404, statusText: 'User not found' })
@@ -33,4 +32,3 @@ export default defineEventHandler(async (event) => {
 
   return { data: profile }
 })
-

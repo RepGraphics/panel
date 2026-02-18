@@ -1,6 +1,6 @@
-import { sqliteTable, text, integer, uniqueIndex, primaryKey, index } from 'drizzle-orm/sqlite-core'
+import { pgTable, text, integer, boolean, timestamp, uniqueIndex, primaryKey, index } from 'drizzle-orm/pg-core'
 
-export const users = sqliteTable(
+export const users = pgTable(
   'users',
   {
     id: text('id').primaryKey(),
@@ -11,25 +11,25 @@ export const users = sqliteTable(
     nameFirst: text('name_first'),
     nameLast: text('name_last'),
     language: text('language').notNull().default('en'),
-    rootAdmin: integer('root_admin', { mode: 'boolean' }).notNull().default(false),
+    rootAdmin: boolean('root_admin').notNull().default(false),
     role: text('role').notNull().default('user'),
-    emailVerified: integer('email_verified', { mode: 'timestamp' }),
+    emailVerified: timestamp('email_verified'),
     image: text('image'),
-    suspended: integer('suspended', { mode: 'boolean' }).notNull().default(false),
-    suspendedAt: integer('suspended_at', { mode: 'timestamp' }),
+    suspended: boolean('suspended').notNull().default(false),
+    suspendedAt: timestamp('suspended_at'),
     suspensionReason: text('suspension_reason'),
-    passwordResetRequired: integer('password_reset_required', { mode: 'boolean' }).notNull().default(false),
-    banned: integer('banned', { mode: 'boolean' }),
+    passwordResetRequired: boolean('password_reset_required').notNull().default(false),
+    banned: boolean('banned'),
     banReason: text('ban_reason'),
-    banExpires: integer('ban_expires', { mode: 'timestamp' }),
+    banExpires: timestamp('ban_expires'),
 
-    useTotp: integer('use_totp', { mode: 'boolean' }).notNull().default(false),
+    useTotp: boolean('use_totp').notNull().default(false),
     totpSecret: text('totp_secret'),
-    totpAuthenticatedAt: integer('totp_authenticated_at', { mode: 'timestamp' }),
-    twoFactorEnabled: integer('two_factor_enabled', { mode: 'boolean' }),
+    totpAuthenticatedAt: timestamp('totp_authenticated_at'),
+    twoFactorEnabled: boolean('two_factor_enabled'),
     rememberToken: text('remember_token'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   (table) => [
     uniqueIndex('users_username_unique').on(table.username),
@@ -38,7 +38,7 @@ export const users = sqliteTable(
   ],
 )
 
-export const accounts = sqliteTable(
+export const accounts = pgTable(
   'accounts',
   {
     id: text('id').primaryKey(),
@@ -52,17 +52,17 @@ export const accounts = sqliteTable(
     refreshToken: text('refresh_token'),
     accessToken: text('access_token'),
     refreshTokenExpiresIn: integer('refresh_token_expires_in'),
-    expiresAt: integer('expires_at', { mode: 'timestamp' }),
-    accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }),
-    refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+    expiresAt: timestamp('expires_at'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at'),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
     tokenType: text('token_type'),
     scope: text('scope'),
     idToken: text('id_token'),
     sessionState: text('session_state'),
     oauthTokenSecret: text('oauth_token_secret'),
     oauthToken: text('oauth_token'),
-    createdAt: integer('created_at', { mode: 'timestamp' }),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }),
+    createdAt: timestamp('created_at'),
+    updatedAt: timestamp('updated_at'),
   },
   (table) => [
     uniqueIndex('accounts_provider_provider_account_id_index').on(table.provider, table.providerAccountId),
@@ -70,16 +70,16 @@ export const accounts = sqliteTable(
   ],
 )
 
-export const sessions = sqliteTable('sessions', {
+export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
   sessionToken: text('session_token').notNull().unique(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  expires: integer('expires', { mode: 'timestamp' }).notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  expires: timestamp('expires').notNull(),
+  expiresAt: timestamp('expires_at'),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
-  createdAt: integer('created_at', { mode: 'timestamp' }),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+  createdAt: timestamp('created_at'),
+  updatedAt: timestamp('updated_at'),
   impersonatedBy: text('impersonated_by').references(() => users.id, { onDelete: 'set null' }),
 }, (table) => [
   index('sessions_user_id_index').on(table.userId),
@@ -87,12 +87,12 @@ export const sessions = sqliteTable('sessions', {
   index('sessions_token_index').on(table.sessionToken),
 ])
 
-export const sessionMetadata = sqliteTable(
+export const sessionMetadata = pgTable(
   'session_metadata',
   {
     sessionToken: text('session_token').primaryKey().references(() => sessions.sessionToken, { onDelete: 'cascade' }),
-    firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }),
-    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+    firstSeenAt: timestamp('first_seen_at'),
+    lastSeenAt: timestamp('last_seen_at'),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
     deviceName: text('device_name'),
@@ -104,17 +104,17 @@ export const sessionMetadata = sqliteTable(
   ],
 )
 
-export const verificationTokens = sqliteTable(
+export const verificationTokens = pgTable(
   'verification_tokens',
   {
     id: text('id').primaryKey(),
     identifier: text('identifier').notNull(),
     token: text('token').notNull(),
     value: text('value'),
-    expires: integer('expires', { mode: 'timestamp' }).notNull(),
-    expiresAt: integer('expires_at', { mode: 'timestamp' }),
-    createdAt: integer('created_at', { mode: 'timestamp' }),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }),
+    expires: timestamp('expires').notNull(),
+    expiresAt: timestamp('expires_at'),
+    createdAt: timestamp('created_at'),
+    updatedAt: timestamp('updated_at'),
   },
   (table) => [
     uniqueIndex('verification_token_identifier_token_index').on(table.identifier, table.token),
@@ -122,21 +122,21 @@ export const verificationTokens = sqliteTable(
   ],
 )
 
-export const locations = sqliteTable(
+export const locations = pgTable(
   'locations',
   {
     id: text('id').primaryKey(),
     short: text('short').notNull(),
     long: text('long'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('locations_short_unique').on(table.short),
   ],
 )
 
-export const wingsNodes = sqliteTable(
+export const wingsNodes = pgTable(
   'wings_nodes',
   {
     id: text('id').primaryKey(),
@@ -146,10 +146,10 @@ export const wingsNodes = sqliteTable(
     baseUrl: text('base_url').notNull(),
     fqdn: text('fqdn').notNull(),
     scheme: text('scheme').notNull(),
-    public: integer('public', { mode: 'boolean' }).notNull().default(true),
-    maintenanceMode: integer('maintenance_mode', { mode: 'boolean' }).notNull().default(false),
-    allowInsecure: integer('allow_insecure', { mode: 'boolean' }).notNull().default(false),
-    behindProxy: integer('behind_proxy', { mode: 'boolean' }).notNull().default(false),
+    public: boolean('public').notNull().default(true),
+    maintenanceMode: boolean('maintenance_mode').notNull().default(false),
+    allowInsecure: boolean('allow_insecure').notNull().default(false),
+    behindProxy: boolean('behind_proxy').notNull().default(false),
     memory: integer('memory').notNull(),
     memoryOverallocate: integer('memory_overallocate').notNull().default(0),
     disk: integer('disk').notNull(),
@@ -162,9 +162,9 @@ export const wingsNodes = sqliteTable(
     tokenSecret: text('token_secret').notNull(),
     apiToken: text('api_token').notNull(),
     locationId: text('location_id').references(() => locations.id),
-    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    lastSeenAt: timestamp('last_seen_at'),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   (table) => [
     uniqueIndex('wings_nodes_base_url_unique').on(table.baseUrl),
@@ -172,7 +172,7 @@ export const wingsNodes = sqliteTable(
   ],
 )
 
-export const serverAllocations = sqliteTable(
+export const serverAllocations = pgTable(
   'server_allocations',
   {
     id: text('id').primaryKey(),
@@ -180,18 +180,18 @@ export const serverAllocations = sqliteTable(
     serverId: text('server_id'),
     ip: text('ip').notNull(),
     port: integer('port').notNull(),
-    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+    isPrimary: boolean('is_primary').notNull().default(false),
     ipAlias: text('ip_alias'),
     notes: text('notes'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_allocations_unique').on(table.nodeId, table.ip, table.port),
   ],
 )
 
-export const servers = sqliteTable(
+export const servers = pgTable(
   'servers',
   {
     id: text('id').primaryKey(),
@@ -201,8 +201,8 @@ export const servers = sqliteTable(
     name: text('name').notNull(),
     description: text('description'),
     status: text('status'),
-    suspended: integer('suspended', { mode: 'boolean' }).notNull().default(false),
-    skipScripts: integer('skip_scripts', { mode: 'boolean' }).notNull().default(false),
+    suspended: boolean('suspended').notNull().default(false),
+    skipScripts: boolean('skip_scripts').notNull().default(false),
     ownerId: text('owner_id').references(() => users.id),
     nodeId: text('node_id').references(() => wingsNodes.id),
     allocationId: text('allocation_id').references(() => serverAllocations.id),
@@ -214,10 +214,10 @@ export const servers = sqliteTable(
     allocationLimit: integer('allocation_limit'),
     databaseLimit: integer('database_limit'),
     backupLimit: integer('backup_limit').notNull().default(0),
-    oomDisabled: integer('oom_disabled', { mode: 'boolean' }).notNull().default(true),
-    installedAt: integer('installed_at', { mode: 'timestamp' }),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    oomDisabled: boolean('oom_disabled').notNull().default(true),
+    installedAt: timestamp('installed_at'),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('servers_uuid_unique').on(table.uuid),
@@ -229,7 +229,7 @@ export const servers = sqliteTable(
   ],
 )
 
-export const serverLimits = sqliteTable('server_limits', {
+export const serverLimits = pgTable('server_limits', {
   serverId: text('server_id').primaryKey().notNull().references(() => servers.id, { onDelete: 'cascade' }),
   memory: integer('memory'),
   memoryOverallocate: integer('memory_overallocate'),
@@ -239,15 +239,15 @@ export const serverLimits = sqliteTable('server_limits', {
   io: integer('io'),
   cpu: integer('cpu'),
   threads: text('threads'),
-  oomDisabled: integer('oom_disabled', { mode: 'boolean' }).notNull().default(true),
+  oomDisabled: boolean('oom_disabled').notNull().default(true),
   databaseLimit: integer('database_limit'),
   allocationLimit: integer('allocation_limit'),
   backupLimit: integer('backup_limit'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
-export const serverStartupEnv = sqliteTable(
+export const serverStartupEnv = pgTable(
   'server_startup_env',
   {
     id: text('id').primaryKey(),
@@ -255,9 +255,9 @@ export const serverStartupEnv = sqliteTable(
     key: text('key').notNull(),
     value: text('value').notNull(),
     description: text('description'),
-    isEditable: integer('is_editable', { mode: 'boolean' }).notNull().default(true),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    isEditable: boolean('is_editable').notNull().default(true),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_env_key_unique').on(table.serverId, table.key),
@@ -266,7 +266,7 @@ export const serverStartupEnv = sqliteTable(
 
 export const serverEnvironmentVariables = serverStartupEnv
 
-export const serverSchedules = sqliteTable(
+export const serverSchedules = pgTable(
   'server_schedules',
   {
     id: text('id').primaryKey(),
@@ -274,11 +274,11 @@ export const serverSchedules = sqliteTable(
     name: text('name').notNull(),
     cron: text('cron').notNull(),
     action: text('action').notNull(),
-    nextRunAt: integer('next_run_at', { mode: 'timestamp' }),
-    lastRunAt: integer('last_run_at', { mode: 'timestamp' }),
-    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    nextRunAt: timestamp('next_run_at'),
+    lastRunAt: timestamp('last_run_at'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     index('server_schedules_enabled_next_run_index').on(table.enabled, table.nextRunAt),
@@ -286,7 +286,7 @@ export const serverSchedules = sqliteTable(
   ],
 )
 
-export const serverScheduleTasks = sqliteTable(
+export const serverScheduleTasks = pgTable(
   'server_schedule_tasks',
   {
     id: text('id').primaryKey(),
@@ -295,17 +295,17 @@ export const serverScheduleTasks = sqliteTable(
     action: text('action').notNull(),
     payload: text('payload'),
     timeOffset: integer('time_offset').notNull().default(0),
-    continueOnFailure: integer('continue_on_failure', { mode: 'boolean' }).notNull().default(false),
-    isQueued: integer('is_queued', { mode: 'boolean' }).notNull().default(false),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    continueOnFailure: boolean('continue_on_failure').notNull().default(false),
+    isQueued: boolean('is_queued').notNull().default(false),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_schedule_tasks_sequence').on(table.scheduleId, table.sequenceId),
   ],
 )
 
-export const databaseHosts = sqliteTable(
+export const databaseHosts = pgTable(
   'database_hosts',
   {
     id: text('id').primaryKey(),
@@ -317,12 +317,12 @@ export const databaseHosts = sqliteTable(
     database: text('database'),
     nodeId: text('node_id').references(() => wingsNodes.id),
     maxDatabases: integer('max_databases'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
 )
 
-export const serverDatabases = sqliteTable(
+export const serverDatabases = pgTable(
   'server_databases',
   {
     id: text('id').primaryKey(),
@@ -334,30 +334,30 @@ export const serverDatabases = sqliteTable(
     remote: text('remote').notNull(),
     maxConnections: integer('max_connections'),
     status: text('status').notNull().default('ready'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_databases_unique_name_per_server').on(table.serverId, table.name),
   ],
 )
 
-export const serverSubusers = sqliteTable(
+export const serverSubusers = pgTable(
   'server_subusers',
   {
     id: text('id').primaryKey(),
     serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     permissions: text('permissions').notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_subusers_unique_user_per_server').on(table.serverId, table.userId),
   ],
 )
 
-export const serverBackups = sqliteTable(
+export const serverBackups = pgTable(
   'server_backups',
   {
     id: text('id').primaryKey(),
@@ -368,11 +368,11 @@ export const serverBackups = sqliteTable(
     disk: text('disk').notNull().default('wings'),
     checksum: text('checksum'),
     bytes: integer('bytes').notNull().default(0),
-    isSuccessful: integer('is_successful', { mode: 'boolean' }).notNull().default(false),
-    isLocked: integer('is_locked', { mode: 'boolean' }).notNull().default(false),
-    completedAt: integer('completed_at', { mode: 'timestamp' }),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    isSuccessful: boolean('is_successful').notNull().default(false),
+    isLocked: boolean('is_locked').notNull().default(false),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
   table => [
     uniqueIndex('server_backups_uuid_unique').on(table.uuid),
@@ -380,7 +380,7 @@ export const serverBackups = sqliteTable(
   ],
 )
 
-export const serverTransfers = sqliteTable(
+export const serverTransfers = pgTable(
   'server_transfers',
   {
     id: text('id').primaryKey(),
@@ -391,25 +391,25 @@ export const serverTransfers = sqliteTable(
     newAllocation: text('new_allocation').notNull(),
     oldAdditionalAllocations: text('old_additional_allocations'),
     newAdditionalAllocations: text('new_additional_allocations'),
-    successful: integer('successful', { mode: 'boolean' }).notNull().default(false),
-    archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+    successful: boolean('successful').notNull().default(false),
+    archived: boolean('archived').notNull().default(false),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
   },
 )
 
-export const auditEvents = sqliteTable(
+export const auditEvents = pgTable(
   'audit_events',
   {
     id: text('id').primaryKey(),
-    occurredAt: integer('occurred_at', { mode: 'timestamp' }).notNull(),
+    occurredAt: timestamp('occurred_at').notNull(),
     actor: text('actor').notNull(),
     actorType: text('actor_type').notNull(),
     action: text('action').notNull(),
     targetType: text('target_type').notNull(),
     targetId: text('target_id'),
     metadata: text('metadata'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    createdAt: timestamp('created_at').notNull(),
   },
   table => [
     uniqueIndex('audit_events_occurred_id').on(table.occurredAt, table.id),
@@ -419,25 +419,25 @@ export const auditEvents = sqliteTable(
   ],
 )
 
-export const recoveryTokens = sqliteTable('recovery_tokens', {
+export const recoveryTokens = pgTable('recovery_tokens', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   token: text('token').notNull(),
-  usedAt: integer('used_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  usedAt: timestamp('used_at'),
+  createdAt: timestamp('created_at').notNull(),
 })
 
-export const nests = sqliteTable('nests', {
+export const nests = pgTable('nests', {
   id: text('id').primaryKey(),
   uuid: text('uuid').notNull().unique(),
   author: text('author').notNull(),
   name: text('name').notNull(),
   description: text('description'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
-export const eggs = sqliteTable('eggs', {
+export const eggs = pgTable('eggs', {
   id: text('id').primaryKey(),
   uuid: text('uuid').notNull().unique(),
   nestId: text('nest_id').notNull().references(() => nests.id, { onDelete: 'cascade' }),
@@ -458,52 +458,52 @@ export const eggs = sqliteTable('eggs', {
   scriptEntry: text('script_entry'),
   scriptInstall: text('script_install'),
   copyScriptFrom: text('copy_script_from'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
-export const eggVariables = sqliteTable('egg_variables', {
+export const eggVariables = pgTable('egg_variables', {
   id: text('id').primaryKey(),
   eggId: text('egg_id').notNull().references(() => eggs.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description'),
   envVariable: text('env_variable').notNull(),
   defaultValue: text('default_value'),
-  userViewable: integer('user_viewable', { mode: 'boolean' }).notNull().default(true),
-  userEditable: integer('user_editable', { mode: 'boolean' }).notNull().default(true),
+  userViewable: boolean('user_viewable').notNull().default(true),
+  userEditable: boolean('user_editable').notNull().default(true),
   rules: text('rules'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
-export const mounts = sqliteTable('mounts', {
+export const mounts = pgTable('mounts', {
   id: text('id').primaryKey(),
   uuid: text('uuid').notNull().unique(),
   name: text('name').notNull(),
   description: text('description'),
   source: text('source').notNull(),
   target: text('target').notNull(),
-  readOnly: integer('read_only', { mode: 'boolean' }).notNull().default(false),
-  userMountable: integer('user_mountable', { mode: 'boolean' }).notNull().default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  readOnly: boolean('read_only').notNull().default(false),
+  userMountable: boolean('user_mountable').notNull().default(false),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
-export const mountEgg = sqliteTable('mount_egg', {
+export const mountEgg = pgTable('mount_egg', {
   mountId: text('mount_id').notNull().references(() => mounts.id, { onDelete: 'cascade' }),
   eggId: text('egg_id').notNull().references(() => eggs.id, { onDelete: 'cascade' }),
 }, table => [
   primaryKey({ columns: [table.mountId, table.eggId] }),
 ])
 
-export const mountNode = sqliteTable('mount_node', {
+export const mountNode = pgTable('mount_node', {
   mountId: text('mount_id').notNull().references(() => mounts.id, { onDelete: 'cascade' }),
   nodeId: text('node_id').notNull().references(() => wingsNodes.id, { onDelete: 'cascade' }),
 }, table => [
   primaryKey({ columns: [table.mountId, table.nodeId] }),
 ])
 
-export const mountServer = sqliteTable('mount_server', {
+export const mountServer = pgTable('mount_server', {
   mountId: text('mount_id').notNull().references(() => mounts.id, { onDelete: 'cascade' }),
   serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
 }, table => [
@@ -532,14 +532,14 @@ export type EggRow = typeof eggs.$inferSelect
 export type EggVariableRow = typeof eggVariables.$inferSelect
 export type MountRow = typeof mounts.$inferSelect
 
-export const settings = sqliteTable('settings', {
+export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
 })
 
 export type SettingRow = typeof settings.$inferSelect
 
-export const apiKeys = sqliteTable('apikey', {
+export const apiKeys = pgTable('apikey', {
   id: text('id').primaryKey(),
   identifier: text('identifier'),
   memo: text('memo'),
@@ -550,31 +550,31 @@ export const apiKeys = sqliteTable('apikey', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   refillInterval: integer('refill_interval'),
   refillAmount: integer('refill_amount'),
-  lastRefillAt: integer('last_refill_at', { mode: 'timestamp' }),
-  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  rateLimitEnabled: integer('rate_limit_enabled', { mode: 'boolean' }).notNull().default(true),
+  lastRefillAt: timestamp('last_refill_at'),
+  lastUsedAt: timestamp('last_used_at'),
+  enabled: boolean('enabled').notNull().default(true),
+  rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(true),
   rateLimitTimeWindow: integer('rate_limit_time_window'),
   rateLimitMax: integer('rate_limit_max'),
   requestCount: integer('request_count').notNull().default(0),
   remaining: integer('remaining'),
-  lastRequest: integer('last_request', { mode: 'timestamp' }),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  lastRequest: timestamp('last_request'),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
   permissions: text('permissions'),
   metadata: text('metadata'),
 }, (table) => [
   index('api_key_user_id_index').on(table.userId),
 ])
 
-export const apiKeyMetadata = sqliteTable('api_key_metadata', {
+export const apiKeyMetadata = pgTable('api_key_metadata', {
   id: text('id').primaryKey(),
   apiKeyId: text('api_key_id').notNull().unique().references(() => apiKeys.id, { onDelete: 'cascade' }),
   keyType: integer('key_type').notNull().default(1),
   allowedIps: text('allowed_ips'),
   memo: text('memo'),
-  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+  lastUsedAt: timestamp('last_used_at'),
   
   rServers: integer('r_servers').notNull().default(0),
   rNodes: integer('r_nodes').notNull().default(0),
@@ -586,8 +586,8 @@ export const apiKeyMetadata = sqliteTable('api_key_metadata', {
   rDatabaseHosts: integer('r_database_hosts').notNull().default(0),
   rServerDatabases: integer('r_server_databases').notNull().default(0),
   
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 }, (table) => [
   index('api_key_metadata_api_key_id_index').on(table.apiKeyId),
 ])
@@ -595,29 +595,29 @@ export const apiKeyMetadata = sqliteTable('api_key_metadata', {
 export type ApiKeyRow = typeof apiKeys.$inferSelect
 export type ApiKeyMetadataRow = typeof apiKeyMetadata.$inferSelect
 
-export const sshKeys = sqliteTable('ssh_keys', {
+export const sshKeys = pgTable('ssh_keys', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   fingerprint: text('fingerprint').notNull().unique(),
   publicKey: text('public_key').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 })
 
 export type SshKeyRow = typeof sshKeys.$inferSelect
 
-export const rateLimit = sqliteTable('rate_limit', {
+export const rateLimit = pgTable('rate_limit', {
   id: text('id').primaryKey(),
   key: text('key').notNull().unique(),
   count: integer('count').notNull().default(0),
-  lastRequest: integer('last_request', { mode: 'number' }).notNull(),
+  lastRequest: integer('last_request').notNull(),
 }, (table) => [
   index('rate_limit_key_index').on(table.key),
   index('rate_limit_last_request_index').on(table.lastRequest),
 ])
 
-export const twoFactor = sqliteTable('two_factor', {
+export const twoFactor = pgTable('two_factor', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   secret: text('secret'),
@@ -627,23 +627,23 @@ export const twoFactor = sqliteTable('two_factor', {
   index('two_factor_user_id_idx').on(table.userId),
 ])
 
-export const jwks = sqliteTable('jwks', {
+export const jwks = pgTable('jwks', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  createdAt: timestamp('created_at').notNull(),
+  expiresAt: timestamp('expires_at'),
 })
 
-export const emailTemplates = sqliteTable('email_templates', {
+export const emailTemplates = pgTable('email_templates', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   templateId: text('template_id').notNull().unique(),
   subject: text('subject').notNull(),
   htmlContent: text('html_content').notNull(),
-  isCustom: integer('is_custom', { mode: 'boolean' }).notNull().default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  isCustom: boolean('is_custom').notNull().default(false),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 }, (table) => [
   index('email_templates_template_id_index').on(table.templateId),
 ])

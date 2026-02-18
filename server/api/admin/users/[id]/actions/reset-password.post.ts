@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { resetPasswordActionSchema } from '#shared/schema/admin/actions'
@@ -30,9 +30,8 @@ export default defineEventHandler(async (event) => {
   const notify = body.notify
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const user = db
+  const userResult = await db
     .select({
       id: tables.users.id,
       email: tables.users.email,
@@ -40,7 +39,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })
@@ -93,13 +94,12 @@ export default defineEventHandler(async (event) => {
       headers,
     })
 
-    db.update(tables.users)
+    await db.update(tables.users)
       .set({
         passwordResetRequired: true,
         updatedAt: new Date(),
       })
       .where(eq(tables.users.id, userId))
-      .run()
 
     await recordAuditEventFromRequest(event, {
       actor: session.user.email || session.user.id,

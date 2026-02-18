@@ -78,11 +78,9 @@ export default defineTask({
     try {
       debugLog(`[${now.toISOString()}] Processing scheduled tasks...`)
 
-      const schedules = await db
-        .select()
-        .from(tables.serverSchedules)
-        .where(eq(tables.serverSchedules.enabled, true))
-        .all()
+      const schedules = await db.query.serverSchedules.findMany({
+        where: (s, { eq }) => eq(s.enabled, true)
+      })
 
       for (const schedule of schedules) {
         try {
@@ -134,33 +132,27 @@ async function processSchedule(scheduleId: string, db: ReturnType<typeof useDriz
   const executedAt = new Date()
 
   try {
-    const schedule = await db
-      .select()
-      .from(tables.serverSchedules)
-      .where(eq(tables.serverSchedules.id, scheduleId))
-      .get()
+    const schedule = await db.query.serverSchedules.findFirst({
+      where: (s, { eq }) => eq(s.id, scheduleId)
+    })
 
     if (!schedule || !schedule.enabled) {
       return
     }
 
-    const tasks = await db
-      .select()
-      .from(tables.serverScheduleTasks)
-      .where(eq(tables.serverScheduleTasks.scheduleId, scheduleId))
-      .orderBy(tables.serverScheduleTasks.sequenceId)
-      .all()
+    const tasks = await db.query.serverScheduleTasks.findMany({
+      where: (t, { eq }) => eq(t.scheduleId, scheduleId),
+      orderBy: (t, { asc }) => [asc(t.sequenceId)]
+    })
 
     if (tasks.length === 0) {
       debugLog(`No tasks found for schedule ${scheduleId}`)
       return
     }
 
-    const server = await db
-      .select()
-      .from(tables.servers)
-      .where(eq(tables.servers.id, schedule.serverId))
-      .get()
+    const server = await db.query.servers.findFirst({
+      where: (s, { eq }) => eq(s.id, schedule.serverId)
+    })
 
     if (!server) {
       throw new Error('Server not found')
@@ -193,15 +185,13 @@ async function processSchedule(scheduleId: string, db: ReturnType<typeof useDriz
 
     const nextRun = parseNextRun(schedule.cron)
     
-    await db
-      .update(tables.serverSchedules)
+    await db.update(tables.serverSchedules)
       .set({
         lastRunAt: executedAt,
         nextRunAt: nextRun,
         updatedAt: new Date(),
       })
       .where(eq(tables.serverSchedules.id, scheduleId))
-      .run()
 
     debugLog(`Schedule ${scheduleId} completed (success: ${allTasksSucceeded}). Next run: ${nextRun.toISOString()}`)
 

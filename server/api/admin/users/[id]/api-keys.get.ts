@@ -17,16 +17,19 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const page = Math.max(1, Number.parseInt(query.page as string ?? '1', 10) || 1)
-  const limit = Math.min(100, Math.max(10, Number.parseInt(query.limit as string ?? String(getNumericSetting(SETTINGS_KEYS.PAGINATION_LIMIT, 25)), 10) || 25))
+  const defaultLimit = await getNumericSetting(SETTINGS_KEYS.PAGINATION_LIMIT, 25)
+  const limit = Math.min(100, Math.max(10, Number.parseInt(query.limit as string ?? String(defaultLimit), 10) || 25))
   const offset = (page - 1) * limit
 
   const db = useDrizzle()
 
-  const user = db
+  const userResult = await db
     .select({ id: tables.users.id })
     .from(tables.users)
     .where(eq(tables.users.id, id))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({
@@ -35,14 +38,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const totalResult = db
+  const totalResult = await db
     .select({ count: count() })
     .from(tables.apiKeys)
     .where(eq(tables.apiKeys.userId, user.id))
-    .get()
-  const totalCount = totalResult?.count ?? 0
 
-  const apiKeys = db
+  const totalCount = Number(totalResult[0]?.count ?? 0)
+
+  const apiKeys = await db
     .select({
       id: tables.apiKeys.id,
       identifier: tables.apiKeys.identifier,
@@ -56,7 +59,6 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(tables.apiKeys.createdAt))
     .limit(limit)
     .offset(offset)
-    .all()
 
   const formatTimestamp = (value: number | Date | null | undefined) => {
     if (!value) {
@@ -83,7 +85,7 @@ export default defineEventHandler(async (event) => {
   })
 
   return {
-    data: apiKeys.map(key => ({
+    data: apiKeys.map((key) => ({
       id: key.id,
       identifier: key.identifier,
       memo: key.memo,
@@ -99,4 +101,3 @@ export default defineEventHandler(async (event) => {
     },
   }
 })
-

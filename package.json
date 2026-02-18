@@ -52,7 +52,6 @@
     "@xterm/xterm": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.4.18",
-    "better-sqlite3": "^12.6.2",
     "citty": "^0.2.1",
     "consola": "^3.2.3",
     "drizzle-orm": "^0.45.1",
@@ -72,7 +71,6 @@
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.90",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.2.3",
     "@types/nodemailer": "^7.0.9",
     "@types/pg": "^8.16.0",
@@ -83,6 +81,7 @@
     "oxfmt": "^0.32.0",
     "oxlint": "^1.47.0",
     "oxlint-tsgolint": "^0.12.1",
+    "tailwindcss": "^4.1.18",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",

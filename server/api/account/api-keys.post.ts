@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS, requireAccountUser } from '#server/utils/security'
 import { createApiKeySchema } from '#shared/schema/account'
 import type { ApiKeyResponse } from '#shared/types/api'
-import { useDrizzle, tables, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { APIError } from 'better-auth/api'
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth'
@@ -19,7 +19,6 @@ export default defineEventHandler(async (event): Promise<ApiKeyResponse> => {
 
   try {
     const db = useDrizzle()
-    assertSqliteDatabase(db)
     const now = new Date()
     const auth = getAuth()
     const apiKeyPermId = randomUUID()
@@ -46,27 +45,25 @@ export default defineEventHandler(async (event): Promise<ApiKeyResponse> => {
     })
     const apiKeyId = created.id
 
-    db.insert(tables.apiKeyMetadata)
-      .values({
-        id: apiKeyPermId,
-        apiKeyId: apiKeyId,
-        keyType: 1,
-        allowedIps: body.allowedIps ? JSON.stringify(body.allowedIps) : null,
-        memo: body.memo || null,
-        lastUsedAt: null,
-        rServers: 0,
-        rNodes: 0,
-        rAllocations: 0,
-        rUsers: 0,
-        rLocations: 0,
-        rNests: 0,
-        rEggs: 0,
-        rDatabaseHosts: 0,
-        rServerDatabases: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
+    await db.insert(tables.apiKeyMetadata).values({
+      id: apiKeyPermId,
+      apiKeyId: apiKeyId,
+      keyType: 1,
+      allowedIps: body.allowedIps ? JSON.stringify(body.allowedIps) : null,
+      memo: body.memo || null,
+      lastUsedAt: null,
+      rServers: 0,
+      rNodes: 0,
+      rAllocations: 0,
+      rUsers: 0,
+      rLocations: 0,
+      rNests: 0,
+      rEggs: 0,
+      rDatabaseHosts: 0,
+      rServerDatabases: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
 
     await recordAuditEventFromRequest(event, {
       actor: user.id,

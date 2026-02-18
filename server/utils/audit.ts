@@ -58,7 +58,7 @@ export async function recordAuditEvent(input: LogActivityOptions): Promise<void>
     targetId: input.targetId ?? null,
     metadata: serializedMetadata,
     createdAt: now,
-  }).run()
+  })
 }
 
 export async function recordAuditEventFromRequest(event: H3Event, input: Omit<LogActivityOptions, 'metadata'> & { metadata?: ActivityMetadata }): Promise<void> {

@@ -108,6 +108,7 @@ const PUBLIC_API_PATTERNS = [
   /^\/api\/remote\/servers\/[^/]+\/transfer\/[^/]+(?:\/|$)/,
   /^\/api\/remote\/backups\/[^/]+(?:\/|$)/,
   /^\/api\/remote\/backups\/[^/]+\/restore(?:\/|$)/,
+  /^\/api\/system(?:\/|$)/,
 ];
 
 function isAssetPath(path: string): boolean {

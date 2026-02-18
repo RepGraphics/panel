@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
     const db = useDrizzle()
 
-    const servers = db
+    const servers = await db
       .select({
         server: tables.servers,
         owner: tables.users,
@@ -45,13 +45,16 @@ export default defineEventHandler(async (event) => {
       .leftJoin(tables.eggs, eq(tables.servers.eggId, tables.eggs.id))
       .leftJoin(tables.nests, eq(tables.servers.nestId, tables.nests.id))
       .where(isNotNull(tables.servers.nodeId))
-      .orderBy(desc(tables.servers.updatedAt)) 
+      .orderBy(desc(tables.servers.updatedAt))
       .limit(perPage)
       .offset(offset)
-      .all()
 
-    const total = db.select({ count: sql`count(*)` }).from(tables.servers).where(isNotNull(tables.servers.nodeId)).get()
-    const totalCount = Number(total?.count ?? 0)
+    const totalResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(tables.servers)
+      .where(isNotNull(tables.servers.nodeId))
+
+    const totalCount = Number(totalResult[0]?.count ?? 0)
 
     await recordAuditEventFromRequest(event, {
       actor: session.user.email || session.user.id,

@@ -26,12 +26,13 @@ function sanitizeService(service?: string | null): string | null {
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-function resolveEmailConfig(explicit?: EmailConfig): EmailConfig | null {
+
+async function resolveEmailConfig(explicit?: EmailConfig): Promise<EmailConfig | null> {
   if (explicit) {
     return explicit
   }
 
-  const settings = getSettings([
+  const settings = await getSettings([
     SETTINGS_KEYS.MAIL_SERVICE,
     SETTINGS_KEYS.MAIL_HOST,
     SETTINGS_KEYS.MAIL_PORT,
@@ -68,8 +69,8 @@ function resolveEmailConfig(explicit?: EmailConfig): EmailConfig | null {
   }
 }
 
-export function initializeEmailService(config?: EmailConfig): void {
-  const emailConfig = resolveEmailConfig(config)
+export async function initializeEmailService(config?: EmailConfig): Promise<void> {
+  const emailConfig = await resolveEmailConfig(config)
 
   if (!emailConfig) {
     transporter = null
@@ -99,13 +100,13 @@ export function initializeEmailService(config?: EmailConfig): void {
   })
 }
 
-export function refreshEmailService(): void {
-  initializeEmailService()
+export async function refreshEmailService(): Promise<void> {
+  await initializeEmailService()
 }
 
-function ensureEmailServiceInitialized(): void {
+async function ensureEmailServiceInitialized(): Promise<void> {
   if (!transporter) {
-    refreshEmailService()
+    await refreshEmailService()
   }
 }
 
@@ -125,7 +126,7 @@ export async function sendEmail(options: {
   html: string
   text?: string
 }): Promise<void> {
-  ensureEmailServiceInitialized()
+  await ensureEmailServiceInitialized()
 
   if (!transporter) {
     console.warn('Email service not initialized, skipping email send')
@@ -133,8 +134,8 @@ export async function sendEmail(options: {
   }
 
   const appName = getAppName()
-  const fromAddress = getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_ADDRESS, 'noreply@xyrapanel.local')
-  const fromName = getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_NAME, appName)
+  const fromAddress = await getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_ADDRESS, 'noreply@xyrapanel.local')
+  const fromName = await getSettingWithDefault(SETTINGS_KEYS.MAIL_FROM_NAME, appName)
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress
 
   await transporter.sendMail({

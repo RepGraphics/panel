@@ -1,5 +1,5 @@
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { APIError } from 'better-auth/api'
 import { sendAdminUserCreatedEmail } from '#server/utils/email'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
@@ -29,7 +29,6 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
   const now = new Date()
   const defaultLanguage = process.env.DEFAULT_LANGUAGE || 'en'
   const fullName = [body.nameFirst, body.nameLast].filter(Boolean).join(' ') || body.username
@@ -57,7 +56,7 @@ export default defineEventHandler(async (event) => {
       updatedAt: now,
     }
 
-    db.update(tables.users)
+    await db.update(tables.users)
       .set({
         username: newUser.username,
         nameFirst: newUser.nameFirst,
@@ -68,7 +67,6 @@ export default defineEventHandler(async (event) => {
         updatedAt: now,
       })
       .where(eq(tables.users.id, newUser.id))
-      .run()
 
     try {
       await sendAdminUserCreatedEmail({

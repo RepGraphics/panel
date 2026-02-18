@@ -28,7 +28,7 @@ export default defineEventHandler(async (event): Promise<ServersResponse> => {
       whereConditions.push(eq(tables.servers.ownerId, user.id))
     }
 
-    const servers = db
+    const servers = await db
       .select({
         server: tables.servers,
         node: tables.wingsNodes,
@@ -46,8 +46,7 @@ export default defineEventHandler(async (event): Promise<ServersResponse> => {
         ),
       )
       .where(and(...whereConditions))
-      .orderBy(desc(tables.servers.updatedAt)) 
-      .all()
+      .orderBy(desc(tables.servers.updatedAt))
 
     const serverUuids = servers.map(({ server }) => server.uuid)
     const liveStatuses = await getMultipleServerStatuses(serverUuids)

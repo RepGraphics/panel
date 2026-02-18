@@ -32,7 +32,6 @@ export default defineEventHandler(async (event) => {
     .leftJoin(tables.serverDatabases, eq(tables.serverDatabases.databaseHostId, tables.databaseHosts.id))
     .groupBy(tables.databaseHosts.id)
     .orderBy(tables.databaseHosts.name)
-    .all()
 
   const data: DatabaseHostWithStats[] = hosts.map(host => ({
     id: host.id,

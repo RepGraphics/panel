@@ -1,5 +1,5 @@
 import type { getServerSession } from '#server/utils/session'
-import { useDrizzle, tables, assertSqliteDatabase, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import type { resolveSessionUser } from '#server/utils/auth/sessionUser'
 import { parseUserAgent } from '#server/utils/user-agent'
 
@@ -55,7 +55,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
   const nowTs = Date.now()
   if (!shouldTrackSession(cookieToken, nowTs)) {
@@ -74,9 +73,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const parentSession = await db
-      .select({
-        sessionToken: tables.sessions.sessionToken,
-      })
+      .select({ sessionToken: tables.sessions.sessionToken })
       .from(tables.sessions)
       .where(eq(tables.sessions.sessionToken, cookieToken))
       .limit(1)

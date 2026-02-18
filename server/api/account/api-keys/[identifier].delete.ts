@@ -1,4 +1,4 @@
-import { useDrizzle, tables, eq, and, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAccountUser } from '#server/utils/security'
 import { requireRouteParam } from '#server/utils/http/params'
@@ -14,10 +14,9 @@ export default defineEventHandler(async (event) => {
   const identifier = await requireRouteParam(event, 'identifier', 'Missing API key identifier')
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
   const auth = getAuth()
 
-  const apiKey = db
+  const apiKeyResult = await db
     .select()
     .from(tables.apiKeys)
     .where(
@@ -26,7 +25,9 @@ export default defineEventHandler(async (event) => {
         eq(tables.apiKeys.userId, user.id)
       )
     )
-    .get()
+    .limit(1)
+
+  const apiKey = apiKeyResult[0]
 
   if (!apiKey) {
     throw createError({

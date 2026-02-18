@@ -23,14 +23,15 @@ export default defineTask({
             lt(tables.serverBackups.createdAt, sevenDaysAgo)
           )
         )
-        .run()
 
-      debugLog(`[${now.toISOString()}] Backup pruning complete. Deleted ${result.changes} incomplete backups.`)
+      const deletedCount = (result as any).changes ?? (result as any).rowCount ?? 0
+
+      debugLog(`[${now.toISOString()}] Backup pruning complete. Deleted ${deletedCount} incomplete backups.`)
 
       return {
         result: {
           prunedAt: now.toISOString(),
-          deletedCount: result.changes,
+          deletedCount,
         },
       }
     } catch (error) {

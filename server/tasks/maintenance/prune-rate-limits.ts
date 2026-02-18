@@ -18,14 +18,15 @@ export default defineTask({
       const result = await db
         .delete(tables.rateLimit)
         .where(lt(tables.rateLimit.lastRequest, oneDayAgo))
-        .run()
 
-      debugLog(`[${now.toISOString()}] Rate limit pruning complete. Deleted ${result.changes} stale entries.`)
+      const deletedCount = (result as any).changes ?? (result as any).rowCount ?? 0
+
+      debugLog(`[${now.toISOString()}] Rate limit pruning complete. Deleted ${deletedCount} stale entries.`)
 
       return {
         result: {
           prunedAt: now.toISOString(),
-          deletedCount: result.changes,
+          deletedCount,
         },
       }
     } catch (error) {

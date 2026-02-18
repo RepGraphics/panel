@@ -24,14 +24,15 @@ export default defineTask({
             lt(tables.serverTransfers.createdAt, thirtyDaysAgo)
           )
         )
-        .run()
 
-      debugLog(`[${now.toISOString()}] Transfer pruning complete. Archived ${result.changes} failed transfers.`)
+      const archivedCount = (result as any).changes ?? (result as any).rowCount ?? 0
+
+      debugLog(`[${now.toISOString()}] Transfer pruning complete. Archived ${archivedCount} failed transfers.`)
 
       return {
         result: {
           prunedAt: now.toISOString(),
-          archivedCount: result.changes,
+          archivedCount,
         },
       }
     } catch (error) {

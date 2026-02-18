@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const user = db
+  const userResult = await db
     .select({
       id: tables.users.id,
       username: tables.users.username,
@@ -32,17 +32,18 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })
   }
 
-  const serverCountResult = db
+  const serverCountResult = await db
     .select({ serversOwned: count() })
     .from(tables.servers)
     .where(eq(tables.servers.ownerId, userId))
-    .all()
 
   const serversOwned = serverCountResult[0]?.serversOwned ?? 0
 
@@ -54,9 +55,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await db.delete(tables.users)
-    .where(eq(tables.users.id, userId))
-    .run()
+  await db.delete(tables.users).where(eq(tables.users.id, userId))
 
   await recordAuditEventFromRequest(event, {
     actor: session.user.email || session.user.id,

@@ -1,8 +1,9 @@
 import { sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 import { requireAccountUser } from '#server/utils/security'
-import { tables, useDrizzle, assertSqliteDatabase } from '#server/utils/drizzle'
+import { tables, useDrizzle } from '#server/utils/drizzle'
 import { listWingsNodes } from '#server/utils/wings/nodesStore'
+import type { StoredWingsNode } from '#shared/types/wings'
 import { remoteListServers } from '#server/utils/wings/registry'
 import { listAuditEvents } from '#server/utils/serversStore'
 
@@ -61,15 +62,12 @@ function resolveSection(event: H3Event): DashboardSection {
 
 async function fetchMetrics(): Promise<ClientDashboardMetric[]> {
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const totalServersRow = db.select({
-    value: sql<number>`count(*)`,
-  }).from(tables.servers).get()
+  const serverResult = await db.select({ value: sql<number>`count(*)` }).from(tables.servers)
+  const totalServersRow = serverResult[0]
 
-  const scheduleCountRow = db.select({
-    value: sql<number>`count(*)`,
-  }).from(tables.serverSchedules).get()
+  const scheduleResult = await db.select({ value: sql<number>`count(*)` }).from(tables.serverSchedules)
+  const scheduleCountRow = scheduleResult[0]
 
   const totalServers = Number(totalServersRow?.value ?? 0)
   const scheduleCount = Number(scheduleCountRow?.value ?? 0)
@@ -93,8 +91,8 @@ async function fetchMetrics(): Promise<ClientDashboardMetric[]> {
 }
 
 async function fetchFullDashboard(): Promise<ClientDashboardResponse> {
-  const nodes = listWingsNodes()
-  const enrichedNodes: ClientDashboardNodeSummary[] = await Promise.all(nodes.map(async (node) => {
+  const nodes = await listWingsNodes()
+  const enrichedNodes: ClientDashboardNodeSummary[] = await Promise.all(nodes.map(async (node: StoredWingsNode) => {
     let serverCount: number | null = null
 
     try {

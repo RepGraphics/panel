@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const absolutePath = join(uploadDir, filename)
   const publicPath = toPublicPath(join('uploads', 'branding', filename))
 
-  const existingLogo = getSetting(SETTINGS_KEYS.BRAND_LOGO_PATH)
+  const existingLogo = await getSetting(SETTINGS_KEYS.BRAND_LOGO_PATH)
   if (existingLogo) {
     const existingPath = join(process.cwd(), 'public', existingLogo.replace(/^\//, ''))
     if (existsSync(existingPath)) {
@@ -74,8 +74,8 @@ export default defineEventHandler(async (event) => {
 
   await fs.writeFile(absolutePath, file.data)
 
-  setSetting(SETTINGS_KEYS.BRAND_LOGO_PATH, publicPath)
-  setSetting(SETTINGS_KEYS.BRAND_SHOW_LOGO, 'true')
+  await setSetting(SETTINGS_KEYS.BRAND_LOGO_PATH, publicPath)
+  await setSetting(SETTINGS_KEYS.BRAND_SHOW_LOGO, 'true')
 
   await recordAuditEventFromRequest(event, {
     actor: session.user.email || session.user.id,

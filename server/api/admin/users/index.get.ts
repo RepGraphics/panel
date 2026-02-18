@@ -1,4 +1,3 @@
-import { or, like, desc } from 'drizzle-orm'
 import { requireAdmin } from '#server/utils/security'
 import { useDrizzle, tables } from '#server/utils/drizzle'
 import type { UserOption } from '#shared/types/ui'
@@ -14,28 +13,22 @@ export default defineEventHandler(async (event): Promise<{ data: UserOption[] }>
   const db = useDrizzle()
 
   try {
-    let usersQuery = db
-      .select({
-        id: tables.users.id,
-        username: tables.users.username,
-        email: tables.users.email,
-      })
-      .from(tables.users)
-
-    if (searchValue) {
-      usersQuery = usersQuery.where(
-        or(
-          like(tables.users.email, `%${searchValue}%`),
-          like(tables.users.username, `%${searchValue}%`)
-        )
-      ) as typeof usersQuery
-    }
-
-    const users = usersQuery
-      .orderBy(desc(tables.users.createdAt))
-      .limit(limit)
-      .offset(offset)
-      .all()
+    const users = await db.query.users.findMany({
+      columns: {
+        id: true,
+        username: true,
+        email: true,
+      },
+      where: searchValue 
+        ? (u, { or, like }) => or(
+            like(u.email, `%${searchValue}%`),
+            like(u.username, `%${searchValue}%`)
+          )
+        : undefined,
+      orderBy: (u, { desc }) => [desc(u.createdAt)],
+      limit,
+      offset,
+    })
 
     const userOptions: UserOption[] = users.map((user) => ({
       id: user.id,
@@ -51,7 +44,7 @@ export default defineEventHandler(async (event): Promise<{ data: UserOption[] }>
     const message = error instanceof Error ? error.message : 'Failed to list users'
     throw createError({
       status: 500,
-      statusText: message,
+      message,
     })
   }
 })

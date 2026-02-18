@@ -1,7 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import type { H3Event } from 'h3'
 import { requireAdmin } from '#server/utils/security'
-import { useDrizzle, tables, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables } from '#server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
 import { listWingsNodes } from '#server/utils/wings/nodesStore'
@@ -128,8 +128,7 @@ function extractScheduledTasks(payload: unknown): ScheduledTaskPayload[] {
 
 async function fetchCriticalData(event: H3Event): Promise<Pick<DashboardResponse, 'metrics' | 'nodes' | 'operations'>> {
   const db = useDrizzle()
-  assertSqliteDatabase(db)
-  const nodes = listWingsNodes()
+  const nodes = await listWingsNodes()
 
   const nodeResults = await Promise.all(nodes.map(async (node): Promise<DashboardNode> => {
     let serverCount: number | null = null
@@ -165,22 +164,20 @@ async function fetchCriticalData(event: H3Event): Promise<Pick<DashboardResponse
   const unreachableNodes = nodeResults.filter(n => n.status === 'unknown').length
   const totalServers = nodeResults.reduce((sum, n) => sum + (n.serverCount ?? 0), 0)
 
-  const userCounts = db.select({
-    totalUsers: sql<number>`count(*)`,
-  }).from(tables.users).get()
+  const userCountResult = await db.select({ totalUsers: sql<number>`count(*)` }).from(tables.users)
+  const userCounts = userCountResult[0]
 
-  const adminUsersRow = db.select({
-    value: sql<number>`count(*)`,
-  }).from(tables.users).where(eq(tables.users.role, 'admin')).get()
+  const adminUsersResult = await db.select({ value: sql<number>`count(*)` }).from(tables.users).where(eq(tables.users.role, 'admin'))
+  const adminUsersRow = adminUsersResult[0]
 
-  const scheduleRows = db.select({
+  const scheduleRows = await db.select({
     enabled: tables.serverSchedules.enabled,
     nextRunAt: tables.serverSchedules.nextRunAt,
-  }).from(tables.serverSchedules).all()
+  }).from(tables.serverSchedules)
 
   const totalUsers = Number(userCounts?.totalUsers ?? 0)
   const adminUsers = Number(adminUsersRow?.value ?? 0)
-  const activeServerSchedules = scheduleRows.filter(schedule => schedule.enabled).length
+  const activeServerSchedules = scheduleRows.filter((schedule: { enabled: boolean | null }) => schedule.enabled).length
   const nitroScheduleCount = await fetchNitroScheduleCount(event)
   const activeSchedules = activeServerSchedules + nitroScheduleCount
   const dueSoonThreshold = Date.now() + 30 * 60 * 1000
@@ -247,21 +244,21 @@ async function fetchCriticalData(event: H3Event): Promise<Pick<DashboardResponse
 
 async function fetchIncidents(): Promise<DashboardIncident[]> {
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const users = db.select({
+  const users = await db.select({
     id: tables.users.id,
     email: tables.users.email,
     displayUsername: tables.users.displayUsername,
-  }).from(tables.users).all()
-  const usersById = new Map(users.map((user: { id: string; email: string | null; displayUsername: string | null }) => [user.id, user] as const))
+  }).from(tables.users)
+
+  const usersById = new Map(users.map((user) => [user.id, user] as const))
   const usersByEmail = new Map(
     users
-      .filter((user: { email: string | null }) => typeof user.email === 'string' && user.email.length > 0)
-      .map((user: { id: string; email: string | null; displayUsername: string | null }) => [user.email!.toLowerCase(), user] as const),
+      .filter((user) => typeof user.email === 'string' && user.email.length > 0)
+      .map((user) => [user.email!.toLowerCase(), user] as const),
   )
 
-  const audits = db.select({
+  const audits = await db.select({
     id: tables.auditEvents.id,
     occurredAt: tables.auditEvents.occurredAt,
     actor: tables.auditEvents.actor,
@@ -273,7 +270,6 @@ async function fetchIncidents(): Promise<DashboardIncident[]> {
     .from(tables.auditEvents)
     .orderBy(desc(tables.auditEvents.occurredAt))
     .limit(5)
-    .all()
 
   return audits.map((event: {
     id: string

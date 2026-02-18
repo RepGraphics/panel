@@ -57,21 +57,20 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const existing = db
+  const existingResult = await db
     .select()
     .from(tables.sshKeys)
     .where(eq(tables.sshKeys.fingerprint, fingerprint))
-    .get()
+    .limit(1)
 
-  if (existing) {
+  if (existingResult[0]) {
     throw createError({ status: 409, statusText: 'This SSH key already exists' })
   }
 
-  const userKeys = db
+  const userKeys = await db
     .select()
     .from(tables.sshKeys)
     .where(eq(tables.sshKeys.userId, user.id))
-    .all()
 
   if (userKeys.length >= 25) {
     throw createError({ status: 400, statusText: 'Maximum of 25 SSH keys allowed per account' })
@@ -80,23 +79,23 @@ export default defineEventHandler(async (event) => {
   const now = Date.now()
   const keyId = randomUUID()
 
-  await db.insert(tables.sshKeys)
-    .values({
-      id: keyId,
-      userId: user.id,
-      name: body.name.trim(),
-      fingerprint,
-      publicKey: body.publicKey.trim(),
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
-    })
-    .run()
+  await db.insert(tables.sshKeys).values({
+    id: keyId,
+    userId: user.id,
+    name: body.name.trim(),
+    fingerprint,
+    publicKey: body.publicKey.trim(),
+    createdAt: new Date(now),
+    updatedAt: new Date(now),
+  })
 
-  const key = db
+  const keyResult = await db
     .select()
     .from(tables.sshKeys)
     .where(eq(tables.sshKeys.id, keyId))
-    .get()
+    .limit(1)
+
+  const key = keyResult[0]!
 
   await recordAuditEventFromRequest(event, {
     actor: user.id,
@@ -105,18 +104,18 @@ export default defineEventHandler(async (event) => {
     targetType: 'user',
     targetId: keyId,
     metadata: {
-      name: key!.name,
-      fingerprint: key!.fingerprint,
+      name: key.name,
+      fingerprint: key.fingerprint,
     },
   })
 
   return {
     data: {
-      id: key!.id,
-      name: key!.name,
-      fingerprint: key!.fingerprint,
-      public_key: key!.publicKey,
-      created_at: key!.createdAt,
+      id: key.id,
+      name: key.name,
+      fingerprint: key.fingerprint,
+      public_key: key.publicKey,
+      created_at: key.createdAt,
     },
   }
 })

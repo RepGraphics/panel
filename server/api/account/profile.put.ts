@@ -1,4 +1,4 @@
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS, requireAccountUser } from '#server/utils/security'
 import { accountProfileUpdateSchema } from '#shared/schema/account'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
@@ -18,11 +18,10 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
   const auth = getAuth()
   const headers = normalizeHeadersForAuth(event.node.req.headers)
 
-  const currentUser = db
+  const currentUserResult = await db
     .select({
       id: tables.users.id,
       username: tables.users.username,
@@ -31,7 +30,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, user.id))
-    .get()
+    .limit(1)
+
+  const currentUser = currentUserResult[0]
 
   if (!currentUser) {
     throw createError({ status: 404, statusText: 'User not found' })
@@ -42,11 +43,13 @@ export default defineEventHandler(async (event) => {
 
   try {
     if (body.username !== undefined && body.username !== oldUsername) {
-      const existingUser = db
+      const existingUserResult = await db
         .select({ id: tables.users.id })
         .from(tables.users)
         .where(eq(tables.users.username, body.username))
-        .get()
+        .limit(1)
+
+      const existingUser = existingUserResult[0]
 
       if (existingUser && existingUser.id !== user.id) {
         throw createError({
@@ -56,13 +59,12 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      db.update(tables.users)
+      await db.update(tables.users)
         .set({
           username: body.username,
           updatedAt: new Date(),
         })
         .where(eq(tables.users.id, user.id))
-        .run()
 
       await recordAuditEventFromRequest(event, {
         actor: user.id,
@@ -111,7 +113,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const updatedUser = db
+    const updatedUserResult = await db
       .select({
         id: tables.users.id,
         username: tables.users.username,
@@ -120,7 +122,9 @@ export default defineEventHandler(async (event) => {
       })
       .from(tables.users)
       .where(eq(tables.users.id, user.id))
-      .get()
+      .limit(1)
+
+    const updatedUser = updatedUserResult[0]
 
     if (!updatedUser) {
       throw createError({ status: 404, statusText: 'User not found after update' })

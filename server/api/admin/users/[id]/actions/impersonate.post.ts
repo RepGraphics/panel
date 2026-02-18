@@ -1,7 +1,7 @@
 import { appendResponseHeader, splitCookiesString } from 'h3'
 import { APIError } from 'better-auth/api'
 import { requireAdmin } from '#server/utils/security'
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
@@ -68,8 +68,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
-  const user = db
+
+  const userResult = await db
     .select({
       id: tables.users.id,
       username: tables.users.username,
@@ -77,7 +77,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })

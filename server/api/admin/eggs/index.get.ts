@@ -14,13 +14,13 @@ export default defineEventHandler(async (event) => {
   const nests = await db.select({
     id: tables.nests.id,
     name: tables.nests.name,
-  }).from(tables.nests).all()
+  }).from(tables.nests)
 
   const eggs = await db.select({
     id: tables.eggs.id,
     name: tables.eggs.name,
     nestId: tables.eggs.nestId,
-  }).from(tables.eggs).all()
+  }).from(tables.eggs)
 
   const nestNames = nests.reduce<Record<string, string>>((acc, nest) => {
     acc[nest.id] = nest.name || nest.id

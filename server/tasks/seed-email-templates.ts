@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables } from '#server/utils/drizzle'
 
 const defaultTemplates = [
   {
@@ -65,11 +65,9 @@ export default defineTask({
     const skipped: string[] = []
 
     for (const template of defaultTemplates) {
-      const existing = db
-        .select()
-        .from(tables.emailTemplates)
-        .where(eq(tables.emailTemplates.templateId, template.id))
-        .get()
+      const existing = await db.query.emailTemplates.findFirst({
+        where: (t, { eq }) => eq(t.templateId, template.id)
+      })
 
       if (existing) {
         skipped.push(template.id)
@@ -77,18 +75,18 @@ export default defineTask({
       }
 
       const now = new Date()
-      db.insert(tables.emailTemplates)
-        .values({
-          id: randomUUID(),
-          name: template.name,
-          templateId: template.id,
-          subject: template.subject,
-          htmlContent: template.html,
-          isCustom: false,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run()
+      const insertData = {
+        id: randomUUID(),
+        name: template.name,
+        templateId: template.id,
+        subject: template.subject,
+        htmlContent: template.html,
+        isCustom: false,
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      await db.insert(tables.emailTemplates).values(insertData)
 
       created.push(template.id)
     }

@@ -2,6 +2,7 @@ import type { UserSessionSummary, AccountSessionsResponse, AuthContext } from '#
 import { requireAccountUser } from '#server/utils/security'
 import { parseUserAgent } from '#server/utils/user-agent'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 
 export default defineEventHandler(async (event): Promise<AccountSessionsResponse> => {
   const middlewareAuth = (event.context as { auth?: AuthContext }).auth
@@ -20,7 +21,7 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
   let rows: AccountSessionRow[]
 
   try {
-    rows = db.select({
+    const query = db.select({
       sessionToken: tables.sessions.sessionToken,
       expires: tables.sessions.expires,
       metadataIp: tables.sessions.ipAddress,
@@ -34,20 +35,20 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
       .from(tables.sessions)
       .leftJoin(tables.sessionMetadata, eq(tables.sessionMetadata.sessionToken, tables.sessions.sessionToken))
       .where(eq(tables.sessions.userId, user.id))
-      .all()
+
+    rows = await query as AccountSessionRow[]
   }
   catch (error) {
     if (error instanceof Error && /session_metadata/i.test(error.message ?? '')) {
       metadataAvailable = false
-      rows = db.select({
+      rows = await db.select({
         sessionToken: tables.sessions.sessionToken,
         expires: tables.sessions.expires,
         metadataIp: tables.sessions.ipAddress,
         metadataUserAgent: tables.sessions.userAgent,
       })
         .from(tables.sessions)
-        .where(eq(tables.sessions.userId, user.id))
-        .all()
+        .where(eq(tables.sessions.userId, user.id)) as AccountSessionRow[]
     }
     else {
       throw error
@@ -175,8 +176,8 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
 
   if (metadataAvailable && metadataUpserts.length) {
     const now = new Date()
-    await Promise.all(metadataUpserts.map((entry) =>
-      db.insert(tables.sessionMetadata).values({
+    for (const entry of metadataUpserts) {
+      await db.insert(tables.sessionMetadata).values({
         sessionToken: entry.sessionToken,
         ipAddress: entry.ipAddress,
         userAgent: entry.userAgent,
@@ -196,7 +197,7 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
           lastSeenAt: now,
         },
       })
-    ))
+    }
   }
 
   await recordAuditEventFromRequest(event, {

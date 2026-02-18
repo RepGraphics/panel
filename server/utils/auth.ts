@@ -9,8 +9,7 @@ import { twoFactor } from 'better-auth/plugins/two-factor'
 import { captcha, apiKey } from 'better-auth/plugins'
 import type { AuthContext } from '@better-auth/core'
 import { useRuntimeConfig } from '#imports'
-import { useDrizzle, tables, eq, isPostgresDialect, assertSqliteDatabase } from '#server/utils/drizzle'
-import type { SqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import bcrypt from 'bcryptjs'
 
 let authInstance: ReturnType<typeof createAuth> | null = null
@@ -91,15 +90,14 @@ function getCaptchaConfig(provider: string, runtimeConfig: ReturnType<typeof use
   }
 }
 
-function useSyncDrizzle(): SqliteDatabase {
-  const db = useDrizzle()
-  assertSqliteDatabase(db)
-  return db
+function useAuthDb() {
+  return useDrizzle()
 }
 
 async function getSessionProfile(userId: string) {
-  const db = useSyncDrizzle()
-  const user = db
+  const db = useAuthDb()
+  
+  const result = await db
     .select({
       id: tables.users.id,
       role: tables.users.role,
@@ -111,7 +109,9 @@ async function getSessionProfile(userId: string) {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
-    .get()
+    .limit(1)
+
+  const user = result[0]
 
   if (!user) {
     return null
@@ -128,7 +128,7 @@ async function getSessionProfile(userId: string) {
 
 function createAuth() {
   const runtimeConfig = useRuntimeConfig()
-  const db = useSyncDrizzle()
+  const db = useAuthDb()
   
   const isProduction = process.env.NODE_ENV === 'production'
   
@@ -140,7 +140,7 @@ function createAuth() {
     || process.env.APP_URL
     || undefined
   
-  const secret = runtimeConfig.authSecret || undefined
+  const secret = runtimeConfig.authSecret || process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET || undefined
   const captchaProvider = (process.env.CAPTCHA_PROVIDER || 'turnstile').toLowerCase()
   const captchaConfig = getCaptchaConfig(captchaProvider, runtimeConfig)
   
@@ -207,8 +207,8 @@ function createAuth() {
 
   return betterAuth({
     database: drizzleAdapter(db, {
-      provider: isPostgresDialect ? 'pg' : 'sqlite',
-      schema: adapterSchema,
+      provider: 'pg',
+      schema: adapterSchema as any,
     }),
     account: {
       fields: {
@@ -258,15 +258,18 @@ function createAuth() {
           }).catch(error => console.error('[auth][email][delete-account]', error))
         },
         beforeDelete: async (user, _request) => {
-          const db = useSyncDrizzle()
-          const dbUser = db
+          const db = useAuthDb()
+          
+          const result = await db
             .select({
               rootAdmin: tables.users.rootAdmin,
               role: tables.users.role,
             })
             .from(tables.users)
             .where(eq(tables.users.id, user.id))
-            .get()
+            .limit(1)
+
+          const dbUser = result[0]
           
           if (dbUser?.rootAdmin || dbUser?.role === 'admin') {
             throw new (await import('better-auth/api')).APIError('BAD_REQUEST', {
@@ -298,17 +301,14 @@ function createAuth() {
       },
       resetPasswordTokenExpiresIn: 3600,
       onPasswordReset: async ({ user }, _request) => {
-        const db = useSyncDrizzle()
-        db.delete(tables.sessions)
-          .where(eq(tables.sessions.userId, user.id))
-          .run()
+        const db = useAuthDb()
         
-        db.update(tables.users)
-          .set({ 
-            passwordResetRequired: false,
-          })
+        await db.delete(tables.sessions)
+          .where(eq(tables.sessions.userId, user.id))
+        
+        await db.update(tables.users)
+          .set({ passwordResetRequired: false })
           .where(eq(tables.users.id, user.id))
-          .run()
       },
     },
     session: {
@@ -388,7 +388,7 @@ function createAuth() {
       defaultCookieAttributes: {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'lax', // strict can break flows
+        sameSite: 'lax',
       },
     },
     onAPIError: {
@@ -529,16 +529,6 @@ export const auth = getAuth()
 
 /**
  * Normalizes H3 event headers to a format compatible with Better Auth API.
- * Converts header arrays to single strings and ensures all headers are strings.
- * 
- * @param headers - Headers from H3 event (event.node.req.headers)
- * @returns Record<string, string> - Normalized headers object
- * 
- * @example
- * ```ts
- * const headers = normalizeHeadersForAuth(event.node.req.headers)
- * const session = await auth.api.getSession({ headers })
- * ```
  */
 export function normalizeHeadersForAuth(headers: Record<string, string | string[] | undefined>): Record<string, string> {
   const normalized: Record<string, string> = {}

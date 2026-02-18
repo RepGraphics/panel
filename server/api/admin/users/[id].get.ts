@@ -1,4 +1,4 @@
-import { useDrizzle, tables, eq, or, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, or } from '#server/utils/drizzle'
 import { desc } from 'drizzle-orm'
 import { requireAdmin } from '#server/utils/security'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
@@ -18,9 +18,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  assertSqliteDatabase(db)
 
-  const user = db
+  const userResult = await db
     .select({
       id: tables.users.id,
       username: tables.users.username,
@@ -42,7 +41,9 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, id))
-    .get()
+    .limit(1)
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({
@@ -75,8 +76,7 @@ export default defineEventHandler(async (event) => {
       .from(tables.servers)
       .leftJoin(tables.wingsNodes, eq(tables.servers.nodeId, tables.wingsNodes.id))
       .where(eq(tables.servers.ownerId, user.id))
-      .orderBy(desc(tables.servers.createdAt))
-      .all(),
+      .orderBy(desc(tables.servers.createdAt)),
     
     // API keys query
     db
@@ -90,8 +90,7 @@ export default defineEventHandler(async (event) => {
       })
       .from(tables.apiKeys)
       .where(eq(tables.apiKeys.userId, user.id))
-      .orderBy(desc(tables.apiKeys.createdAt))
-      .all(),
+      .orderBy(desc(tables.apiKeys.createdAt)),
     
     // Sessions query
     db
@@ -108,8 +107,7 @@ export default defineEventHandler(async (event) => {
       .from(tables.sessions)
       .leftJoin(tables.sessionMetadata, eq(tables.sessions.sessionToken, tables.sessionMetadata.sessionToken))
       .where(eq(tables.sessions.userId, user.id))
-      .orderBy(desc(tables.sessions.expiresAt))
-      .all(),
+      .orderBy(desc(tables.sessions.expiresAt)),
     
     // All activity events query
     db
@@ -125,8 +123,7 @@ export default defineEventHandler(async (event) => {
       .from(tables.auditEvents)
       .where(or(...activityConditions))
       .orderBy(desc(tables.auditEvents.occurredAt))
-      .limit(100)
-      .all(),
+      .limit(100),
   ])
 
   const securityEvents = allActivityEvents

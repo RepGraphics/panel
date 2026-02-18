@@ -1,6 +1,6 @@
 import { type H3Event } from 'h3'
 import { eq } from 'drizzle-orm'
-import { useDrizzle, tables, assertSqliteDatabase } from '#server/utils/drizzle'
+import { useDrizzle, tables } from '#server/utils/drizzle'
 import { listServerSubusers } from '#server/utils/subusers'
 import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { recordAuditEvent } from '#server/utils/audit'
@@ -36,7 +36,6 @@ function checkRateLimit(ip: string): boolean {
 
 export default defineEventHandler(async (event: H3Event) => {
   const db = useDrizzle()
-  assertSqliteDatabase(db)
   const body = await readValidatedBodyWithLimit(event, remoteSftpAuthSchema, BODY_SIZE_LIMITS.SMALL)
   const clientIp = getRequestIP(event) || body.ip || 'unknown'
 
@@ -62,12 +61,13 @@ export default defineEventHandler(async (event: H3Event) => {
   const serverIdentifier = parts[parts.length - 1]!
   const userIdentifier = parts.slice(0, -1).join('.')
 
-  const server = db
+  const serverResult = await db
     .select()
     .from(tables.servers)
     .where(eq(tables.servers.uuid, serverIdentifier))
     .limit(1)
-    .get()
+
+  const server = serverResult[0]
 
   if (!server) {
     throw createError({
@@ -77,14 +77,13 @@ export default defineEventHandler(async (event: H3Event) => {
     })
   }
 
-  const user = db
+  const userResult = await db
     .select()
     .from(tables.users)
-    .where(
-      eq(tables.users.username, userIdentifier),
-    )
+    .where(eq(tables.users.username, userIdentifier))
     .limit(1)
-    .get()
+
+  const user = userResult[0]
 
   if (!user) {
     throw createError({
@@ -114,9 +113,8 @@ export default defineEventHandler(async (event: H3Event) => {
         })
       }
 
-      db.delete(tables.sessions)
+      await db.delete(tables.sessions)
         .where(eq(tables.sessions.sessionToken, signInResult.token))
-        .run()
     }
     catch (error) {
       if (error instanceof APIError) {
@@ -144,22 +142,21 @@ export default defineEventHandler(async (event: H3Event) => {
       const validKeyData = keyData
       const keyType = cleanKey[0]
 
-      const sshKey = db
+      const sshKeys = await db
         .select({ fingerprint: tables.sshKeys.fingerprint, publicKey: tables.sshKeys.publicKey })
         .from(tables.sshKeys)
         .where(eq(tables.sshKeys.userId, user.id))
-        .limit(1)
-        .all()
-        .find((key: { publicKey: string }) => {
-          const storedParts = key.publicKey.trim().split(/\s+/)
-          if (storedParts.length < 2)
-            return false
 
-          const storedType = storedParts[0]
-          const storedData = storedParts[1]
+      const sshKey = sshKeys.find((key) => {
+        const storedParts = key.publicKey.trim().split(/\s+/)
+        if (storedParts.length < 2)
+          return false
 
-          return storedType === keyType && storedData === validKeyData
-        })
+        const storedType = storedParts[0]
+        const storedData = storedParts[1]
+
+        return storedType === keyType && storedData === validKeyData
+      })
 
       if (!sshKey) {
         throw createError({

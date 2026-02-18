@@ -26,7 +26,6 @@ export default defineEventHandler(async (event) => {
     .leftJoin(tables.wingsNodes, eq(tables.wingsNodes.locationId, tables.locations.id))
     .groupBy(tables.locations.id)
     .orderBy(tables.locations.short)
-    .all()
 
   const data: LocationWithNodeCount[] = locations.map(loc => ({
     id: loc.id,

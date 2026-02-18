@@ -1,7 +1,9 @@
 /// <reference types="@vite-pwa/nuxt" />
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 const redisStorageConfig = {
-  host: process.env.REDIS_HOST || 'localhost',
+  host: process.env.REDIS_HOST || (isDev ? 'localhost' : 'redis'),
   port: process.env.REDIS_PORT ? Number.parseInt(process.env.REDIS_PORT) : 6379,
   username: process.env.REDIS_USERNAME,
   password: process.env.REDIS_PASSWORD,
@@ -9,7 +11,7 @@ const redisStorageConfig = {
 }
 
 const redisRateLimiterOptions = {
-  host: process.env.REDIS_HOST || 'localhost',
+  host: process.env.REDIS_HOST || (isDev ? 'localhost' : 'redis'),
   port: process.env.REDIS_PORT ? Number.parseInt(process.env.REDIS_PORT) : 6379,
   username: process.env.REDIS_USERNAME,
   password: process.env.REDIS_PASSWORD,
@@ -37,7 +39,6 @@ const extraConnectSources = process.env.NUXT_SECURITY_CONNECT_SRC
   : []
 
 const connectSrcDirectives = ["'self'", 'https:', 'wss:', 'ws:', ...extraConnectSources]
-const isDev = process.env.NODE_ENV !== 'production'
 const enableCspReportOnly = process.env.NUXT_SECURITY_CSP_REPORT_ONLY === 'true'
 const cspReportUri = process.env.NUXT_SECURITY_CSP_REPORT_URI?.trim() || null
 const hasRedisRateLimitConfig = Boolean(process.env.REDIS_HOST && process.env.REDIS_PORT)
@@ -88,7 +89,11 @@ export default defineNuxtConfig({
     '@nuxt/scripts',
     '@nuxtjs/i18n',
   ],
-
+vite: {
+  ssr: {
+    noExternal: ['drizzle-orm'],
+  },
+},
   routeRules: {
     '/admin/**': {
       appLayout: 'admin',
@@ -454,6 +459,9 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'node-server',
+    externals: {
+  inline: ['drizzle-orm'],
+},
     errorHandler: './server/error.ts',
     experimental: {
       tasks: true, // NOTE: The panel will remain in a BETA STATE until Nitro tasks are stable. See https://github.com/nuxt/nitro/issues/1105

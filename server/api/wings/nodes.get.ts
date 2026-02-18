@@ -5,7 +5,7 @@ import { listWingsNodeSummaries } from '#server/utils/wings/nodesStore'
 
 export default defineEventHandler(async (event: H3Event) => {
   const session = await requireAdmin(event)
-  const data = listWingsNodeSummaries()
+  const data = await listWingsNodeSummaries()
 
   await recordAuditEventFromRequest(event, {
     actor: session?.user?.id ?? 'admin',

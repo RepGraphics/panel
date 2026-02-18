@@ -1,6 +1,6 @@
 import { assertMethod, createError } from 'h3';
 import { APIError } from 'better-auth/api';
-import { useDrizzle, tables, eq, assertSqliteDatabase } from '#server/utils/drizzle';
+import { useDrizzle, tables, eq } from '#server/utils/drizzle';
 import { recordAuditEventFromRequest } from '#server/utils/audit';
 import { accountForcedPasswordSchema } from '#shared/schema/account';
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth';
@@ -24,17 +24,18 @@ export default defineEventHandler(async (event) => {
     );
 
     const db = useDrizzle();
-    assertSqliteDatabase(db);
     const auth = getAuth();
     const headers = normalizeHeadersForAuth(event.node.req.headers);
 
-    const existing = db
+    const existingResult = await db
       .select({
         passwordResetRequired: tables.users.passwordResetRequired,
       })
       .from(tables.users)
       .where(eq(tables.users.id, user.id))
-      .get();
+      .limit(1);
+
+    const existing = existingResult[0];
 
     if (!existing) {
       throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' });
@@ -67,20 +68,17 @@ export default defineEventHandler(async (event) => {
 
     const now = new Date();
 
-    db.update(tables.users)
+    await db.update(tables.users)
       .set({
         passwordResetRequired: false,
         updatedAt: now,
       })
-      .where(eq(tables.users.id, user.id))
-      .run();
+      .where(eq(tables.users.id, user.id));
 
-    const revokedSessions = db
-      .delete(tables.sessions)
-      .where(eq(tables.sessions.userId, user.id))
-      .run();
+    const revokedResult = await db.delete(tables.sessions)
+      .where(eq(tables.sessions.userId, user.id));
 
-    const revokedCount = typeof revokedSessions.changes === 'number' ? revokedSessions.changes : 0;
+    const revokedCount = (revokedResult as any)?.rowCount ?? 0;
 
     await recordAuditEventFromRequest(event, {
       actor: user.email || user.id,
