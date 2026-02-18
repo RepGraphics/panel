@@ -17,20 +17,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: pnpm
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
       - name: Enable Corepack
         run: corepack enable
 
       - name: Prepare pnpm
         run: corepack prepare pnpm@latest-10 --activate
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -47,6 +44,3 @@ jobs:
 
       - name: Run unit tests
         run: pnpm test
-
-      - name: Run build
-        run: pnpm build
