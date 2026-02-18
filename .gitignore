@@ -1,4 +1,4 @@
-# Nuxt dev/build outputs
+# Build outputs
 .output
 .data
 .nuxt
@@ -7,24 +7,23 @@
 dist
 data
 
-# Node dependencies
+# Dependencies
 node_modules
+.pnpm-store
 
-# Logs
+# Env & logs
+.env
 logs
 *.log
 
-# Misc
+# Editor
 .DS_Store
 .fleet
 .idea
-.pnpm-store
 
-# Local env files
-.env
-
-# Drizzle auto-generated snapshot files (keep SQL migrations and journal)
+# Drizzle snapshots
 server/database/migrations/meta/*_snapshot.json
 
-# Branding uploads
+# Deployment (server-side only)
+nginx/
 public/uploads/branding

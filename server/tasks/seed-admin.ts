@@ -1,164 +1,78 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
-import type { SeedUser } from "#shared/types/seed";
+import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+
+function getString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
 
 export default defineTask({
   meta: {
-    name: "db:seed",
-    description: "Run database seed task",
+    name: "seed:admin",
+    description: "Seed the initial admin account",
   },
-  async run() {
-    console.log("Running DB seed task...");
-    const db = useDrizzle();
+  async run({ payload }) {
+    const db = useDrizzle()
 
-    const users: SeedUser[] = [
-      {
-        name: "John Doe",
-        username: "john",
-        email: "user@xyrapanel.com",
-        password: "password123",
-        avatar: "https://example.com/avatar/john.png",
-        rootAdmin: true,
-        role: "admin",
-        permissions: [
-          "admin.users.read",
-          "admin.servers.read",
-          "admin.nodes.read",
-          "admin.locations.read",
-          "admin.eggs.read",
-          "admin.mounts.read",
-          "admin.database-hosts.read",
-          "admin.activity.read",
-          "admin.settings.read",
-        ],
-      },
-    ];
+    const email = getString(payload?.email) || process.env.SEED_ADMIN_EMAIL
+    const password = getString(payload?.password) || process.env.SEED_ADMIN_PASSWORD
+    const username = getString(payload?.username) || process.env.SEED_ADMIN_USERNAME || 'admin'
+    const name = getString(payload?.name) || process.env.SEED_ADMIN_NAME || 'Admin'
 
-    const createdUsers: string[] = [];
-    const updatedUsers: string[] = [];
+    if (!email || !password) {
+      return { result: 'skipped', reason: 'No email or password provided. Set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.' }
+    }
 
-    for (const user of users) {
-      const existingUser = await db.query.users.findFirst({
-        where: (u, { eq }) => eq(u.email, user.email),
+    const hashedPassword = await bcrypt.hash(password, 12)
+    const [nameFirst, ...nameRest] = name.split(' ')
+    const nameLast = nameRest.join(' ') || null
+    const timestamp = new Date()
+
+    const existingUser = await db.query.users.findFirst({
+      where: (u, { eq }) => eq(u.email, email),
+      columns: { id: true }
+    })
+
+    if (existingUser) {
+      await db.update(tables.users)
+        .set({ username, displayUsername: username, password: hashedPassword, nameFirst, nameLast, rootAdmin: true, role: 'admin', updatedAt: timestamp })
+        .where(eq(tables.users.id, existingUser.id))
+
+      const existingAccount = await db.query.accounts.findFirst({
+        where: (acc, { and, eq }) => and(eq(acc.userId, existingUser.id), eq(acc.provider, 'credential')),
         columns: { id: true }
       })
 
-      const hashedPassword = await bcrypt.hash(user.password, 12)
-      const [nameFirst, ...nameRest] = user.name.split(' ')
-      const nameLast = nameRest.join(' ') || null
-      const timestamp = new Date()
-
-      if (existingUser) {
-        const updateData = {
-          username: user.username,
-          displayUsername: user.username,
-          email: user.email,
-          password: hashedPassword,
-          nameFirst,
-          nameLast,
-          language: 'en',
-          rootAdmin: user.rootAdmin ?? false,
-          role: user.role ?? (user.rootAdmin ? 'admin' : 'user'),
-          image: user.avatar,
-          updatedAt: timestamp,
-        }
-
-        if (existingUser) {
-          await db.update(tables.users)
-            .set(updateData)
-            .where(eq(tables.users.id, existingUser.id))
-        }
-
-        const existingAccount = await db.query.accounts.findFirst({
-          where: (acc, { and, eq }) => and(
-            eq(acc.userId, existingUser.id),
-            eq(acc.provider, 'credential')
-          ),
-          columns: { id: true }
+      if (existingAccount) {
+        await db.update(tables.accounts)
+          .set({ password: hashedPassword, updatedAt: timestamp })
+          .where(eq(tables.accounts.id, existingAccount.id))
+      } else {
+        await db.insert(tables.accounts).values({
+          id: randomUUID(), userId: existingUser.id, type: 'credential',
+          provider: 'credential', providerAccountId: existingUser.id,
+          accountId: existingUser.id, providerId: 'credential',
+          password: hashedPassword, createdAt: timestamp, updatedAt: timestamp,
         })
-
-        const accountUpdateData = {
-          password: hashedPassword,
-          providerAccountId: existingUser.id,
-          accountId: existingUser.id,
-          providerId: 'credential',
-          updatedAt: timestamp,
-        }
-
-        if (existingAccount) {
-          await db.update(tables.accounts)
-            .set(accountUpdateData)
-            .where(eq(tables.accounts.id, existingAccount.id))
-        }
-        else {
-          const accountId = randomUUID()
-          const newAccountData = {
-            id: accountId,
-            userId: existingUser.id,
-            type: 'credential',
-            provider: 'credential',
-            providerAccountId: existingUser.id,
-            accountId: existingUser.id,
-            providerId: 'credential',
-            password: hashedPassword,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }
-
-          await db.insert(tables.accounts).values(newAccountData)
-        }
-
-        updatedUsers.push(user.email)
-        continue
       }
 
-      const userId = randomUUID()
-      const accountId = randomUUID()
-      const userData = {
-        id: userId,
-        username: user.username,
-        displayUsername: user.username,
-        email: user.email,
-        password: hashedPassword,
-        nameFirst,
-        nameLast,
-        language: 'en',
-        rootAdmin: user.rootAdmin ?? false,
-        role: user.role ?? (user.rootAdmin ? 'admin' : 'user'),
-        image: user.avatar,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }
-
-      await db.insert(tables.users).values(userData)
-
-      const accountData = {
-        id: accountId,
-        userId,
-        type: 'credential',
-        provider: 'credential',
-        providerAccountId: userId,
-        accountId: userId,
-        providerId: 'credential',
-        password: hashedPassword,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      }
-
-      await db.insert(tables.accounts).values(accountData)
-
-      createdUsers.push(user.email)
+      return { result: 'updated', email }
     }
 
-    return {
-      result: createdUsers.length
-        ? "created"
-        : updatedUsers.length
-          ? "updated"
-          : "skipped",
-      created: createdUsers,
-      updated: updatedUsers,
-    };
+    const userId = randomUUID()
+    await db.insert(tables.users).values({
+      id: userId, username, displayUsername: username, email,
+      password: hashedPassword, nameFirst, nameLast, language: 'en',
+      rootAdmin: true, role: 'admin', createdAt: timestamp, updatedAt: timestamp,
+    })
+
+    await db.insert(tables.accounts).values({
+      id: randomUUID(), userId, type: 'credential',
+      provider: 'credential', providerAccountId: userId,
+      accountId: userId, providerId: 'credential',
+      password: hashedPassword, createdAt: timestamp, updatedAt: timestamp,
+    })
+
+    return { result: 'created', email }
   },
-});
+})
