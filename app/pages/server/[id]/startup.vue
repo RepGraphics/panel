@@ -282,7 +282,7 @@ async function updateDockerImage() {
               <template v-else>
                 <div class="space-y-3">
                   <div
-                    v-for="variable in startupVariables"
+                    v-for="variable in startupVariables.filter(v => v.isEditable || (v.value ?? '') !== '')"
                     :key="variable.key"
                     class="rounded-lg border border-default bg-muted/20 p-4 space-y-3"
                   >

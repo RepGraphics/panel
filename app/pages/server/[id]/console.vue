@@ -395,7 +395,7 @@ function handleSearch() {
               </ClientOnly>
             </div>
             
-            <div v-if="canSendCommands" class="border-t border-default p-3">
+            <div v-show="canSendCommands" class="border-t border-default p-3">
               <UChatPrompt
                 v-model="commandInput"
                 variant="soft"

@@ -1,4 +1,4 @@
-import { onUnmounted, ref, getCurrentInstance, watch, type ComputedRef } from 'vue'
+import { onMounted, onUnmounted, ref, getCurrentInstance, watch, type ComputedRef } from 'vue'
 import type { ServerStats, ServerState } from '#shared/types/server'
 import type { ServerEventDetails, WebSocketMessage, WingsStatsPayload } from '#shared/types/websocket'
 
@@ -72,6 +72,7 @@ function formatRawArgs(args?: unknown[]): string | undefined {
 
 export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   const { t } = useI18n()
+  const nuxtApp = useNuxtApp()
   const runtimeConfig = useRuntimeConfig()
   const appDisplayName = runtimeConfig.public?.appName || 'XyraPanel'
   const appShellHost = appDisplayName.replace(/\s+/g, '').toLowerCase()
@@ -83,15 +84,25 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   const CONTAINER_PROMPT_PATTERN = new RegExp(`(?:${ESC}\\[[0-9;]*m)*(?:container(?:@[A-Za-z0-9._-]+)?~)`, 'gi')
 
   const actualServerId = typeof serverId === 'string' ? serverId : serverId.value
-  const persistentState = getOrCreateInstance(actualServerId)
+  const defaultState = {
+    logs: [] as string[],
+    connected: false,
+    serverState: 'offline' as ServerState,
+    stats: null as ServerStats | null,
+    statsHistory: [] as Array<{ timestamp: number; stats: ServerStats }>,
+    error: null as string | null,
+  }
+  const persistentState = import.meta.client ? getOrCreateInstance(actualServerId) : defaultState
+  const usePersistedState = import.meta.client && !nuxtApp.isHydrating
+  const initialState = usePersistedState ? persistentState : defaultState
   const socket = ref<WebSocket | null>(null)
   const connecting = ref(false)
-  const connected = ref(persistentState.connected)
-  const serverState = ref<ServerState>(persistentState.serverState)
-  const stats = ref<ServerStats | null>(persistentState.stats)
-  const statsHistory = ref<Array<{ timestamp: number; stats: ServerStats }>>([...persistentState.statsHistory])
-  const logs = ref<string[]>([...persistentState.logs]) 
-  const error = ref<string | null>(persistentState.error)
+  const connected = ref(initialState.connected)
+  const serverState = ref<ServerState>(initialState.serverState)
+  const stats = ref<ServerStats | null>(initialState.stats)
+  const statsHistory = ref<Array<{ timestamp: number; stats: ServerStats }>>([...initialState.statsHistory])
+  const logs = ref<string[]>([...initialState.logs])
+  const error = ref<string | null>(initialState.error)
   
   watch(connected, (val) => { persistentState.connected = val })
   watch(serverState, (val) => { persistentState.serverState = val })
@@ -489,7 +500,17 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
 
     tokenRefreshInFlight.value = true
     try {
-      const credentials: { token: string; socket: string } = await $fetch(`/api/client/servers/${actualServerId}/websocket`)
+      const credentials = await $fetch<{ token?: string; socket?: string; unavailable?: boolean; message?: string }>(`/api/client/servers/${actualServerId}/websocket`)
+
+      if (credentials?.unavailable === true) {
+        error.value = credentials.message || t('server.websocket.failedToRefreshToken')
+        return
+      }
+
+      if (!credentials?.token || !credentials?.socket) {
+        throw new Error(t('server.websocket.invalidCredentials'))
+      }
+
       currentToken.value = credentials.token
 
       if (currentSocketUrl.value && currentSocketUrl.value !== credentials.socket) {
@@ -506,7 +527,8 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
       }
     }
     catch (err) {
-      error.value = err instanceof Error ? err.message : t('server.websocket.failedToRefreshToken')
+      const errorMessage = err instanceof Error ? err.message : t('server.websocket.failedToRefreshToken')
+      error.value = errorMessage
       if (forceReconnect) {
         reconnect()
       }
@@ -563,6 +585,18 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         }
         
         const responseData = await response.json()
+
+        if (responseData?.unavailable === true) {
+          connecting.value = false
+          error.value = responseData?.message || t('server.websocket.failedToFetchCredentials')
+          return
+        }
+
+        if (responseData?.data?.unavailable === true) {
+          connecting.value = false
+          error.value = responseData?.data?.message || t('server.websocket.failedToFetchCredentials')
+          return
+        }
         
         if (responseData.data && responseData.data.token && responseData.data.socket) {
           credentials = {
@@ -578,11 +612,14 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
           throw new Error(t('server.websocket.invalidResponseFormat'))
         }
       } catch (fetchError: unknown) {
-        console.error(`[WebSocket] Fetch error:`, fetchError)
-        
         const error = fetchError as { message?: string; data?: unknown }
         const errorMessage = error.message || ''
         const errorData = error.data
+        const isUnavailable = errorMessage.toLowerCase().includes('not available on the assigned wings node')
+
+        if (!isUnavailable) {
+          console.error(`[WebSocket] Fetch error:`, fetchError)
+        }
         
         if (errorData && typeof errorData === 'string' && (errorData.includes('<!DOCTYPE html>') || errorData.includes('<html'))) {
           throw new Error(t('server.websocket.serverReturnedHTML'))
@@ -683,11 +720,16 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
       })
     }
     catch (err) {
-      console.error('[WebSocket] Failed to get credentials:', err)
-      connecting.value = false
       const errorMessage = err instanceof Error ? err.message : t('server.websocket.failedToEstablish')
+      const isUnavailable = errorMessage.toLowerCase().includes('not available on the assigned wings node')
+
+      if (!isUnavailable) {
+        console.error('[WebSocket] Failed to get credentials:', err)
+      }
+
+      connecting.value = false
       error.value = errorMessage
-      if (!errorMessage.includes('404') && !errorMessage.includes('401') && !errorMessage.includes('403')) {
+      if (!errorMessage.includes('404') && !errorMessage.includes('401') && !errorMessage.includes('403') && !isUnavailable) {
         scheduleReconnect()
       }
     }
@@ -749,14 +791,16 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   if (import.meta.client) {
     const instance = getCurrentInstance()
     if (instance) {
+      onMounted(() => {
+        void connect()
+      })
+
       onUnmounted(() => {
         disposed = true
         clearReconnectTimer()
         disconnect(false)
       })
     }
-    
-    void connect()
   }
 
   return {

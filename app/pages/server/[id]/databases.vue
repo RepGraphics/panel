@@ -13,13 +13,14 @@ const requestFetch = useRequestFetch()
 
 const { data: databasesData, pending, error } = await useAsyncData(
   `server-${serverId.value}-databases`,
-  () => requestFetch<{ data: ServerDatabase[] }>(`/api/client/servers/${serverId.value}/databases`),
+  () => requestFetch<{ data: ServerDatabase[], hostAvailable: boolean }>(`/api/client/servers/${serverId.value}/databases`),
   {
     watch: [serverId],
   },
 )
 
 const databases = computed<ServerDatabase[]>(() => (databasesData.value as { data: ServerDatabase[] } | null)?.data ?? [])
+const hostAvailable = computed(() => (databasesData.value as { hostAvailable?: boolean } | null)?.hostAvailable ?? true)
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -195,6 +196,7 @@ async function deleteDatabase() {
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2 class="text-lg font-semibold">{{ t('server.databases.title') }}</h2>
                 <UButton
+                  v-if="hostAvailable"
                   icon="i-lucide-plus"
                   color="primary"
                   variant="soft"
@@ -205,6 +207,16 @@ async function deleteDatabase() {
                 </UButton>
               </div>
             </template>
+
+            <UAlert
+              v-if="!pending && !error && !hostAvailable"
+              color="warning"
+              icon="i-lucide-database-zap"
+              variant="subtle"
+              :title="t('server.databases.noHostTitle')"
+              :description="t('server.databases.noHostDescription')"
+              class="mb-4"
+            />
 
             <div v-if="error" class="rounded-lg border border-error/20 bg-error/5 p-4 text-sm text-error">
               <div class="flex items-start gap-2">

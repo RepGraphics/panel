@@ -231,17 +231,58 @@ async function createServer() {
   isSubmitting.value = true
 
   try {
+    const toOptionalNumber = (value: unknown): number | undefined => {
+      if (value === null || value === undefined || value === '') {
+        return undefined
+      }
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+
+    const payload: CreateServerPayload = {
+      name: String(form.value.name || '').trim(),
+      description: form.value.description ? String(form.value.description).trim() : undefined,
+      ownerId: String(form.value.ownerId || ''),
+      eggId: String(form.value.eggId || ''),
+      nestId: String(form.value.nestId || ''),
+      nodeId: String(form.value.nodeId || ''),
+      memory: Number(form.value.memory || 0),
+      swap: Number(form.value.swap || 0),
+      disk: Number(form.value.disk || 0),
+      io: Number(form.value.io || 500),
+      cpu: Number(form.value.cpu || 0),
+      threads: form.value.threads ? String(form.value.threads).trim() : undefined,
+      databases: toOptionalNumber(form.value.databases),
+      allocations: toOptionalNumber(form.value.allocations),
+      backups: toOptionalNumber(form.value.backups),
+      allocationId: String(form.value.allocationId || ''),
+      additionalAllocations: Array.isArray(form.value.additionalAllocations)
+        ? form.value.additionalAllocations
+        : undefined,
+      startup: form.value.startup ? String(form.value.startup) : '',
+      environment: form.value.environment || {},
+      dockerImage: form.value.dockerImage ? String(form.value.dockerImage) : '',
+      skipScripts: Boolean(form.value.skipScripts),
+      startOnCompletion: Boolean(form.value.startOnCompletion),
+      oomDisabled: Boolean(form.value.oomDisabled),
+    }
+
     const response = await $fetch('/api/admin/servers', {
       method: 'POST',
-      body: form.value as CreateServerPayload,
+      body: payload,
     })
 
     toast.add({ title: 'Server created successfully', color: 'success' })
     router.push(`/admin/servers/${response.data.id}`)
   } catch (err) {
+    const validationErrors = (err as any)?.data?.errors as Array<{ field: string; message: string }> | undefined
+    const validationMessage = validationErrors?.length
+      ? validationErrors.map(e => `${e.field}: ${e.message}`).join('\n')
+      : undefined
+
     toast.add({
       title: 'Failed to create server',
-      description: err instanceof Error ? err.message : 'An error occurred',
+      description: validationMessage || (err instanceof Error ? err.message : 'An error occurred'),
       color: 'error',
     })
   } finally {

@@ -30,9 +30,34 @@ const canCreateAllocation = computed(() => {
 })
 
 const isCreatingAllocation = ref(false)
+const settingPrimaryId = ref<string | null>(null)
 
 function formatIp(allocation: ServerAllocation): string {
   return allocation.ipAlias || allocation.ip
+}
+
+async function setPrimaryAllocation(allocation: ServerAllocation) {
+  settingPrimaryId.value = allocation.id
+  try {
+    await $fetch(`/api/client/servers/${serverId.value}/network/allocations/${allocation.id}/primary`, {
+      method: 'POST',
+    })
+    toast.add({
+      title: t('server.network.primaryUpdated'),
+      description: t('server.network.primaryUpdatedDescription', { ip: formatIp(allocation), port: allocation.port }),
+      color: 'success',
+    })
+    await refresh()
+  } catch (err) {
+    const error = err as { data?: { message?: string } }
+    toast.add({
+      title: t('common.error'),
+      description: error.data?.message || t('server.network.failedToSetPrimary'),
+      color: 'error',
+    })
+  } finally {
+    settingPrimaryId.value = null
+  }
 }
 
 async function createAllocation() {
@@ -161,7 +186,8 @@ async function createAllocation() {
                 <div class="grid grid-cols-12 bg-muted/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <span class="col-span-4">{{ t('server.network.ip') }}</span>
                   <span class="col-span-2">{{ t('server.network.port') }}</span>
-                  <span class="col-span-6">{{ t('common.notes') }}</span>
+                  <span class="col-span-3">{{ t('common.notes') }}</span>
+                  <span class="col-span-3 text-right">{{ t('common.actions') }}</span>
                 </div>
                 <div class="divide-y divide-default">
                   <div
@@ -171,7 +197,20 @@ async function createAllocation() {
                   >
                     <span class="col-span-4 font-medium">{{ formatIp(allocation) }}</span>
                     <span class="col-span-2 text-muted-foreground">{{ allocation.port }}</span>
-                    <span class="col-span-6 text-xs text-muted-foreground">{{ allocation.notes || t('common.na') }}</span>
+                    <span class="col-span-3 text-xs text-muted-foreground">{{ allocation.notes || t('common.na') }}</span>
+                    <div class="col-span-3 flex justify-end">
+                      <UButton
+                        size="xs"
+                        variant="subtle"
+                        color="primary"
+                        icon="i-lucide-arrow-up-to-line"
+                        :loading="settingPrimaryId === allocation.id"
+                        :disabled="settingPrimaryId !== null"
+                        @click="setPrimaryAllocation(allocation)"
+                      >
+                        {{ t('server.network.makePrimary') }}
+                      </UButton>
+                    </div>
                   </div>
                 </div>
               </div>

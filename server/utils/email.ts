@@ -74,7 +74,9 @@ export async function initializeEmailService(config?: EmailConfig): Promise<void
 
   if (!emailConfig) {
     transporter = null
-    console.warn('Email service configuration is incomplete; transport not initialized')
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('Email service configuration is incomplete; transport not initialized')
+    }
     return
   }
 
