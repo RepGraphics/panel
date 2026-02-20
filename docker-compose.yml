@@ -1,19 +1,4 @@
 services:
-  migrator:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: xyra-migrator
-    env_file:
-      - .env
-    command: ["npx", "drizzle-kit", "push", "--force"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - backend
-    restart: on-failure
-
   app:
     build:
       context: .
@@ -26,8 +11,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrator:
-        condition: service_completed_successfully
     networks:
       - frontend
       - backend

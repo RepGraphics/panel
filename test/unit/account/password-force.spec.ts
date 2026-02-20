@@ -114,21 +114,16 @@ function createDb(selectResult: SelectRow | undefined, deletedChanges = 1) {
   const selectBuilder = {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
-    get: vi.fn(() => selectResult),
+    limit: vi.fn(() => selectResult ? [selectResult] : []),
   };
 
-  const updateRun = vi.fn();
   const updateBuilder = {
     set: vi.fn().mockReturnThis(),
-    where: vi.fn(() => ({
-      run: updateRun,
-    })),
+    where: vi.fn(() => Promise.resolve({ rowCount: 1 })),
   };
 
   const deleteBuilder = {
-    where: vi.fn(() => ({
-      run: vi.fn(() => ({ changes: deletedChanges })),
-    })),
+    where: vi.fn(() => Promise.resolve({ rowCount: deletedChanges })),
   };
 
   return {

@@ -21,7 +21,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN npm install pm2@latest -g
+RUN npm install pm2@5.4.3 -g
 
 ENV NODE_ENV=production
 
@@ -30,12 +30,6 @@ RUN addgroup --system --gid 1001 xyra && \
 
 COPY --from=builder --chown=xyra:xyra /app/.output ./.output
 COPY --from=builder --chown=xyra:xyra /app/ecosystem.config.cjs ./ecosystem.config.cjs
-
-# Needed for migrations (drizzle-kit push)
-COPY --from=builder --chown=xyra:xyra /app/node_modules ./node_modules
-COPY --from=builder --chown=xyra:xyra /app/package.json ./package.json
-COPY --from=builder --chown=xyra:xyra /app/drizzle.config.ts ./drizzle.config.ts
-COPY --from=builder --chown=xyra:xyra /app/server/database/schema.ts ./server/database/schema.ts
 
 EXPOSE 3000
 
