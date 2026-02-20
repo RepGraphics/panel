@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const { client } = await getWingsClientForServer(server.uuid)
-    
+
     if (isBinaryFile(file)) {
       throw createError({
         status: 400,
@@ -54,28 +54,22 @@ export default defineEventHandler(async (event) => {
         data: { isBinary: true },
       })
     }
-    
-    const directory = file.substring(0, file.lastIndexOf('/')) || '/'
-    const filename = file.substring(file.lastIndexOf('/') + 1)
-    const files = await client.listFiles(server.uuid as string, directory)
-    const fileInfo = files.find(f => f.name === filename)
-    
-    if (fileInfo && fileInfo.size > MAX_FILE_SIZE) {
+
+    const content = await client.getFileContents(server.uuid as string, file)
+
+    if (content.length > MAX_FILE_SIZE) {
       throw createError({
         status: 413,
         statusText: 'File too large to view',
-        data: { size: fileInfo.size, maxSize: MAX_FILE_SIZE },
+        data: { size: content.length, maxSize: MAX_FILE_SIZE },
       })
     }
-    
-    const content = await client.getFileContents(server.uuid as string, file)
 
     return {
       data: {
         content,
         file,
-        size: fileInfo?.size || content.length,
-        lastModified: fileInfo?.modified,
+        size: content.length,
       },
     }
   } catch (error) {

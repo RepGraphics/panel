@@ -39,9 +39,9 @@ export default defineEventHandler(async (event): Promise<ApiKeyResponse> => {
     const created = await auth.api.createApiKey({
       body: {
         name: body.memo || 'API Key',
+        userId: user.id,
         ...(expiresIn ? { expiresIn } : {}),
       },
-      request: toWebRequest(event),
     })
     const apiKeyId = created.id
 

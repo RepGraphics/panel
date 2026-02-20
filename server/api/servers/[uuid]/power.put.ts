@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
   await db.update(tables.servers)
     .set({
       status: body.state === 'running' ? null : body.state,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.id, server.id))
 

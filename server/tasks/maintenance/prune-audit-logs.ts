@@ -16,7 +16,7 @@ export default defineTask({
       const archiveBefore = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
 
       const logsToArchive = await db.query.auditEvents.findMany({
-        where: (events, { lt }) => lt(events.occurredAt, archiveBefore)
+        where: (events, { lt }) => lt(events.occurredAt, archiveBefore.toISOString())
       })
 
       debugLog(`[${now.toISOString()}] Found ${logsToArchive.length} audit logs to archive`)

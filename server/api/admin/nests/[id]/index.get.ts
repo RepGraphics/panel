@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
     .select()
     .from(tables.nests)
     .where(eq(tables.nests.id, nestId))
+    .limit(1)
 
   if (!nest) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Nest not found' })

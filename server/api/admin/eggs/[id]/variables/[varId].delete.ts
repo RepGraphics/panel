@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
     .select()
     .from(tables.eggVariables)
     .where(eq(tables.eggVariables.id, varId))
+    .limit(1)
 
   if (!existing || existing.eggId !== eggId) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Variable not found' })

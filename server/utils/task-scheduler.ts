@@ -235,9 +235,9 @@ export class TaskScheduler {
       await this.db
         .update(tables.serverSchedules)
         .set({
-          lastRunAt: executedAt,
-          nextRunAt: nextRun,
-          updatedAt: new Date(),
+          lastRunAt: executedAt.toISOString(),
+          nextRunAt: nextRun.toISOString(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.serverSchedules.id, scheduleId))
 
@@ -289,6 +289,7 @@ export class TaskScheduler {
   ): Promise<ScheduleInfo> {
     const scheduleId = randomUUID()
     const now = new Date()
+    const nowIso = now.toISOString()
     const nextRun = this.parseNextRun(cron)
 
     await this.db.insert(tables.serverSchedules).values({
@@ -297,11 +298,11 @@ export class TaskScheduler {
       name,
       cron,
       action: 'task',
-      nextRunAt: nextRun,
+      nextRunAt: nextRun.toISOString(),
       lastRunAt: null,
       enabled: true,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     })
 
     const taskRecords = tasks.map((task, index) => ({
@@ -313,8 +314,8 @@ export class TaskScheduler {
       timeOffset: task.timeOffset || 0,
       continueOnFailure: task.continueOnFailure || false,
       isQueued: false,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     }))
 
     for (const taskRecord of taskRecords) {
@@ -345,7 +346,7 @@ export class TaskScheduler {
       name,
       cron,
       enabled: true,
-      nextRunAt: nextRun,
+      nextRunAt: nextRun.toISOString(),
       lastRunAt: undefined,
       tasks: taskRecords.map(t => ({
         id: t.id,
@@ -356,8 +357,8 @@ export class TaskScheduler {
         continueOnFailure: t.continueOnFailure,
         isQueued: t.isQueued,
       })),
-      createdAt: now,
-      updatedAt: now,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     }
   }
 
@@ -473,7 +474,7 @@ export class TaskScheduler {
       .update(tables.serverSchedules)
       .set({
         enabled,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverSchedules.id, scheduleId))
 

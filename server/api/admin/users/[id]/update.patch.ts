@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const db = useDrizzle()
-    const now = new Date()
+    const now = new Date().toISOString()
 
     const userRecordResult = await db
       .select({

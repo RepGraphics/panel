@@ -38,7 +38,7 @@ export default defineEventHandler(async (event: H3Event) => {
     await db.update(tables.servers)
       .set({
         status: 'archived',
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.id, server.id))
   }

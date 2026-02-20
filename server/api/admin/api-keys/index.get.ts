@@ -37,9 +37,9 @@ export default defineEventHandler(async (event) => {
     id: key.id,
     identifier: key.identifier || key.start || key.id,
     memo: key.memo || key.name || null,
-    lastUsedAt: key.lastUsedAt?.toISOString() || null,
-    expiresAt: key.expiresAt?.toISOString() || null,
-    createdAt: key.createdAt.toISOString(),
+    lastUsedAt: key.lastUsedAt || null,
+    expiresAt: key.expiresAt || null,
+    createdAt: key.createdAt,
   }))
 
   await recordAuditEventFromRequest(event, {

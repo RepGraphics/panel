@@ -171,13 +171,10 @@ async function rotatePassword(databaseId: string) {
       </div>
     </div>
 
-    <UModal v-model:open="showCreateModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-lg font-semibold">Create Database</h3>
-        </template>
-
+    <UModal v-model:open="showCreateModal" title="Create Database" :ui="{ footer: 'justify-end' }">
+      <template #body>
         <UForm
+          id="create-database-form"
           :schema="createSchema"
           :state="form"
           class="space-y-4"
@@ -198,18 +195,16 @@ async function rotatePassword(databaseId: string) {
             </template>
           </UFormField>
         </UForm>
+      </template>
 
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" :disabled="isSubmitting" @click="showCreateModal = false">
-              Cancel
-            </UButton>
-            <UButton type="submit" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
-              Create Database
-            </UButton>
-          </div>
-        </template>
-      </UCard>
+      <template #footer>
+        <UButton variant="ghost" :disabled="isSubmitting" @click="showCreateModal = false">
+          Cancel
+        </UButton>
+        <UButton type="submit" form="create-database-form" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
+          Create Database
+        </UButton>
+      </template>
     </UModal>
   </div>
 </template>

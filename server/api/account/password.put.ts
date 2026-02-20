@@ -29,8 +29,12 @@ export default defineEventHandler(async (event) => {
       body: {
         currentPassword: body.currentPassword,
         newPassword: body.newPassword,
-        revokeOtherSessions: true,
+        revokeOtherSessions: false,
       },
+      headers: normalizeHeadersForAuth(event.node.req.headers),
+    })
+
+    await auth.api.revokeSessions({
       headers: normalizeHeadersForAuth(event.node.req.headers),
     })
 
@@ -45,23 +49,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    let signedOut = false
-    const cookies = parseCookies(event)
-    const currentToken = cookies['better-auth.session_token']
-
-    if (currentToken) {
-      await auth.api.revokeSession({
-        body: { token: currentToken },
-        headers: normalizeHeadersForAuth(event.node.req.headers),
-      })
-      signedOut = true
-    }
-
     return {
       data: {
         success: true,
-        revokedSessions: signedOut ? 1 : 0,
-        signedOut,
+        revokedSessions: 1,
+        signedOut: true,
       },
     }
   }
@@ -69,12 +61,15 @@ export default defineEventHandler(async (event) => {
     if (error instanceof APIError) {
       throw createError({
         status: Number(error.status) || 400,
-        statusText: error.message || 'Failed to change password',
+        statusText: 'Failed to change password',
+        message: error.message || 'Failed to change password',
       })
     }
+    const msg = error instanceof Error ? error.message : String(error)
     throw createError({
       status: 400,
       statusText: 'Failed to change password',
+      message: msg,
     })
   }
 })

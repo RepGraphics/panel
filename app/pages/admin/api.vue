@@ -107,17 +107,17 @@ async function handleCreate() {
   try {
     const payload: CreateApiKeyPayload = {
       memo: form.memo || undefined,
-      expiresAt: form.expiresAt || undefined,
+      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined,
       allowedIps: form.allowedIps ? form.allowedIps.split(',').map(ip => ip.trim()).filter(Boolean) : undefined,
       permissions: form.permissions,
     }
 
-    const result = await $fetch<ApiKeyWithToken>('/api/admin/api-keys', {
+    const result = await $fetch<{ data: ApiKeyWithToken }>('/api/admin/api-keys', {
       method: 'POST',
       body: payload,
     })
 
-    createdKey.value = result
+    createdKey.value = result.data
     showCreateModal.value = false
     showKeyModal.value = true
     resetForm()
@@ -166,13 +166,32 @@ async function handleDelete() {
   }
 }
 
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text)
-  toast.add({
-    title: t('common.copied'),
-    description: t('common.copiedToClipboard'),
-    color: 'success',
-  })
+async function copyToClipboard(text: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const el = document.createElement('textarea')
+      el.value = text
+      el.style.position = 'fixed'
+      el.style.opacity = '0'
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    toast.add({
+      title: t('common.copied'),
+      description: t('common.copiedToClipboard'),
+      color: 'success',
+    })
+  } catch {
+    toast.add({
+      title: t('common.failedToCopy'),
+      description: text,
+      color: 'error',
+    })
+  }
 }
 
 </script>

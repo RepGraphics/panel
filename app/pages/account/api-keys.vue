@@ -58,11 +58,11 @@ interface AccountApiKeysResponse {
   pagination?: { page: number; perPage: number; total: number; totalPages: number }
 }
 
-const { data: generalSettings } = await useFetch<{ paginationLimit: number }>('/api/admin/settings/general', {
-  key: 'admin-settings-general',
+const { data: paginationSettings } = await useFetch<{ paginationLimit: number }>('/api/settings/pagination', {
+  key: 'settings-pagination',
   default: () => ({ paginationLimit: 25 }),
 })
-const itemsPerPage = computed(() => generalSettings.value?.paginationLimit ?? 25)
+const itemsPerPage = computed(() => paginationSettings.value?.paginationLimit ?? 25)
 
 const {
   data: keysData,

@@ -6,7 +6,7 @@ import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { randomUUID } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
 import { provisionServerOnWings } from '#server/utils/server-provisioning'
-import { sendServerCreatedEmail } from '#server/utils/email'
+import { sendServerCreatedEmail, isEmailConfigured } from '#server/utils/email'
 import { createAdminServerSchema } from '#shared/schema/admin/server'
 
 export default defineEventHandler(async (event) => {
@@ -21,19 +21,19 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDrizzle()
-  const now = new Date()
+  const now = new Date().toISOString()
 
-  const [egg] = await db.select().from(tables.eggs).where(eq(tables.eggs.id, body.eggId))
+  const [egg] = await db.select().from(tables.eggs).where(eq(tables.eggs.id, body.eggId)).limit(1)
   if (!egg) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Egg not found' })
   }
 
-  const [node] = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, body.nodeId))
+  const [node] = await db.select().from(tables.wingsNodes).where(eq(tables.wingsNodes.id, body.nodeId)).limit(1)
   if (!node) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Node not found' })
   }
 
-  const [owner] = await db.select().from(tables.users).where(eq(tables.users.id, body.ownerId))
+  const [owner] = await db.select().from(tables.users).where(eq(tables.users.id, body.ownerId)).limit(1)
   if (!owner) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Owner not found' })
   }
@@ -47,6 +47,7 @@ export default defineEventHandler(async (event) => {
   })
     .from(tables.serverAllocations)
     .where(eq(tables.serverAllocations.id, body.allocationId))
+    .limit(1)
 
   if (!allocation) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Allocation not found' })
@@ -101,7 +102,7 @@ export default defineEventHandler(async (event) => {
     oomDisabled: body.oomDisabled ?? true,
     databaseLimit: body.databases ?? null,
     allocationLimit: body.allocations ?? null,
-    backupLimit: body.backups ?? 3,
+    backupLimit: body.backups ?? 0,
     createdAt: now,
     updatedAt: now,
   }
@@ -169,7 +170,7 @@ export default defineEventHandler(async (event) => {
       
       console.log('[Server Creation] Successfully provisioned server:', serverUuid)
       
-      if (owner?.email) {
+      if (owner?.email && await isEmailConfigured()) {
         try {
           await sendServerCreatedEmail(owner.email, newServer.name, serverUuid)
           console.log('[Server Creation] Sent creation email for server:', serverUuid)
@@ -194,7 +195,7 @@ export default defineEventHandler(async (event) => {
         await db.update(tables.servers)
           .set({
             status: 'install_failed',
-            updatedAt: new Date() as Date,
+            updatedAt: new Date().toISOString() as string,
           })
           .where(eq(tables.servers.id, serverId))
         
@@ -226,7 +227,7 @@ export default defineEventHandler(async (event) => {
       identifier: newServer.identifier,
       name: newServer.name,
       status: 'installing',
-      createdAt: newServer.createdAt.toISOString(),
+      createdAt: newServer.createdAt,
     },
   }
 })

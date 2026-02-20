@@ -48,8 +48,8 @@ export default defineEventHandler(async (event) => {
       author: newNest.author,
       name: newNest.name,
       description: newNest.description,
-      createdAt: newNest.createdAt.toISOString(),
-      updatedAt: newNest.updatedAt.toISOString(),
+      createdAt: newNest.createdAt,
+      updatedAt: newNest.updatedAt,
     },
   }
 })

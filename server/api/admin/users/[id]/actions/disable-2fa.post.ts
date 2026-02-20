@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
         useTotp: false,
         totpSecret: null,
         totpAuthenticatedAt: null,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.users.id, userId))
 

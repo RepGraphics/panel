@@ -115,7 +115,7 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
       backupLimit: event.data.backupLimit ?? null,
     }
 
-    await $fetch(`/api/admin/servers/${props.server.id}`, {
+    await $fetch(`/api/admin/servers/${props.server.id}/build`, {
       method: 'PATCH',
       body: payload,
     })

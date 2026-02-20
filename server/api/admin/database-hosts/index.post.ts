@@ -53,8 +53,8 @@ export default defineEventHandler(async (event) => {
       port: newHost.port,
       nodeId: newHost.nodeId,
       maxDatabases: newHost.maxDatabases,
-      createdAt: newHost.createdAt.toISOString(),
-      updatedAt: newHost.updatedAt.toISOString(),
+      createdAt: newHost.createdAt,
+      updatedAt: newHost.updatedAt,
     },
   }
 })

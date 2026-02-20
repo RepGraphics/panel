@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
 
   const data = rows.map((row) => ({
     id: row.id,
-    occurredAt: row.occurredAt.toISOString(),
+    occurredAt: row.occurredAt,
     action: row.action,
     target: row.targetId ? `${row.targetType}#${row.targetId}` : row.targetType,
     actor: row.actor,

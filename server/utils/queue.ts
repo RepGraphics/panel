@@ -12,7 +12,7 @@ class SimpleQueue {
       type,
       data,
       status: 'pending',
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     }
 
     this.jobs.set(jobId, job)

@@ -22,15 +22,11 @@ const createForm = reactive({
   publicKey: '',
 })
 
-const { data: generalSettings } = await useFetch('/api/admin/settings/general', {
-  key: 'account-settings-general',
-  default: () => ({
-    data: {
-      paginationLimit: 25,
-    },
-  }),
+const { data: paginationSettings } = await useFetch<{ paginationLimit: number }>('/api/settings/pagination', {
+  key: 'settings-pagination',
+  default: () => ({ paginationLimit: 25 }),
 })
-const itemsPerPage = computed(() => ((generalSettings.value as { data: { paginationLimit: number } } | null)?.data.paginationLimit ?? 25))
+const itemsPerPage = computed(() => paginationSettings.value?.paginationLimit ?? 25)
 
 type SshKey = {
   id: string

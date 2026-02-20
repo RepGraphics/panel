@@ -2,7 +2,8 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { getWingsClientForServer } from '#server/utils/wings-client'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { decompressFileSchema } from '#shared/schema/server/operations'
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -22,15 +23,7 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.files.write'],
   })
 
-  const body = await readBody(event)
-  const { root, file } = body
-
-  if (!file) {
-    throw createError({
-      status: 400,
-      message: 'Archive file is required',
-    })
-  }
+  const { root, file } = await readValidatedBodyWithLimit(event, decompressFileSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
     const { client } = await getWingsClientForServer(server.uuid)

@@ -67,8 +67,8 @@ export default defineEventHandler(async (event) => {
       identifier: key.id,
       description: perms?.memo || key.name || null,
       allowed_ips: allowedIps,
-      last_used_at: perms?.lastUsedAt?.toISOString() || null,
-      created_at: key.createdAt.toISOString(),
+      last_used_at: perms?.lastUsedAt || null,
+      created_at: key.createdAt,
     }
   })
 

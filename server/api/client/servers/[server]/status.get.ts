@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
         isOnline: status.isOnline,
         isSuspended: status.isSuspended,
         utilization: status.utilization,
-        lastChecked: status.lastChecked.toISOString(),
+        lastChecked: status.lastChecked,
         error: status.error,
       },
     }

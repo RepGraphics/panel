@@ -1,15 +1,23 @@
 import { APIError } from 'better-auth/api'
 import { useDrizzle, tables, eq } from '#server/utils/drizzle'
-import type { UpdateUserRequest } from '#shared/types/user'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
-import { requireAdmin } from '#server/utils/security'
+import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { auth, normalizeHeadersForAuth } from '#server/utils/auth'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
+import { z } from 'zod'
 
-type PatchUserBody = Partial<UpdateUserRequest> & {
-  role?: 'admin' | 'user'
-}
+const patchUserSchema = z.object({
+  username: z.string().trim().min(1).max(255).optional(),
+  email: z.string().trim().email().optional(),
+  password: z.string().min(8).optional(),
+  name: z.string().trim().max(511).optional(),
+  nameFirst: z.string().trim().max(255).optional(),
+  nameLast: z.string().trim().max(255).optional(),
+  language: z.string().trim().max(10).optional(),
+  rootAdmin: z.boolean().optional(),
+  role: z.enum(['admin', 'user']).optional(),
+})
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -20,14 +28,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ status: 400, statusText: 'Bad Request', message: 'User ID is required' })
   }
 
-  const body = await readBody<PatchUserBody>(event)
+  const rawBody = await readValidatedBodyWithLimit(event, patchUserSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
-    const updateData: Record<string, unknown> = {}
-    
-    if (body.nameFirst !== undefined || body.nameLast !== undefined) {
-      const name = [body.nameFirst, body.nameLast].filter(Boolean).join(' ') || undefined
-      if (name) updateData.name = name
+    let body = rawBody
+    if (body.name !== undefined && body.nameFirst === undefined && body.nameLast === undefined) {
+      const parts = body.name.trim().split(/\s+/)
+      body = { ...body, nameFirst: parts[0] || '', nameLast: parts.slice(1).join(' ') || '' }
     }
 
     const db = useDrizzle()
@@ -46,7 +53,7 @@ export default defineEventHandler(async (event) => {
           .set({
             email: body.email,
             emailVerified: null,
-            updatedAt: new Date(),
+            updatedAt: new Date().toISOString(),
           })
           .where(eq(tables.users.id, userId))
       }
@@ -61,7 +68,7 @@ export default defineEventHandler(async (event) => {
       await db.update(tables.users)
         .set({
           role: body.role,
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.users.id, userId))
     }
@@ -78,19 +85,21 @@ export default defineEventHandler(async (event) => {
       await db.update(tables.users)
         .set({
           passwordResetRequired: false,
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.users.id, userId))
     }
 
-    if (body.username !== undefined || body.rootAdmin !== undefined) {
+    if (body.username !== undefined || body.rootAdmin !== undefined || body.nameFirst !== undefined || body.nameLast !== undefined) {
       const updates: Partial<typeof tables.users.$inferInsert> = {
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       }
-      
+
       if (body.username !== undefined) updates.username = body.username
       if (body.rootAdmin !== undefined) updates.rootAdmin = body.rootAdmin
-      
+      if (body.nameFirst !== undefined) updates.nameFirst = body.nameFirst || null
+      if (body.nameLast !== undefined) updates.nameLast = body.nameLast || null
+
       await db.update(tables.users)
         .set(updates)
         .where(eq(tables.users.id, userId))
@@ -134,7 +143,7 @@ export default defineEventHandler(async (event) => {
         email: updatedUser.email,
         name: [updatedUser.nameFirst, updatedUser.nameLast].filter(Boolean).join(' ') || null,
         role: updatedUser.role || 'user',
-        createdAt: updatedUser.createdAt?.toISOString() || new Date().toISOString(),
+        createdAt: updatedUser.createdAt || new Date().toISOString(),
       },
     }
   }

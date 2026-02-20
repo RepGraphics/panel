@@ -29,13 +29,14 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const backup = await db
+  const [backup] = await db
     .select()
     .from(tables.serverBackups)
     .where(and(
       eq(tables.serverBackups.id, backupId),
       eq(tables.serverBackups.serverId, server.id),
     ))
+    .limit(1)
 
   if (!backup) {
     throw createError({ status: 404, statusText: 'Backup not found' })

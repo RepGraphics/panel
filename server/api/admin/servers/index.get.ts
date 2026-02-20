@@ -104,8 +104,8 @@ export default defineEventHandler(async (event) => {
               name: nest.name,
             }
           : null,
-        createdAt: server.createdAt instanceof Date ? server.createdAt.toISOString() : new Date(server.createdAt).toISOString(),
-        updatedAt: server.updatedAt instanceof Date ? server.updatedAt.toISOString() : new Date(server.updatedAt).toISOString(),
+        createdAt: server.createdAt instanceof Date ? server.createdAt : new Date(server.createdAt).toISOString(),
+        updatedAt: server.updatedAt instanceof Date ? server.updatedAt : new Date(server.updatedAt).toISOString(),
       })),
       meta: {
         pagination: {

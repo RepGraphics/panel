@@ -17,10 +17,11 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const existing = await db
+  const [existing] = await db
     .select()
     .from(tables.mounts)
     .where(eq(tables.mounts.id, mountId))
+    .limit(1)
 
   if (!existing) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Mount not found' })

@@ -97,7 +97,7 @@ export default defineEventHandler(async (event) => {
     await db.update(tables.users)
       .set({
         passwordResetRequired: true,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.users.id, userId))
 

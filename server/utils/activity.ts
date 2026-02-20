@@ -7,7 +7,7 @@ export async function logActivity(options: LogActivityOptions): Promise<void> {
 
   try {
     const db = useDrizzle()
-    const now = new Date()
+    const now = new Date().toISOString()
 
     await db.insert(tables.auditEvents).values({
       id: randomUUID(),

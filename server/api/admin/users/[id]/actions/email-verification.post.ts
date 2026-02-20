@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const user = db
+  const [user] = await db
     .select({
       id: tables.users.id,
       email: tables.users.email,
@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
     })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
+    .limit(1)
 
   if (!user) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'User not found' })
@@ -40,11 +41,11 @@ export default defineEventHandler(async (event) => {
   try {
     switch (body.action) {
       case 'mark-verified': {
-        const now = new Date()
+        const nowIso = new Date().toISOString()
         await db.update(tables.users)
           .set({
-            emailVerified: now,
-            updatedAt: now,
+            emailVerified: nowIso,
+            updatedAt: nowIso,
           })
           .where(eq(tables.users.id, userId))
         break
@@ -53,7 +54,7 @@ export default defineEventHandler(async (event) => {
         await db.update(tables.users)
           .set({
             emailVerified: null,
-            updatedAt: new Date(),
+            updatedAt: new Date().toISOString(),
           })
           .where(eq(tables.users.id, userId))
         break

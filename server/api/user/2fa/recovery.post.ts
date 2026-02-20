@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const userId = user.id
   const db = useDrizzle()
 
-  const recoveryTokens = db
+  const recoveryTokens = await db
     .select()
     .from(tables.recoveryTokens)
     .where(eq(tables.recoveryTokens.userId, userId))

@@ -39,7 +39,7 @@ const form = ref<Partial<CreateServerPayload>>({
   oomDisabled: false,
   databases: undefined,
   allocations: undefined,
-  backups: 3,
+  backups: 0,
 })
 
 const { data: nestsData } = await useAsyncData(

@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     .set({
       name,
       description: description || server.description,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.id, server.id))
 

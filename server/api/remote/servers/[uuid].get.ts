@@ -38,12 +38,11 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const db = useDrizzle()
 
-  const serverRows = await db
+  const [server] = await db
     .select()
     .from(tables.servers)
     .where(eq(tables.servers.uuid, uuid))
-
-  const server = serverRows[0]
+    .limit(1)
 
   if (!server) {
     throw createError({ status: 404, statusText: 'Server not found' })

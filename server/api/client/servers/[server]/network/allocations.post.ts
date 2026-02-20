@@ -82,7 +82,7 @@ export default defineEventHandler(async (event) => {
   await db.update(tables.serverAllocations)
     .set({
       serverId: server.id,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.serverAllocations.id, allocation.id))
 

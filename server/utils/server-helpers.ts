@@ -46,7 +46,7 @@ export async function getServerWithAccess(identifier: string, session: Awaited<R
     })
   }
 
-  if (server.ownerId !== user.id) {
+  if (server.ownerId !== user.id && user.role !== 'admin') {
 
     const subusers = await db.select()
       .from(tables.serverSubusers)

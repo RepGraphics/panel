@@ -38,12 +38,18 @@ const configForm = reactive({
   dockerImage: '',
   startup: '',
   configStop: '',
+  scriptContainer: '',
+  scriptEntry: '',
+  scriptInstall: '',
 })
 
 watch(egg, (value) => {
   configForm.dockerImage = value?.dockerImage ?? ''
   configForm.startup = value?.startup ?? ''
   configForm.configStop = value?.configStop ?? ''
+  configForm.scriptContainer = value?.scriptContainer ?? ''
+  configForm.scriptEntry = value?.scriptEntry ?? ''
+  configForm.scriptInstall = value?.scriptInstall ?? ''
 }, { immediate: true })
 
 const variableForm = ref<CreateEggVariablePayload>({
@@ -144,6 +150,9 @@ async function handleSaveConfig() {
         dockerImage: configForm.dockerImage,
         startup: configForm.startup,
         configStop: configForm.configStop || null,
+        scriptContainer: configForm.scriptContainer || null,
+        scriptEntry: configForm.scriptEntry || null,
+        scriptInstall: configForm.scriptInstall || null,
       },
     })
 
@@ -344,31 +353,28 @@ async function handleExportEgg() {
               </div>
             </UCard>
 
-            <UCard v-if="egg.scriptInstall">
+            <UCard>
               <template #header>
                 <h2 class="text-lg font-semibold">{{ t('admin.eggs.installScript') }}</h2>
               </template>
 
               <div class="space-y-4">
-                <div v-if="egg.scriptContainer">
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{
-                    t('admin.eggs.container')
-                    }}</label>
-                  <p class="mt-1 font-mono text-sm">{{ egg.scriptContainer }}</p>
-                </div>
+                <UFormField :label="t('admin.eggs.container')" name="scriptContainer">
+                  <UInput v-model="configForm.scriptContainer" placeholder="ghcr.io/ptero-eggs/installers:alpine" class="w-full font-mono" :disabled="isSavingConfig" />
+                </UFormField>
 
-                <div v-if="egg.scriptEntry">
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{
-                    t('admin.eggs.entrypoint')
-                    }}</label>
-                  <p class="mt-1 font-mono text-sm">{{ egg.scriptEntry }}</p>
-                </div>
+                <UFormField :label="t('admin.eggs.entrypoint')" name="scriptEntry">
+                  <UInput v-model="configForm.scriptEntry" placeholder="ash" class="w-full font-mono" :disabled="isSavingConfig" />
+                </UFormField>
 
-                <div>
-                  <label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{
-                    t('admin.eggs.script')
-                    }}</label>
-                  <pre class="mt-1 max-h-96 overflow-auto rounded bg-muted/40 p-3 text-xs">{{ egg.scriptInstall }}</pre>
+                <UFormField :label="t('admin.eggs.script')" name="scriptInstall">
+                  <UTextarea v-model="configForm.scriptInstall" :rows="20" class="w-full font-mono text-xs" :disabled="isSavingConfig" />
+                </UFormField>
+
+                <div class="flex justify-end">
+                  <UButton color="primary" variant="subtle" :loading="isSavingConfig" :disabled="isSavingConfig" @click="handleSaveConfig">
+                    {{ t('common.save') }}
+                  </UButton>
                 </div>
               </div>
             </UCard>

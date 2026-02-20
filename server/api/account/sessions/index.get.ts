@@ -1,4 +1,4 @@
-import type { UserSessionSummary, AccountSessionsResponse, AuthContext } from '#shared/types/auth'
+import type { UserSessionSummary, AccountSessionsResponse, AuthContext, AccountSessionRow } from '#shared/types/auth'
 import { requireAccountUser } from '#server/utils/security'
 import { parseUserAgent } from '#server/utils/user-agent'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
@@ -55,8 +55,9 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
     }
   }
 
-  const cookies = parseCookies(event)
-  const currentToken = cookies['better-auth.session_token']
+  const currentToken = (middlewareAuth?.session as any)?.session?.token
+    ?? (accountContext.session as any)?.session?.token
+    ?? null
 
   const currentIp = getRequestIP(event) || null
   const currentUserAgent = getHeader(event, 'user-agent') || ''
@@ -68,7 +69,44 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
     currentFingerprint = null
   }
 
-  const metadataUpserts: SessionMetadataUpsertInput[] = []
+  const nowIso = new Date().toISOString()
+
+  if (metadataAvailable && currentToken && currentUserAgent) {
+    const currentRow = rows.find(r => r.sessionToken === currentToken)
+    if (currentRow) {
+      const parsedInfo = parseUserAgent(currentUserAgent)
+      const existingFirstSeen = currentRow.firstSeenAt
+        ? (currentRow.firstSeenAt instanceof Date ? currentRow.firstSeenAt.toISOString() : currentRow.firstSeenAt as string)
+        : nowIso
+      await db.insert(tables.sessionMetadata).values({
+        sessionToken: currentToken,
+        ipAddress: currentIp || currentRow.metadataIp || null,
+        userAgent: currentUserAgent,
+        deviceName: parsedInfo.device || null,
+        browserName: parsedInfo.browser || null,
+        osName: parsedInfo.os || null,
+        firstSeenAt: existingFirstSeen,
+        lastSeenAt: nowIso,
+      }).onConflictDoUpdate({
+        target: tables.sessionMetadata.sessionToken,
+        set: {
+          ipAddress: currentIp || currentRow.metadataIp || null,
+          userAgent: currentUserAgent,
+          deviceName: parsedInfo.device || null,
+          browserName: parsedInfo.browser || null,
+          osName: parsedInfo.os || null,
+          lastSeenAt: nowIso,
+        },
+      })
+      currentRow.metadataIp = currentIp || currentRow.metadataIp || null
+      currentRow.metadataUserAgent = currentUserAgent
+      currentRow.metadataBrowser = parsedInfo.browser || ''
+      currentRow.metadataOs = parsedInfo.os || ''
+      currentRow.metadataDevice = parsedInfo.device || ''
+      currentRow.firstSeenAt = existingFirstSeen as any
+      currentRow.lastSeenAt = nowIso as any
+    }
+  }
 
   const data: UserSessionSummary[] = rows.map((row) => {
     // Drizzle's mode: 'timestamp' should return a Date object
@@ -80,7 +118,7 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
     }
     else if (typeof row.expires === 'number') {
       const timestampStr = String(row.expires)
-      
+
       if (timestampStr.length <= 10) {
         expiresDate = new Date(row.expires * 1000)
       }
@@ -134,29 +172,6 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
     if (!device)
       device = parsedInfo.device
 
-    if (
-      isCurrent &&
-      metadataAvailable &&
-      userAgent &&
-      (
-        !row.metadataUserAgent ||
-        !row.metadataIp ||
-        !row.metadataBrowser ||
-        !row.metadataOs ||
-        !row.metadataDevice
-      )
-    ) {
-      metadataUpserts.push({
-        sessionToken: row.sessionToken,
-        ipAddress,
-        userAgent,
-        deviceName: device || null,
-        browserName: browser || null,
-        osName: os || null,
-        firstSeenAt: firstSeenDate,
-      })
-    }
-
     return {
       token: row.sessionToken,
       issuedAt: new Date(expiresDate.getTime() - (30 * 24 * 60 * 60 * 1000)).toISOString(),
@@ -173,32 +188,6 @@ export default defineEventHandler(async (event): Promise<AccountSessionsResponse
       fingerprint: isCurrent ? currentFingerprint : null,
     }
   })
-
-  if (metadataAvailable && metadataUpserts.length) {
-    const now = new Date()
-    for (const entry of metadataUpserts) {
-      await db.insert(tables.sessionMetadata).values({
-        sessionToken: entry.sessionToken,
-        ipAddress: entry.ipAddress,
-        userAgent: entry.userAgent,
-        deviceName: entry.deviceName,
-        browserName: entry.browserName,
-        osName: entry.osName,
-        firstSeenAt: entry.firstSeenAt ?? now,
-        lastSeenAt: now,
-      }).onConflictDoUpdate({
-        target: tables.sessionMetadata.sessionToken,
-        set: {
-          ipAddress: entry.ipAddress,
-          userAgent: entry.userAgent,
-          deviceName: entry.deviceName,
-          browserName: entry.browserName,
-          osName: entry.osName,
-          lastSeenAt: now,
-        },
-      })
-    }
-  }
 
   await recordAuditEventFromRequest(event, {
     actor: user.id,

@@ -35,7 +35,7 @@ async function fetchServerStatus(serverUuid: string): Promise<ServerStatus> {
     state: 'unknown',
     isOnline: false,
     isSuspended: server.suspended,
-    lastChecked: new Date(),
+    lastChecked: new Date().toISOString(),
   }
 
   try {
@@ -100,7 +100,7 @@ export async function updateServerStatus(serverUuid: string): Promise<void> {
     .set({
       status: status.state,
       suspended: status.isSuspended,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.uuid, serverUuid))
 }
@@ -130,7 +130,7 @@ export async function getMultipleServerStatuses(serverUuids: string[]): Promise<
       state: 'error',
       isOnline: false,
       isSuspended: false,
-      lastChecked: new Date(),
+      lastChecked: new Date().toISOString(),
       error: message,
     }
   })

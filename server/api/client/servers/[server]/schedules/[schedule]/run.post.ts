@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   })
 
   const db = useDrizzle()
-  const schedule = await db
+  const [schedule] = await db
     .select()
     .from(tables.serverSchedules)
     .where(
@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.serverSchedules.serverId, server.id)
       )
     )
+    .limit(1)
 
   if (!schedule) {
     throw createError({

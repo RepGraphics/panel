@@ -72,7 +72,7 @@ export class ServerManager {
         .update(tables.servers)
         .set({
           status: 'install_failed',
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.id, config.serverId))
 
@@ -96,7 +96,7 @@ export class ServerManager {
         .update(tables.servers)
         .set({
           status: 'deleting',
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.uuid, serverUuid))
 
@@ -124,7 +124,7 @@ export class ServerManager {
         .update(tables.servers)
         .set({
           status: 'deletion_failed',
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.uuid, serverUuid))
 
@@ -185,8 +185,8 @@ export class ServerManager {
         .update(tables.servers)
         .set({
           status: 'installed',
-          installedAt: new Date(),
-          updatedAt: new Date(),
+          installedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.uuid, serverUuid))
 
@@ -215,7 +215,7 @@ export class ServerManager {
         .update(tables.servers)
         .set({
           status: 'install_failed',
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.uuid, serverUuid))
 
@@ -244,7 +244,7 @@ export class ServerManager {
       .update(tables.servers)
       .set({
         suspended: true,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.uuid, serverUuid))
 
@@ -285,7 +285,7 @@ export class ServerManager {
       .update(tables.servers)
       .set({
         suspended: false,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.uuid, serverUuid))
 

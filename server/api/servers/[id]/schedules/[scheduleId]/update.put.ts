@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
   )
 
   const updateData: Record<string, unknown> = {
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   if (body.name !== undefined) updateData.name = body.name

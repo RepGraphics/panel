@@ -1,5 +1,5 @@
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { invalidateServerBackupsCache } from '#server/utils/backups'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
@@ -25,13 +25,17 @@ export default defineEventHandler(async (event) => {
   })
 
   const db = useDrizzle()
-  const backup = await db.select()
+  const [backup] = await db.select()
     .from(tables.serverBackups)
-    .where(eq(tables.serverBackups.uuid, backupUuid))
+    .where(
+      and(
+        eq(tables.serverBackups.uuid, backupUuid),
+        eq(tables.serverBackups.serverId, server.id)
+      )
+    )
     .limit(1)
-    .at(0)
 
-  if (!backup || backup.serverId !== server.id) {
+  if (!backup) {
     throw createError({
       status: 404,
       message: 'Backup not found',

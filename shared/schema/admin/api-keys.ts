@@ -9,7 +9,7 @@ export type AdminApiKeyPermissionAction = z.infer<typeof adminApiKeyPermissionAc
 export const createAdminApiKeySchema = z.object({
   memo: z.string().trim().max(500, 'Description too long').optional(),
   allowedIps: z.array(ipValidator).max(128).optional(),
-  expiresAt: z.string().datetime().optional(),
+  expiresAt: z.string().optional(),
   permissions: z.record(z.string(), adminApiKeyPermissionActionSchema.array()).optional(),
 })
 

@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
     .set({
       dockerImage: docker_image,
       image: docker_image, 
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.id, server.id))
 

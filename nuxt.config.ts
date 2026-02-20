@@ -215,6 +215,32 @@ vite: {
         },
       },
     },
+    '/api/admin/eggs/import': {
+      security: {
+        requestSizeLimiter: false,
+        xssValidator: false,
+      },
+    },
+    '/api/remote/**': {
+      security: {
+        xssValidator: false,
+      },
+    },
+    '/api/admin/eggs/**': {
+      security: {
+        xssValidator: false,
+      },
+    },
+    '/api/admin/servers/**': {
+      security: {
+        xssValidator: false,
+      },
+    },
+    '/api/client/servers/**': {
+      security: {
+        xssValidator: false,
+      },
+    },
   },
 
   pwa: {
@@ -490,8 +516,14 @@ icons: [
   nitro: {
     preset: 'node-server',
     externals: {
-  inline: ['drizzle-orm'],
-},
+      inline: ['drizzle-orm'],
+    },
+    serverAssets: [
+      {
+        baseName: 'migrations',
+        dir: './server/database/migrations',
+      },
+    ],
     errorHandler: './server/error.ts',
     experimental: {
       tasks: true, // NOTE: The panel will remain in a BETA STATE until Nitro tasks are stable. See https://github.com/nuxt/nitro/issues/1105
@@ -505,8 +537,13 @@ icons: [
       },
       {
         route: '/api/admin/servers/:id/startup',
+        method: 'get',
+        handler: './server/api/admin/servers/[id]/startup/index.get.ts',
+      },
+      {
+        route: '/api/admin/servers/:id/startup',
         method: 'patch',
-        handler: './server/api/admin/servers/[id]/startup.patch.ts',
+        handler: './server/api/admin/servers/[id]/startup/index.patch.ts',
       },
       {
         route: '/api/admin/servers/:id/actions',
@@ -532,6 +569,11 @@ icons: [
         route: '/api/admin/servers/:id/reinstall',
         method: 'post',
         handler: './server/api/admin/servers/[id]/reinstall.post.ts',
+      },
+      {
+        route: '/api/admin/servers/:id/change-egg',
+        method: 'post',
+        handler: './server/api/admin/servers/[id]/change-egg.post.ts',
       },
       {
         route: '/api/admin/servers/:id/sync',

@@ -15,7 +15,7 @@ export class TransferError extends Error {
 
 export async function initiateServerTransfer(serverId: string, targetNodeId: string, options: TransferOptions = {}): Promise<TransferResult> {
   const db = useDrizzle()
-  const now = new Date()
+  const now = new Date().toISOString()
 
   const serverRows = await db
     .select({
@@ -217,7 +217,7 @@ export async function initiateServerTransfer(serverId: string, targetNodeId: str
 
 async function resolveTargetAllocation(nodeId: string, requestedAllocationId?: string): Promise<string> {
   const db = useDrizzle()
-  const now = new Date()
+  const now = new Date().toISOString()
 
   if (requestedAllocationId) {
     const allocationRows = await db
@@ -262,7 +262,7 @@ async function rollbackTransfer(
   db: ReturnType<typeof useDrizzle>,
   context: { transferId: string; serverId: string; allocationIds: string[]; originalStatus: string | null },
 ): Promise<void> {
-  const rollbackTime = new Date()
+  const rollbackTime = new Date().toISOString()
 
   await db.transaction(async (tx) => {
     await tx.delete(tables.serverTransfers)

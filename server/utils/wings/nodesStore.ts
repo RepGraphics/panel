@@ -183,7 +183,7 @@ export async function ensureNodeHasToken(id: string): Promise<void> {
 
   if (!row.tokenSecret || row.tokenSecret.trim().length === 0 || !row.tokenIdentifier || row.tokenIdentifier.trim().length === 0) {
     const token = generateTokenParts()
-    const now = new Date()
+    const now = new Date().toISOString()
 
     await db.update(tables.wingsNodes)
       .set({
@@ -434,7 +434,7 @@ export async function updateWingsNode(id: string, input: UpdateWingsNodeInput): 
     uploadSize: input.uploadSize ?? existing.uploadSize,
     daemonBase: input.daemonBase !== undefined ? input.daemonBase.trim() || existing.daemonBase : existing.daemonBase,
     daemonSftp: input.daemonSftp ?? existing.daemonSftp,
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   await db.update(tables.wingsNodes).set(updated).where(eq(tables.wingsNodes.id, id))

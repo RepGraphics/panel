@@ -30,6 +30,7 @@ const profile = computed<SanitizedUser | null>(() => profileResponse.value?.data
 
 const transientError = ref<string | null>(null)
 const isSaving = ref(false)
+const pendingEmailChange = ref<string | null>(null)
 
 const schema = accountProfileFormSchema
 
@@ -45,7 +46,11 @@ function createFormState(user: SanitizedUser | null): ProfileFormSchema {
 const form = reactive<ProfileFormSchema>(createFormState(profile.value))
 
 watch(profile, (value) => {
-  Object.assign(form, createFormState(value))
+  const newState = createFormState(value)
+  if (pendingEmailChange.value) {
+    newState.email = pendingEmailChange.value
+  }
+  Object.assign(form, newState)
 }, { immediate: true })
 
 const normalizedForm = computed(() => ({
@@ -59,7 +64,8 @@ const hasChanges = computed(() => {
     return false
 
   return normalizedForm.value.username !== current.username
-    || normalizedForm.value.email !== current.email
+    || (normalizedForm.value.email !== current.email && !pendingEmailChange.value)
+    || (pendingEmailChange.value !== null && normalizedForm.value.email !== pendingEmailChange.value)
 })
 
 const loadError = computed(() => {
@@ -90,6 +96,7 @@ watch(() => status.value, (value, previous) => {
   else if (value === 'unauthenticated' && previous === 'authenticated') {
     profileResponse.value = undefined
     transientError.value = t('auth.signInToContinue')
+    pendingEmailChange.value = null
     Object.assign(form, createFormState(null))
   }
 }, { immediate: true })
@@ -112,25 +119,37 @@ async function handleSubmit(event: FormSubmitEvent<ProfileFormSchema>) {
 
   try {
     const payload = event.data
+    const emailChanged = payload.email !== undefined && payload.email !== profile.value?.email
 
-    await $fetch<AccountProfileResponse>('/api/account/profile', {
+    const result = await $fetch<AccountProfileResponse>('/api/account/profile', {
       method: 'PUT',
       body: payload,
     })
 
+    const emailAppliedImmediately = emailChanged && result?.data?.email === payload.email
+    const emailPendingVerification = emailChanged && !emailAppliedImmediately
+
+    if (emailPendingVerification) {
+      pendingEmailChange.value = payload.email
+    }
+
     await authStore.syncSession()
     await nextTick()
     await refreshProfile()
-    
-    if (profileResponse.value) {
-      Object.assign(form, createFormState(profileResponse.value.data))
-    }
 
-    toast.add({
-      title: t('account.profile.profileUpdated'),
-      description: t('account.profile.accountInfoUpdated'),
-      color: 'success',
-    })
+    if (emailPendingVerification) {
+      toast.add({
+        title: t('account.profile.profileUpdated'),
+        description: 'A verification email has been sent to your new address. Your email will update once confirmed.',
+        color: 'info',
+      })
+    } else {
+      toast.add({
+        title: t('account.profile.profileUpdated'),
+        description: t('account.profile.accountInfoUpdated'),
+        color: 'success',
+      })
+    }
   }
   catch (error) {
     const message = error instanceof Error ? error.message : t('account.profile.unableToUpdateProfile')

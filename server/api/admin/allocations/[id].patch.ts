@@ -1,8 +1,13 @@
-import { requireAdmin } from '#server/utils/security'
+import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
+import { z } from 'zod'
+
+const updateAllocationSchema = z.object({
+  ipAlias: z.string().trim().max(255).optional().nullable(),
+})
 
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
@@ -17,16 +22,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readBody(event)
-  const { ipAlias } = body
+  const { ipAlias } = await readValidatedBodyWithLimit(event, updateAllocationSchema, BODY_SIZE_LIMITS.SMALL)
 
   const db = useDrizzle()
-  const allocationRows = await db.select()
+  const [allocation] = await db.select()
     .from(tables.serverAllocations)
     .where(eq(tables.serverAllocations.id, allocationId))
     .limit(1)
-
-  const allocation = allocationRows[0]
 
   if (!allocation) {
     throw createError({
@@ -38,7 +40,7 @@ export default defineEventHandler(async (event) => {
   await db.update(tables.serverAllocations)
     .set({
       ipAlias: typeof ipAlias === 'string' && ipAlias.trim().length > 0 ? ipAlias.trim() : null,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.serverAllocations.id, allocationId))
 

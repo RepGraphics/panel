@@ -21,8 +21,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBodyWithLimit(event, createAllocationSchema, BODY_SIZE_LIMITS.SMALL)
-  const { ip, ports, alias } = body
-  const ipAlias = alias?.trim() || null
+  const { ip, ports, alias, ipAlias: ipAliasField } = body
+  const ipAlias = (alias?.trim() || ipAliasField?.trim()) || null
 
   if (!ip || typeof ip !== 'string') {
     throw createError({
@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  const now = new Date()
+  const nowIso = new Date().toISOString()
   const created: Array<{ id: string; ip: string; port: number }> = []
   const skipped: Array<{ ip: string; port: number }> = []
 
@@ -95,8 +95,8 @@ export default defineEventHandler(async (event) => {
             port,
             ipAlias,
             notes: null,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: nowIso,
+            updatedAt: nowIso,
           })
 
         created.push({ id, ip: ipAddr, port })

@@ -22,12 +22,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDrizzle()
-  const nodeRows = await db
+  const [nodeRow] = await db
     .select()
     .from(tables.wingsNodes)
     .where(eq(tables.wingsNodes.uuid, id))
-
-  const [nodeRow] = nodeRows
+    .limit(1)
 
   if (!nodeRow) {
     throw createError({ status: 404, statusText: 'Node not found' })

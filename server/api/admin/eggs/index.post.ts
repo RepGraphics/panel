@@ -66,8 +66,8 @@ export default defineEventHandler(async (event) => {
       dockerImage: newEgg.dockerImage,
       dockerImages: body.dockerImages ?? null,
       startup: newEgg.startup,
-      createdAt: newEgg.createdAt.toISOString(),
-      updatedAt: newEgg.updatedAt.toISOString(),
+      createdAt: newEgg.createdAt,
+      updatedAt: newEgg.updatedAt,
     },
   }
 })

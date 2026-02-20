@@ -159,13 +159,10 @@ async function handleDetach(mountId: string, mountName: string) {
       </div>
     </div>
 
-    <UModal v-model:open="showAttachModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-lg font-semibold">Attach Mount</h3>
-        </template>
-
+    <UModal v-model:open="showAttachModal" title="Attach Mount" :ui="{ footer: 'justify-end' }">
+      <template #body>
         <UForm
+          id="attach-mount-form"
           :schema="attachSchema"
           :state="form"
           class="space-y-4"
@@ -189,18 +186,16 @@ async function handleDetach(mountId: string, mountName: string) {
             <template #description>{{ availableErrorMessage }}</template>
           </UAlert>
         </UForm>
+      </template>
 
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" :disabled="isSubmitting" @click="showAttachModal = false">
-              Cancel
-            </UButton>
-            <UButton type="submit" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
-              Attach Mount
-            </UButton>
-          </div>
-        </template>
-      </UCard>
+      <template #footer>
+        <UButton variant="ghost" :disabled="isSubmitting" @click="showAttachModal = false">
+          Cancel
+        </UButton>
+        <UButton type="submit" form="attach-mount-form" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
+          Attach Mount
+        </UButton>
+      </template>
     </UModal>
   </div>
 </template>

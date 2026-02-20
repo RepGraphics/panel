@@ -67,6 +67,20 @@ export default defineEventHandler(async (event) => {
     .innerJoin(tables.mountServer, eq(tables.mounts.id, tables.mountServer.mountId))
     .where(eq(tables.mountServer.serverId, server.id))
 
+  const envRows = await db
+    .select()
+    .from(tables.serverStartupEnv)
+    .where(eq(tables.serverStartupEnv.serverId, server.id))
+
+  const environment: Record<string, string> = {}
+  for (const row of envRows) {
+    environment[row.key] = row.value ?? ''
+  }
+
+  const dockerImages: Record<string, string> = egg?.dockerImages
+    ? (() => { try { return JSON.parse(egg.dockerImages) } catch { return {} } })()
+    : {}
+
   await recordAuditEventFromRequest(event, {
     actor: session.user.email || session.user.id,
     actorType: 'user',
@@ -98,10 +112,10 @@ export default defineEventHandler(async (event) => {
       image: server.dockerImage || server.image,
       allocationLimit: server.allocationLimit ?? null,
       databaseLimit: server.databaseLimit ?? null,
-      backupLimit: server.backupLimit ?? 3,
-      installedAt: server.installedAt instanceof Date ? server.installedAt.toISOString() : server.installedAt,
-      createdAt: server.createdAt instanceof Date ? server.createdAt.toISOString() : server.createdAt,
-      updatedAt: server.updatedAt instanceof Date ? server.updatedAt.toISOString() : server.updatedAt,
+      backupLimit: server.backupLimit ?? 0,
+      installedAt: server.installedAt instanceof Date ? server.installedAt : server.installedAt,
+      createdAt: server.createdAt instanceof Date ? server.createdAt : server.createdAt,
+      updatedAt: server.updatedAt instanceof Date ? server.updatedAt : server.updatedAt,
       owner: owner ? {
         id: owner.id,
         username: owner.username,
@@ -117,7 +131,10 @@ export default defineEventHandler(async (event) => {
         id: egg.id,
         uuid: egg.uuid,
         name: egg.name,
+        startup: egg.startup,
+        dockerImages,
       } : null,
+      environment,
       nest: nest ? {
         id: nest.id,
         uuid: nest.uuid,

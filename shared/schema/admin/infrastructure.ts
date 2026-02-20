@@ -66,10 +66,13 @@ const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[
 
 const ipValidator = z.string().regex(ipRegex, 'Invalid IP address format')
 
+const ipOrCidrValidator = z.string().min(1)
+
 export const createAllocationSchema = z.object({
-  ip: ipValidator,
-  ports: z.array(z.number().int().min(1).max(65535)).min(1),
+  ip: ipOrCidrValidator,
+  ports: z.union([z.array(z.number().int().min(1).max(65535)).min(1), z.number().int().min(1).max(65535)]),
   alias: z.string().max(255).optional(),
+  ipAlias: z.string().max(255).optional(),
 })
 
 export const nodeAllocationsCreateSchema = z.object({

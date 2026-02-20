@@ -1,9 +1,14 @@
 import { getServerWithAccess } from '#server/utils/server-helpers'
 import { getWingsClientForServer } from '#server/utils/wings-client'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { requireAccountUser } from '#server/utils/security'
+import { z } from 'zod'
+
+const restoreBackupSchema = z.object({
+  truncate: z.boolean().optional().default(false),
+})
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -17,9 +22,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = (await readBody<{ truncate?: boolean }>(event)) ?? {}
-  const { truncate = false } = body
-
   const { server } = await getServerWithAccess(serverId, accountContext.session)
 
   await requireServerPermission(event, {
@@ -27,25 +29,33 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.backup.restore'],
   })
 
-  const db = useDrizzle()
-  const backup = await db.select()
-    .from(tables.serverBackups)
-    .where(eq(tables.serverBackups.uuid, backupUuid))
-    .limit(1)
-    .at(0)
+  const rawBody = await readBody(event)
+  const { truncate } = restoreBackupSchema.parse(rawBody ?? {})
 
-  if (!backup || backup.serverId !== server.id) {
+  const db = useDrizzle()
+  const [backup] = await db.select()
+    .from(tables.serverBackups)
+    .where(
+      and(
+        eq(tables.serverBackups.uuid, backupUuid),
+        eq(tables.serverBackups.serverId, server.id)
+      )
+    )
+    .limit(1)
+
+  if (!backup) {
     throw createError({
       status: 404,
       message: 'Backup not found',
     })
   }
 
+  let wasRunning = false
   try {
     const { client } = await getWingsClientForServer(server.uuid)
-    
+
     const serverDetails = await client.getServerDetails(server.uuid)
-    const wasRunning = serverDetails.state === 'running'
+    wasRunning = serverDetails.state === 'running'
     
     if (wasRunning) {
       console.log(`[Backup Restore] Stopping server ${server.uuid} before restore`)

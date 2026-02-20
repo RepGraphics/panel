@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const updates: Partial<typeof tables.locations.$inferInsert> = {
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   if (body.short !== undefined) updates.short = body.short.trim()

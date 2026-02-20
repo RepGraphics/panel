@@ -112,6 +112,11 @@ async function ensureEmailServiceInitialized(): Promise<void> {
   }
 }
 
+export async function isEmailConfigured(): Promise<boolean> {
+  await ensureEmailServiceInitialized()
+  return transporter !== null
+}
+
 export function resolvePanelBaseUrl(): string {
   const base = process.env.AUTH_ORIGIN
     || process.env.NUXT_AUTH_ORIGIN

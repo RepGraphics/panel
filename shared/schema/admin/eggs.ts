@@ -4,7 +4,7 @@ import type { EggImportData } from '#shared/types/admin'
 const jsonRecordSchema = z.record(z.string(), z.any()).optional()
 
 export const eggImportSchema = z.object({
-  nestId: z.string().uuid(),
+  nestId: z.string().min(1),
   eggData: z.custom<EggImportData>(),
 })
 

@@ -50,8 +50,8 @@ export default defineEventHandler(async (event) => {
       await db
         .update(tables.wingsNodes)
         .set({
-          lastSeenAt: new Date(),
-          updatedAt: new Date(),
+          lastSeenAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.wingsNodes.id, nodeId))
 

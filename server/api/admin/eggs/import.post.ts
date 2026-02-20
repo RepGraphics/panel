@@ -3,7 +3,7 @@ import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#ser
 import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
-import type { EggImportResponse } from '#shared/types/admin'
+import type { EggImportResponse, EggImportData } from '#shared/types/admin'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { eggImportSchema } from '#shared/schema/admin/eggs'
 
@@ -12,9 +12,10 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
 
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.EGGS, ADMIN_ACL_PERMISSIONS.WRITE)
 
-  const { nestId, eggData } = await readValidatedBodyWithLimit(event, eggImportSchema, BODY_SIZE_LIMITS.MEDIUM)
+  const { nestId, eggData } = await readValidatedBodyWithLimit(event, eggImportSchema, BODY_SIZE_LIMITS.LARGE)
+  const typedEggData = eggData as EggImportData
 
-  if (!nestId || !eggData) {
+  if (!nestId || !typedEggData) {
     throw createError({ 
       status: 400, 
       statusText: 'Nest ID and egg data are required',
@@ -22,20 +23,21 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
     })
   }
 
-  const metaVersion = eggData.meta?.version
-  if (!metaVersion || !['PTDL_v1', 'PTDL_v2'].includes(metaVersion)) {
+  const metaVersion = typedEggData.meta?.version
+  const ACCEPTED_VERSIONS = ['PTDL_v1', 'PTDL_v2', 'v1', 'v2']
+  if (metaVersion && !ACCEPTED_VERSIONS.includes(metaVersion)) {
     throw createError({ 
       status: 400, 
-      statusText: `Invalid egg format. Expected PTDL_v1 or PTDL_v2, got: ${metaVersion || 'none'}`,
-      message: `The egg file must have a valid meta.version field (PTDL_v1 or PTDL_v2)`
+      statusText: 'Bad Request',
+      message: `Invalid egg format version: "${metaVersion}". Expected one of: ${ACCEPTED_VERSIONS.join(', ')}`,
     })
   }
 
-  if (!eggData.name || !eggData.author) {
+  if (!typedEggData.name || !typedEggData.author) {
     throw createError({ 
       status: 400, 
-      statusText: 'Egg must have name and author fields',
-      message: `Missing required fields: ${!eggData.name ? 'name' : ''} ${!eggData.author ? 'author' : ''}`
+      statusText: 'Bad Request',
+      message: `Egg file is missing required fields: ${[!typedEggData.name && 'name', !typedEggData.author && 'author'].filter(Boolean).join(', ')}`,
     })
   }
 
@@ -45,15 +47,16 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
     .select()
     .from(tables.nests)
     .where(eq(tables.nests.id, nestId))
+    .limit(1)
 
   if (!nest) {
     throw createError({ status: 404, statusText: 'Nest not found' })
   }
 
-  const now = new Date()
+  const now = new Date().toISOString()
   const eggId = randomUUID()
 
-  const dockerImages = eggData.docker_images || {}
+  const dockerImages = typedEggData.docker_images || {}
   const firstImage = Object.values(dockerImages)[0] || 'ghcr.io/pterodactyl/yolks:latest'
 
   const normalizeConfigField = (field: string | Record<string, unknown> | undefined): string => {
@@ -66,29 +69,29 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
     id: eggId,
     uuid: randomUUID(),
     nestId,
-    author: eggData.author || 'unknown@unknown.com',
-    name: eggData.name,
-    description: eggData.description || null,
-    features: eggData.features ? JSON.stringify(eggData.features) : null,
-    fileDenylist: eggData.file_denylist ? JSON.stringify(eggData.file_denylist) : null,
-    updateUrl: eggData.meta?.update_url || null,
+    author: typedEggData.author || 'unknown@unknown.com',
+    name: typedEggData.name,
+    description: typedEggData.description || null,
+    features: typedEggData.features ? JSON.stringify(typedEggData.features) : null,
+    fileDenylist: typedEggData.file_denylist ? JSON.stringify(typedEggData.file_denylist) : null,
+    updateUrl: typedEggData.meta?.update_url || null,
     dockerImage: firstImage,
     dockerImages: JSON.stringify(dockerImages),
-    startup: eggData.startup || '',
-    configFiles: normalizeConfigField(eggData.config?.files),
-    configStartup: normalizeConfigField(eggData.config?.startup),
-    configLogs: normalizeConfigField(eggData.config?.logs),
-    configStop: eggData.config?.stop || 'stop',
-    scriptInstall: eggData.scripts?.installation?.script || '',
-    scriptContainer: eggData.scripts?.installation?.container || 'alpine:3.4',
-    scriptEntry: eggData.scripts?.installation?.entrypoint || 'ash',
+    startup: typedEggData.startup || '',
+    configFiles: normalizeConfigField(typedEggData.config?.files),
+    configStartup: normalizeConfigField(typedEggData.config?.startup),
+    configLogs: normalizeConfigField(typedEggData.config?.logs),
+    configStop: typedEggData.config?.stop || 'stop',
+    scriptInstall: typedEggData.scripts?.installation?.script || '',
+    scriptContainer: typedEggData.scripts?.installation?.container || 'alpine:3.4',
+    scriptEntry: typedEggData.scripts?.installation?.entrypoint || 'ash',
     copyScriptFrom: null,
     createdAt: now,
     updatedAt: now,
   })
 
-  if (eggData.variables && eggData.variables.length > 0) {
-    const variableValues = eggData.variables.map(variable => ({
+  if (typedEggData.variables && typedEggData.variables.length > 0) {
+    const variableValues = typedEggData.variables.map(variable => ({
       id: randomUUID(),
       eggId,
       name: variable.name,
@@ -114,9 +117,9 @@ export default defineEventHandler(async (event): Promise<EggImportResponse> => {
     targetType: 'settings',
     targetId: eggId,
     metadata: {
-      eggName: eggData.name,
+      eggName: typedEggData.name,
       nestId,
-      variableCount: eggData.variables?.length || 0,
+      variableCount: typedEggData.variables?.length || 0,
     },
   })
 

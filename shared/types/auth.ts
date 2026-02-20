@@ -108,14 +108,14 @@ export interface AccountSessionsResponse {
 
 export interface AccountSessionRow {
   sessionToken: string
-  expires: Date | number
+  expires: Date | number | string
   metadataIp?: string | null
   metadataUserAgent?: string | null
   metadataDevice?: string | null
   metadataBrowser?: string | null
   metadataOs?: string | null
-  firstSeenAt?: Date | number | null
-  lastSeenAt?: Date | number | null
+  firstSeenAt?: Date | number | string | null
+  lastSeenAt?: Date | number | string | null
 }
 
 export interface SessionMetadataUpsertInput {

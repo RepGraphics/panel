@@ -174,7 +174,7 @@ export const createAdminApiKeySchema = z.object({
 })
 
 export const serverTransferSchema = z.object({
-  nodeId: z.uuid('Target node ID must be a valid UUID'),
+  nodeId: z.string().trim().min(1, 'Target node ID is required'),
   allocationId: z.uuid('Allocation ID must be a valid UUID').optional(),
   additionalAllocationIds: z.union([
     z.uuid().array(),
@@ -184,7 +184,7 @@ export const serverTransferSchema = z.object({
 })
 
 export const serverTransferFormSchema = z.object({
-  nodeId: z.string().trim().uuid('Target node ID must be a valid UUID'),
+  nodeId: z.string().trim().min(1, 'Target node ID is required'),
   allocationId: z.string().trim().optional().default(''),
   additionalAllocationIds: z.string().trim().optional().default(''),
   startOnCompletion: z.boolean().default(true),

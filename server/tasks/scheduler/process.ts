@@ -170,7 +170,7 @@ async function processSchedule(scheduleId: string, db: ReturnType<typeof useDriz
       .set({
         lastRunAt: executedAt,
         nextRunAt: nextRun,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverSchedules.id, scheduleId))
 

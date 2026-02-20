@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
     await db.update(tables.servers)
       .set({
         status: 'installing',
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.id, server.id))
     

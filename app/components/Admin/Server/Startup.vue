@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { z } from 'zod'
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { StartupResponse } from '#shared/types/api'
 import type {
   Server,
   EnvironmentEntry,
@@ -16,65 +15,38 @@ const props = defineProps<{
 const toast = useToast()
 const isSubmitting = ref(false)
 
-const {
-  data: startupResponse,
-  pending: startupPending,
-  refresh,
-  error: startupError,
-} = await useFetch<{ data?: { startup?: StartupResponse } }>(
-  () => `/api/admin/servers/${props.server.id}`,
-  {
-    key: () => `server-startup-${props.server.id}`,
-    watch: [() => props.server.id],
-    default: () => ({}),
-  },
-)
-
-const startup = computed<StartupResponse['data'] | null>(() => startupResponse.value?.data?.startup?.data ?? null)
-
-const dockerImages = computed(() => {
-  const images = startup.value?.dockerImages || {}
-  return typeof images === 'object' && images !== null ? images : {}
-})
-
-const hasMultipleDockerImages = computed(() => Object.keys(dockerImages.value).length > 1)
-const isCustomDockerImage = computed(() => {
-  if (!startup.value?.dockerImage) return false
-  const currentImage = startup.value.dockerImage
-  return !Object.values(dockerImages.value).includes(currentImage)
-})
-
-const errorMessage = computed(() => {
-  if (!startupError.value) return ''
-  if (startupError.value instanceof Error) return startupError.value.message
-  if (typeof startupError.value === 'string') return startupError.value
-  return 'An error occurred'
-})
-
 const schema = serverStartupSchema
 
 type FormSchema = z.infer<typeof schema>
 
-function createFormState(payload: StartupResponse['data'] | null): FormSchema {
-  const cleanEnvironment: Record<string, string> = {}
-  if (payload?.environment) {
-    for (const [key, value] of Object.entries(payload.environment)) {
-      cleanEnvironment[key] = value === null || value === undefined ? '' : String(value)
-    }
+const serverAsDetails = props.server as import('#shared/types/server').AdminServerDetails
+
+const dockerImages = computed<Record<string, string>>(() => {
+  return serverAsDetails.egg?.dockerImages ?? {}
+})
+
+const hasMultipleDockerImages = computed(() => Object.keys(dockerImages.value).length > 1)
+const isCustomDockerImage = computed(() => {
+  const currentImage = form.dockerImage
+  if (!currentImage) return false
+  return !Object.values(dockerImages.value).includes(currentImage)
+})
+
+function buildEnv(): Record<string, string> {
+  const env = serverAsDetails.environment ?? {}
+  const clean: Record<string, string> = {}
+  for (const [k, v] of Object.entries(env)) {
+    clean[k] = v === null || v === undefined ? '' : String(v)
   }
-  
-  return {
-    startup: payload?.startup ?? '',
-    dockerImage: payload?.dockerImage ?? '',
-    environment: cleanEnvironment,
-  }
+  return clean
 }
 
-const form = reactive<FormSchema>(createFormState(startup.value))
-
-watch(startup, (value) => {
-  Object.assign(form, createFormState(value))
+const form = reactive<FormSchema>({
+  startup: props.server.startup ?? '',
+  dockerImage: props.server.image ?? '',
+  environment: buildEnv(),
 })
+
 
 const environmentVars = computed(() =>
   Object.entries(form.environment).map(([key, value]) => ({ key, value: String(value) } as EnvironmentEntry)),
@@ -124,8 +96,6 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
       description: 'Server startup configuration has been saved',
       color: 'success',
     })
-
-    await refresh()
   }
   catch (error) {
     const err = error as { data?: { message?: string } }
@@ -157,108 +127,88 @@ async function handleSubmit(event: FormSubmitEvent<FormSchema>) {
       </template>
     </UAlert>
 
-    <div v-if="startupPending" class="space-y-4">
-      <UCard class="space-y-3">
-        <USkeleton class="h-4 w-1/3" />
-        <USkeleton class="h-24 w-full" />
-      </UCard>
-      <UCard class="space-y-3">
-        <USkeleton class="h-4 w-1/4" />
-        <USkeleton class="h-10 w-full" />
-      </UCard>
+    <div class="space-y-4">
+      <UFormField label="Startup Command" name="startup" required>
+        <UTextarea v-model="form.startup" placeholder="java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}"
+          :rows="4" class="w-full" />
+        <template #help>
+          Use &#123;&#123;VARIABLE&#125;&#125; syntax for environment variables
+        </template>
+      </UFormField>
+
+      <UFormField label="Docker Image" name="dockerImage" required>
+        <USelect
+          v-if="hasMultipleDockerImages && !isCustomDockerImage"
+          v-model="form.dockerImage"
+          :items="Object.entries(dockerImages).map(([key, value]) => ({ label: `${key} (${value})`, value }))"
+          value-key="value"
+          placeholder="Select Docker image"
+          class="w-full"
+        />
+        <UInput
+          v-else
+          v-model="form.dockerImage"
+          placeholder="ghcr.io/pterodactyl/yolks:java-21"
+          class="w-full"
+        />
+        <template #help>
+          <span v-if="hasMultipleDockerImages && !isCustomDockerImage">
+            Select a Docker image from the egg's available images.
+          </span>
+          <span v-else-if="!hasMultipleDockerImages">
+            The Docker image to use for this server (from egg: {{ Object.keys(dockerImages)[0] || 'N/A' }})
+          </span>
+          <span v-else>
+            Custom Docker image. Select from dropdown above to use an egg image.
+          </span>
+        </template>
+      </UFormField>
     </div>
 
-    <UAlert v-else-if="startupError" color="error" icon="i-lucide-alert-triangle">
-      <template #title>Unable to load startup configuration</template>
-      <template #description>{{ errorMessage }}</template>
-    </UAlert>
+    <div class="space-y-4">
+      <h3 class="text-sm font-semibold">Environment Variables</h3>
 
-    <template v-else>
-      <div class="space-y-4">
-        <UFormField label="Startup Command" name="startup" required>
-          <UTextarea v-model="form.startup" placeholder="java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}"
-            :rows="4" class="w-full" />
-          <template #help>
-            Use &#123;&#123;VARIABLE&#125;&#125; syntax for environment variables
-          </template>
-        </UFormField>
-
-        <UFormField label="Docker Image" name="dockerImage" required>
-          <USelect
-            v-if="hasMultipleDockerImages && !isCustomDockerImage"
-            v-model="form.dockerImage"
-            :options="Object.entries(dockerImages).map(([key, value]) => ({ label: `${key} (${value})`, value }))"
-            placeholder="Select Docker image"
-            class="w-full"
-          />
-          <UInput
-            v-else
-            v-model="form.dockerImage"
-            placeholder="ghcr.io/pterodactyl/yolks:java-21"
-            class="w-full"
-          />
-          
-          <template #help>
-            <span v-if="hasMultipleDockerImages && !isCustomDockerImage">
-              Select a Docker image from the egg's available images. This is an advanced feature allowing you to select a Docker image to use when running this server instance.
-            </span>
-            <span v-else-if="!hasMultipleDockerImages">
-              The Docker image to use for this server (from egg: {{ Object.keys(dockerImages)[0] || 'N/A' }})
-            </span>
-            <span v-else>
-              Custom Docker image. Select from dropdown above to use an egg image.
-            </span>
-          </template>
-        </UFormField>
+      <div v-if="environmentVars.length === 0" class="rounded-lg border border-default p-8 text-center">
+        <UIcon name="i-lucide-variable" class="mx-auto size-8 text-muted-foreground" />
+        <p class="mt-2 text-sm text-muted-foreground">
+          No environment variables defined
+        </p>
       </div>
 
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold">Environment Variables</h3>
-        </div>
-
-        <div v-if="environmentVars.length === 0" class="rounded-lg border border-default p-8 text-center">
-          <UIcon name="i-lucide-variable" class="mx-auto size-8 text-muted-foreground" />
-          <p class="mt-2 text-sm text-muted-foreground">
-            No environment variables defined
-          </p>
-        </div>
-
-        <div v-else class="space-y-2">
-          <div v-for="envVar in environmentVars" :key="envVar.key"
-            class="flex items-center gap-2 rounded-lg border border-default p-3">
-            <div class="flex-1 grid gap-2 md:grid-cols-2">
-              <div>
-                <p class="text-xs text-muted-foreground">Key</p>
-                <code class="text-sm font-medium">{{ envVar.key }}</code>
-              </div>
-              <div>
-                <p class="text-xs text-muted-foreground">Value</p>
-                <UInput :model-value="envVar.value" size="sm" class="w-full"
-                  @update:model-value="updateEnvVar(envVar.key, $event)" />
-              </div>
+      <div v-else class="space-y-2">
+        <div v-for="envVar in environmentVars" :key="envVar.key"
+          class="flex items-center gap-2 rounded-lg border border-default p-3">
+          <div class="flex-1 grid gap-2 md:grid-cols-2">
+            <div>
+              <p class="text-xs text-muted-foreground">Key</p>
+              <code class="text-sm font-medium">{{ envVar.key }}</code>
             </div>
-            <UButton icon="i-lucide-trash-2" color="error" variant="ghost" size="sm"
-              :disabled="isSubmitting"
-              @click="removeEnvVar(envVar.key)" />
+            <div>
+              <p class="text-xs text-muted-foreground">Value</p>
+              <UInput :model-value="envVar.value" size="sm" class="w-full"
+                @update:model-value="updateEnvVar(envVar.key, $event)" />
+            </div>
           </div>
-        </div>
-
-        <div class="flex gap-2">
-          <UInput v-model="newEnvKey" placeholder="VARIABLE_NAME" size="sm" class="flex-1" />
-          <UInput v-model="newEnvValue" placeholder="value" size="sm" class="flex-1" />
-          <UButton icon="i-lucide-plus" color="primary" variant="soft" size="sm"
-            :disabled="!canAddEnv || isSubmitting" @click="addEnvVar">
-            Add
-          </UButton>
+          <UButton icon="i-lucide-trash-2" color="error" variant="ghost" size="sm"
+            :disabled="isSubmitting"
+            @click="removeEnvVar(envVar.key)" />
         </div>
       </div>
 
-      <div class="flex justify-end">
-        <UButton type="submit" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
-          Save Startup Configuration
+      <div class="flex gap-2">
+        <UInput v-model="newEnvKey" placeholder="VARIABLE_NAME" size="sm" class="flex-1" />
+        <UInput v-model="newEnvValue" placeholder="value" size="sm" class="flex-1" />
+        <UButton icon="i-lucide-plus" color="primary" variant="soft" size="sm"
+          :disabled="!canAddEnv || isSubmitting" @click="addEnvVar">
+          Add
         </UButton>
       </div>
-    </template>
+    </div>
+
+    <div class="flex justify-end">
+      <UButton type="submit" color="primary" variant="subtle" :loading="isSubmitting" :disabled="isSubmitting">
+        Save Startup Configuration
+      </UButton>
+    </div>
   </UForm>
 </template>

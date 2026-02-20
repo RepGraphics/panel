@@ -31,12 +31,13 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const egg = server.eggId
-    ? db
+  const [egg] = server.eggId
+    ? await db
         .select()
         .from(tables.eggs)
         .where(eq(tables.eggs.id, server.eggId))
-    : null
+        .limit(1)
+    : [null]
 
   if (egg?.dockerImages) {
     let dockerImages: Record<string, string> = {}
@@ -64,7 +65,7 @@ export default defineEventHandler(async (event) => {
     .set({
       dockerImage,
       image: dockerImage,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.id, server.id))
 

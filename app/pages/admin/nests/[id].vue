@@ -103,10 +103,11 @@ async function handleImportEgg() {
 
     await $fetch('/api/admin/eggs/import', {
       method: 'POST',
-      body: {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         nestId: nestId.value,
         eggData,
-      },
+      }),
     })
 
     toast.add({ title: t('admin.nests.createEgg.eggImportedSuccessfully'), color: 'success' })

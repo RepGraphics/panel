@@ -11,8 +11,9 @@ function buildIdentifier(userId: string): string {
 
 export async function createEmailVerificationToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
   const db = useDrizzle()
-  const now = new Date()
-  const expiresAt = new Date(now.getTime() + EMAIL_VERIFICATION_EXPIRATION_MS)
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
+  const expiresAt = new Date(nowDate.getTime() + EMAIL_VERIFICATION_EXPIRATION_MS)
   const identifier = buildIdentifier(userId)
 
   await db.delete(tables.verificationTokens)
@@ -30,13 +31,13 @@ export async function createEmailVerificationToken(userId: string): Promise<{ to
       identifier,
       token: storedToken,
       value: null,
-      expires: expiresAt,
-      expiresAt,
+      expires: expiresAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
       createdAt: now,
       updatedAt: now,
     })
 
-  return { token: rawToken, expiresAt }
+  return { token: rawToken, expiresAt: expiresAt }
 }
 
 export async function consumeEmailVerificationToken(rawToken: string): Promise<{ userId: string } | null> {

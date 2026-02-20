@@ -227,7 +227,7 @@ export async function buildWingsServerConfig(
     },
     feature_limits: {
       databases: context.limits.databaseLimit ?? 0,
-      backups: context.limits.backupLimit ?? 3,
+      backups: context.limits.backupLimit ?? 0,
       allocations: context.limits.allocationLimit ?? 0,
     },
     crash_detection_enabled: true,
@@ -257,7 +257,7 @@ export async function provisionServerOnWings(
 
   const client = getWingsClient(context.wingsNode)
 
-  const now = new Date()
+  const now = new Date().toISOString()
 
   await db
     .update(tables.servers)
@@ -279,8 +279,8 @@ export async function provisionServerOnWings(
       .update(tables.servers)
       .set({
         status: 'installed',
-        installedAt: new Date(),
-        updatedAt: new Date(),
+        installedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.id, config.serverId))
   } catch (error) {
@@ -288,7 +288,7 @@ export async function provisionServerOnWings(
       .update(tables.servers)
       .set({
         status: 'install_failed',
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.id, config.serverId))
 

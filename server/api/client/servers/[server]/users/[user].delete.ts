@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   })
 
   const db = useDrizzle()
-  const subuser = db
+  const [subuser] = await db
     .select()
     .from(tables.serverSubusers)
     .where(
@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.serverSubusers.serverId, server.id)
       )
     )
+    .limit(1)
 
   if (!subuser) {
     throw createError({

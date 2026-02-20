@@ -2,7 +2,6 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { requireAccountUser } from '#server/utils/security'
-import { recordServerActivity } from '#server/utils/server-activity'
 
 export default defineEventHandler(async (event) => {
   const serverId = getRouterParam(event, 'server')
@@ -16,7 +15,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const accountContext = await requireAccountUser(event)
-  const { server, user: actor } = await getServerWithAccess(serverId, accountContext.session)
+  const { server } = await getServerWithAccess(serverId, accountContext.session)
 
   await requireServerPermission(event, {
     serverId: server.id,
@@ -26,7 +25,7 @@ export default defineEventHandler(async (event) => {
   })
 
   const db = useDrizzle()
-  const result = db
+  const [result] = await db
     .select({
       subuser: tables.serverSubusers,
       user: tables.users,
@@ -39,6 +38,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.serverSubusers.serverId, server.id)
       )
     )
+    .limit(1)
 
   if (!result) {
     throw createError({
@@ -48,14 +48,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const { subuser, user: targetUser } = result
-
-  await recordServerActivity({
-    event,
-    actorId: actor.id,
-    action: 'server.users.viewed',
-    server: { id: server.id, uuid: server.uuid },
-    metadata: { subuserId },
-  })
 
   return {
     data: {

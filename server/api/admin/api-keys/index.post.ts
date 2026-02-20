@@ -40,7 +40,7 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
   const permissions: Record<string, PermissionAction[]> = body.permissions ?? {}
   const auth = getAuth()
 
-  const now = new Date()
+  const now = new Date().toISOString()
 
   let expiresIn: number | undefined
   if (body.expiresAt) {
@@ -60,10 +60,10 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
     created = await auth.api.createApiKey({
       body: {
         name: trimmedMemo || 'API Key',
+        userId: user.id,
         ...(expiresIn ? { expiresIn } : {}),
         permissions,
       },
-      request: toWebRequest(event),
     })
   } catch (error) {
     if (error instanceof APIError) {
@@ -119,7 +119,7 @@ export default defineEventHandler(async (event): Promise<{ data: CreateApiKeyRes
       identifier: created.start || apiKeyId,
       apiKey: created.key,
       memo: trimmedMemo,
-      createdAt: now.toISOString(),
+      createdAt: now,
     },
   }
 })

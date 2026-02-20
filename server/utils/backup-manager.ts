@@ -27,9 +27,10 @@ export class BackupManager {
     
     const backupId = randomUUID()
     const backupUuid = randomUUID()
-    const now = new Date()
+    const nowDate = new Date()
+    const now = nowDate.toISOString()
     
-    const backupName = options.name || `backup-${now.toISOString().slice(0, 19).replace(/[T:]/g, '-')}`
+    const backupName = options.name || `backup-${now.slice(0, 19).replace(/[T:]/g, '-')}`
     
     const backupRecord = {
       id: backupId,
@@ -60,16 +61,11 @@ export class BackupManager {
           action: 'server.backup.create',
           targetType: 'server',
           targetId: server.id as string,
-          metadata: { 
+          metadata: {
             backupId,
             backupName,
           },
         })
-      }
-
-      const owner = await this.getServerOwnerContact(server.ownerId as string | undefined)
-      if (owner?.email) {
-        await sendBackupCompletedEmail(owner.email, server.name as string, backupName)
       }
 
       return {
@@ -91,7 +87,7 @@ export class BackupManager {
         .update(tables.serverBackups)
         .set({
           isSuccessful: false,
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.serverBackups.id, backupId))
       await invalidateServerBackupsCache(server.id as string)
@@ -263,7 +259,7 @@ export class BackupManager {
       .update(tables.serverBackups)
       .set({
         isLocked: true,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverBackups.id, backup.id))
     await invalidateServerBackupsCache(server.id as string)
@@ -303,7 +299,7 @@ export class BackupManager {
       .update(tables.serverBackups)
       .set({
         isLocked: false,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverBackups.id, backup.id))
     await invalidateServerBackupsCache(server.id as string)
@@ -347,8 +343,8 @@ export class BackupManager {
               checksum: wingsBackup.sha256_hash,
               bytes: wingsBackup.bytes,
               isSuccessful: !!wingsBackup.completed_at,
-              completedAt: wingsBackup.completed_at ? new Date(wingsBackup.completed_at) : null,
-              updatedAt: new Date(),
+              completedAt: wingsBackup.completed_at ? new Date(wingsBackup.completed_at).toISOString() : null,
+              updatedAt: new Date().toISOString(),
             })
             .where(eq(tables.serverBackups.id, dbBackup.id))
           
@@ -366,9 +362,9 @@ export class BackupManager {
               bytes: wingsBackup.bytes,
               isSuccessful: !!wingsBackup.completed_at,
               isLocked: false,
-              completedAt: wingsBackup.completed_at ? new Date(wingsBackup.completed_at) : null,
-              createdAt: new Date(wingsBackup.created_at),
-              updatedAt: new Date(),
+              completedAt: wingsBackup.completed_at ? new Date(wingsBackup.completed_at).toISOString() : null,
+              createdAt: new Date(wingsBackup.created_at).toISOString(),
+              updatedAt: new Date().toISOString(),
             })
             synced++
           } catch (error) {

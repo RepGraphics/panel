@@ -1,21 +1,84 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { Server } from '#shared/types/server'
+import type { Server, AdminServerDetails } from '#shared/types/server'
+import type { Nest, Egg } from '#shared/types/nest'
 import { serverTransferFormSchema } from '#shared/schema/admin/server'
 import type { ServerTransferFormInput } from '#shared/schema/admin/server'
 
 const props = defineProps<{
-  server: Server
+  server: AdminServerDetails
 }>()
 
 const { t } = useI18n()
 const toast = useToast()
 const router = useRouter()
+const requestFetch = useRequestFetch()
 const suspendedSubmitting = ref(false)
 const reinstallSubmitting = ref(false)
 const createOnWingsSubmitting = ref(false)
 const deleteSubmitting = ref(false)
 const transferSubmitting = ref(false)
+const changeEggSubmitting = ref(false)
+const showChangeEggModal = ref(false)
+
+const selectedNestId = ref<string>(props.server.nestId || '')
+const selectedEggId = ref<string>(props.server.eggId || '')
+const changeEggReinstall = ref(true)
+const changeEggSkipScripts = ref(false)
+
+const { data: nestsData } = await useAsyncData(
+  'admin-nests-for-egg-change',
+  () => requestFetch<{ data: Nest[] }>('/api/admin/nests'),
+)
+const nests = computed(() => nestsData.value?.data ?? [])
+const nestItems = computed(() => nests.value.map(n => ({ label: n.name, value: n.id })))
+
+const { data: eggsData, refresh: refreshEggs } = await useAsyncData(
+  () => `admin-eggs-for-nest-${selectedNestId.value}`,
+  () => selectedNestId.value
+    ? requestFetch<{ data: { nest: Nest; eggs: Egg[] } }>(`/api/admin/nests/${selectedNestId.value}`)
+    : Promise.resolve(null),
+  { watch: [selectedNestId] },
+)
+const eggs = computed(() => eggsData.value?.data?.eggs ?? [])
+const eggItems = computed(() => eggs.value.map(e => ({ label: e.name, value: e.id })))
+
+watch(selectedNestId, () => {
+  selectedEggId.value = ''
+})
+
+async function handleChangeEgg() {
+  if (!selectedEggId.value) {
+    toast.add({ title: t('common.error'), description: 'Please select an egg', color: 'error' })
+    return
+  }
+  if (changeEggSubmitting.value) return
+  changeEggSubmitting.value = true
+  try {
+    await $fetch(`/api/admin/servers/${props.server.id}/change-egg`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eggId: selectedEggId.value,
+        nestId: selectedNestId.value || undefined,
+        reinstall: changeEggReinstall.value,
+        skipScripts: changeEggSkipScripts.value,
+      }),
+    })
+    toast.add({
+      title: 'Egg changed',
+      description: changeEggReinstall.value ? 'Egg updated and reinstall initiated' : 'Egg updated successfully',
+      color: 'success',
+    })
+    showChangeEggModal.value = false
+    setTimeout(() => router.go(0), 1500)
+  } catch (error) {
+    const err = error as { data?: { message?: string } }
+    toast.add({ title: t('common.error'), description: err.data?.message || 'Failed to change egg', color: 'error' })
+  } finally {
+    changeEggSubmitting.value = false
+  }
+}
 
 async function handleSuspend() {
   if (!confirm(props.server.suspended ? t('admin.servers.manage.confirmUnsuspend') : t('admin.servers.manage.confirmSuspend'))) {
@@ -294,6 +357,26 @@ async function handleDelete(force: boolean = false) {
 
       <div class="flex items-center justify-between rounded-lg border border-default p-4">
         <div class="space-y-1">
+          <p class="font-medium">Change Egg</p>
+          <p class="text-sm text-muted-foreground">
+            Switch this server to a different egg. Optionally reinstall with the new egg's install script.
+          </p>
+          <p class="text-xs text-muted-foreground">
+            Current: <span class="font-mono">{{ server.egg?.name || server.eggId || 'Unknown' }}</span>
+          </p>
+        </div>
+        <UButton
+          icon="i-lucide-egg"
+          color="primary"
+          variant="soft"
+          @click="showChangeEggModal = true"
+        >
+          Change Egg
+        </UButton>
+      </div>
+
+      <div class="flex items-center justify-between rounded-lg border border-default p-4">
+        <div class="space-y-1">
           <p class="font-medium">{{ t('admin.servers.manage.reinstallServer') }}</p>
           <p class="text-sm text-muted-foreground">
             {{ t('admin.servers.manage.reinstallServerDescription') }}
@@ -346,13 +429,67 @@ async function handleDelete(force: boolean = false) {
       </div>
     </div>
 
-    <UModal v-model:open="showTransferModal">
-      <UCard>
-        <template #header>
-          <h3 class="text-lg font-semibold">{{ t('admin.servers.manage.transferServer') }}</h3>
-        </template>
+    <UModal v-model:open="showChangeEggModal" title="Change Egg" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <div class="space-y-4">
+          <UAlert icon="i-lucide-info" variant="subtle" color="primary">
+            <template #title>Changing the egg</template>
+            <template #description>
+              This will update the server's egg. If reinstall is enabled, the server's install script will run again using the new egg. Existing server files will be deleted during reinstall.
+            </template>
+          </UAlert>
 
+          <UFormField label="Nest" name="nestId" required>
+            <USelect
+              v-model="selectedNestId"
+              :items="nestItems"
+              value-key="value"
+              placeholder="Select a nest..."
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField label="Egg" name="eggId" required>
+            <USelect
+              v-model="selectedEggId"
+              :items="eggItems"
+              value-key="value"
+              :disabled="!selectedNestId || eggItems.length === 0"
+              placeholder="Select an egg..."
+              class="w-full"
+            />
+            <template v-if="selectedNestId && eggItems.length === 0" #help>
+              No eggs found in this nest.
+            </template>
+          </UFormField>
+
+          <div class="space-y-3 rounded-lg border border-default p-3">
+            <USwitch v-model="changeEggReinstall" label="Reinstall server" description="Run the new egg's install script (deletes existing server files)" />
+            <USwitch v-model="changeEggSkipScripts" :disabled="!changeEggReinstall" label="Skip install scripts" description="Change egg without running the install script" />
+          </div>
+        </div>
+      </template>
+
+      <template #footer>
+        <UButton variant="ghost" :disabled="changeEggSubmitting" @click="showChangeEggModal = false">
+          {{ t('common.cancel') }}
+        </UButton>
+        <UButton
+          icon="i-lucide-egg"
+          color="primary"
+          :loading="changeEggSubmitting"
+          :disabled="changeEggSubmitting || !selectedEggId"
+          @click="handleChangeEgg"
+        >
+          Change Egg
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showTransferModal" :title="t('admin.servers.manage.transferServer')" :ui="{ footer: 'justify-end' }">
+      <template #body>
         <UForm
+          id="transfer-form"
           :schema="transferSchema"
           :state="transferForm"
           class="space-y-4"
@@ -406,26 +543,22 @@ async function handleDelete(force: boolean = false) {
             />
           </UFormField>
         </UForm>
+      </template>
 
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton
-              variant="ghost"
-              @click="showTransferModal = false"
-            >
-              {{ t('common.cancel') }}
-            </UButton>
-            <UButton
-              type="submit"
-              color="primary"
-              :loading="transferSubmitting"
-              :disabled="transferSubmitting"
-            >
-              {{ t('admin.servers.manage.startTransfer') }}
-            </UButton>
-          </div>
-        </template>
-      </UCard>
+      <template #footer>
+        <UButton variant="ghost" :disabled="transferSubmitting" @click="showTransferModal = false">
+          {{ t('common.cancel') }}
+        </UButton>
+        <UButton
+          type="submit"
+          form="transfer-form"
+          color="primary"
+          :loading="transferSubmitting"
+          :disabled="transferSubmitting"
+        >
+          {{ t('admin.servers.manage.startTransfer') }}
+        </UButton>
+      </template>
     </UModal>
   </div>
 </template>

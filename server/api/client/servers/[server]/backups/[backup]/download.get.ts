@@ -1,5 +1,5 @@
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { decryptToken } from '#server/utils/wings/encryption'
 import { generateBackupDownloadToken } from '../../../../../../../server/utils/wings-tokens'
@@ -25,12 +25,17 @@ export default defineEventHandler(async (event) => {
   })
 
   const db = useDrizzle()
-  const backup = await db.select()
+  const [backup] = await db.select()
     .from(tables.serverBackups)
-    .where(eq(tables.serverBackups.uuid, backupUuid))
-    .limit(1)[0]
+    .where(
+      and(
+        eq(tables.serverBackups.uuid, backupUuid),
+        eq(tables.serverBackups.serverId, server.id)
+      )
+    )
+    .limit(1)
 
-  if (!backup || backup.serverId !== server.id) {
+  if (!backup) {
     throw createError({
       status: 404,
       message: 'Backup not found',
@@ -44,7 +49,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const node = await db.select()
+  const [node] = await db.select()
     .from(tables.wingsNodes)
     .where(eq(tables.wingsNodes.id, server.nodeId))
     .limit(1)

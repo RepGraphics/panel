@@ -9,6 +9,7 @@ import { authClient } from '~/utils/auth-client'
 
 definePageMeta({
   auth: true,
+  ssr: false,
   title: 'Security',
   subtitle: 'Manage your account security settings and authentication',
 })
@@ -66,38 +67,18 @@ async function handlePasswordSubmit(event: FormSubmitEvent<PasswordFormSchema>) 
       body: payload,
     })
 
-    if (response.signedOut === true) {
-      toast.add({
-        title: t('account.security.password.passwordUpdated'),
-        description: response.message || t('account.security.password.passwordChanged'),
-        color: 'success',
-      })
-
-      await authClient.signOut()
-      await navigateTo('/auth/login')
-      return
-    }
-
     toast.add({
       title: t('account.security.password.passwordUpdated'),
-      description: response.revokedSessions > 0
-        ? (response.revokedSessions === 1 
-          ? t('account.security.password.signedOutSessionsSingular', { count: response.revokedSessions })
-          : t('account.security.password.signedOutSessionsPlural', { count: response.revokedSessions }))
-        : t('account.security.password.passwordChanged'),
+      description: t('account.security.password.passwordChanged'),
       color: 'success',
     })
 
-    await authStore.syncSession()
-
-    Object.assign(passwordForm, {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    })
+    await authClient.signOut()
+    await navigateTo('/auth/login')
   }
   catch (error) {
-    const message = error instanceof Error ? error.message : t('account.security.password.unableToUpdatePassword')
+    const err = error as { data?: { message?: string }; message?: string }
+    const message = err.data?.message || err.message || t('account.security.password.unableToUpdatePassword')
     passwordError.value = message
 
     toast.add({
@@ -180,7 +161,7 @@ async function beginTotpSetup() {
         issuer: enableForm.issuer.trim() || undefined,
       },
     })
-    totpSetup.value = setup
+    totpSetup.value = (setup as any).data ?? setup
     enableForm.password = ''
 
     toast.add({

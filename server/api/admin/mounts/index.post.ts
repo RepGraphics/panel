@@ -99,8 +99,8 @@ export default defineEventHandler(async (event) => {
       userMountable: newMount.userMountable,
       eggs: body.eggIds ?? [],
       nodes: body.nodeIds ?? [],
-      createdAt: newMount.createdAt.toISOString(),
-      updatedAt: newMount.updatedAt.toISOString(),
+      createdAt: newMount.createdAt,
+      updatedAt: newMount.updatedAt,
     },
   }
 })

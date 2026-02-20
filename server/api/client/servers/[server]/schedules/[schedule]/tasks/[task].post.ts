@@ -74,7 +74,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const updates: Partial<ScheduleTaskUpdate> = {
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   if (body.action) updates.action = body.action

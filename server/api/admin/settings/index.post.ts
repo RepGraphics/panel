@@ -21,12 +21,11 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
-    const existingRows = await db
+    const [existing] = await db
       .select()
       .from(tables.settings)
       .where(eq(tables.settings.key, key))
-
-    const existing = existingRows[0]
+      .limit(1)
 
     const stringValue = String(value)
 

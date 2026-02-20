@@ -126,7 +126,7 @@ async function fetchFullDashboard(): Promise<ClientDashboardResponse> {
     id: entry.id,
     title: entry.action,
     description: parseMetadata(entry.metadata),
-    occurredAt: entry.occurredAt instanceof Date ? entry.occurredAt.toISOString() : new Date(entry.occurredAt).toISOString(),
+    occurredAt: entry.occurredAt instanceof Date ? entry.occurredAt : new Date(entry.occurredAt).toISOString(),
     actor: entry.actor,
     icon: selectActivityIcon(entry.action),
     serverUuid: entry.targetType === 'server' ? entry.targetId ?? undefined : undefined,

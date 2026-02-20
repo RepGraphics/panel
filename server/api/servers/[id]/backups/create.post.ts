@@ -44,8 +44,8 @@ export default defineEventHandler(async (event) => {
       isSuccessful: false,
       isLocked: false,
       completedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     })
 
     await recordAuditEventFromRequest(event, {

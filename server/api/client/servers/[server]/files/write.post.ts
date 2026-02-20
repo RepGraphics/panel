@@ -2,7 +2,8 @@ import { getWingsClientForServer, WingsConnectionError, WingsAuthError } from '#
 import { recordAuditEvent } from '#server/utils/audit'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { writeFileSchema } from '#shared/schema/server/operations'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -28,21 +29,15 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.files.write'],
   })
 
-  const body = await readBody<{ file: string; content: string }>(event)
-  const { file: rawFile, content } = body
+  const body = await readValidatedBodyWithLimit(event, writeFileSchema, BODY_SIZE_LIMITS.LARGE)
+  const rawFile = body.file || body.path || ''
+  const content = body.content ?? body.contents ?? ''
   const file = sanitizeFilePath(rawFile)
 
   if (!file) {
     throw createError({
       status: 400,
       statusText: 'File path is required',
-    })
-  }
-
-  if (content === undefined || content === null) {
-    throw createError({
-      status: 400,
-      statusText: 'Content is required (can be empty string)',
     })
   }
 

@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
     .set({
       status: 'installing',
       installedAt: null,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.servers.id, server.id))
 

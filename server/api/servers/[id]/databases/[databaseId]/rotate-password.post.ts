@@ -32,13 +32,14 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const database = await db
+  const [database] = await db
     .select()
     .from(tables.serverDatabases)
     .where(and(
       eq(tables.serverDatabases.id, databaseId),
       eq(tables.serverDatabases.serverId, server.id),
     ))
+    .limit(1)
 
   if (!database) {
     throw createError({ status: 404, statusText: 'Database not found' })
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
       .update(tables.serverDatabases)
       .set({
         password: newPassword,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverDatabases.id, databaseId))
 

@@ -1,5 +1,5 @@
 import { provisionServerOnWings } from '#server/utils/server-provisioning'
-import { sendServerCreatedEmail } from '#server/utils/email'
+import { sendServerCreatedEmail, isEmailConfigured } from '#server/utils/email'
 import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import { debugLog, debugError } from '#server/utils/logger'
 import type { ServerProvisioningConfig } from '#shared/types/server'
@@ -19,7 +19,7 @@ export default defineTask({
       await provisionServerOnWings(payload)
       debugLog('[Server Provision Task] Successfully provisioned server:', payload.serverUuid)
       
-      if (payload.ownerEmail && payload.serverName) {
+      if (payload.ownerEmail && payload.serverName && await isEmailConfigured()) {
         try {
           await sendServerCreatedEmail(payload.ownerEmail, payload.serverName, payload.serverUuid)
           debugLog('[Server Provision Task] Sent creation email for server:', payload.serverUuid)
@@ -37,7 +37,7 @@ export default defineTask({
         await db.update(tables.servers)
           .set({
             status: 'install_failed',
-            updatedAt: new Date(),
+            updatedAt: new Date().toISOString(),
           })
           .where(eq(tables.servers.id, payload.serverId))
       } catch (dbError) {

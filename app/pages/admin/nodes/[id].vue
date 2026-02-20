@@ -202,31 +202,25 @@ watch(tab, async (value) => {
 })
 
 watch([() => serverQuery.page, () => serverQuery.perPage], async () => {
-  if (tab.value !== 'servers') {
-    return
-  }
-  serverQuery.page = 1
+  if (tab.value !== 'servers') return
+  await serverTable.refresh()
 })
 
 watchDebounced(() => serverQuery.search, async () => {
   serverQuery.page = 1
-  if (tab.value !== 'servers') {
-    return
-  }
+  if (tab.value !== 'servers') return
+  await serverTable.refresh()
 }, { debounce: 300, maxWait: 1000 })
 
 watch([() => allocationQuery.page, () => allocationQuery.perPage], async () => {
-  if (tab.value !== 'allocations') {
-    return
-  }
-  allocationQuery.page = 1
+  if (tab.value !== 'allocations') return
+  await allocationTable.refresh()
 })
 
 watchDebounced(() => allocationQuery.search, async () => {
   allocationQuery.page = 1
-  if (tab.value !== 'allocations') {
-    return
-  }
+  if (tab.value !== 'allocations') return
+  await allocationTable.refresh()
 }, { debounce: 300, maxWait: 1000 })
 
 async function handleMaintenanceAction(action: string) {
@@ -308,25 +302,10 @@ function handleViewServer(row: AdminWingsNodeServerSummary) {
   navigateTo(`/admin/servers/${row.id}`)
 }
 
-async function handleUnlinkServer(row: AdminWingsNodeServerSummary) {
-  if (!confirm(t('admin.nodes.confirmUnlinkServer', { name: row.name }))) {
-    return
-  }
-
-  try {
-    toast.add({
-      title: t('admin.nodes.unlinkServer'),
-      description: t('admin.nodes.unlinkServerDescription'),
-      color: 'warning',
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.nodes.failedToUnlinkServer')
-    toast.add({
-      title: t('common.error'),
-      description: message,
-      color: 'error',
-    })
-  }
+function handleUnlinkServer(row: AdminWingsNodeServerSummary) {
+  transferForm.serverIds = [row.id]
+  transferForm.targetNodeId = ''
+  showTransferModal.value = true
 }
 
 async function togglePrimaryAllocation(row: AdminWingsNodeAllocationSummary) {
@@ -377,11 +356,7 @@ function handleTransferAllocation(row: AdminWingsNodeAllocationSummary) {
     return
   }
 
-  toast.add({
-    title: t('admin.nodes.transferAllocation'),
-    description: t('admin.nodes.transferAllocationDescription'),
-    color: 'info',
-  })
+  navigateTo(`/admin/servers/${row.serverId}`)
 }
 
 async function handleDeleteAllocation(row: AdminWingsNodeAllocationSummary) {

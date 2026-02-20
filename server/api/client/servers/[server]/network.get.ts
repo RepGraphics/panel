@@ -3,7 +3,6 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { listServerAllocations } from '#server/utils/serversStore'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { requireAccountUser } from '#server/utils/security'
-import { recordServerActivity } from '#server/utils/server-activity'
 
 export default defineEventHandler(async (event) => {
   const serverIdentifier = getRouterParam(event, 'server')
@@ -16,7 +15,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const accountContext = await requireAccountUser(event)
-  const { server, user } = await getServerWithAccess(serverIdentifier, accountContext.session)
+  const { server } = await getServerWithAccess(serverIdentifier, accountContext.session)
 
   await requireServerPermission(event, {
     serverId: server.id,
@@ -36,26 +35,16 @@ export default defineEventHandler(async (event) => {
     notes: allocation.notes ?? null,
     isPrimary: Boolean(allocation.isPrimary),
     createdAt: allocation.createdAt instanceof Date
-      ? allocation.createdAt.toISOString()
+      ? allocation.createdAt
       : new Date(allocation.createdAt).toISOString(),
     updatedAt: allocation.updatedAt instanceof Date
-      ? allocation.updatedAt.toISOString()
+      ? allocation.updatedAt
       : new Date(allocation.updatedAt).toISOString(),
   })
 
   const mappedAllocations = allocations.map(normalizeAllocation)
   const primary = mappedAllocations.find(allocation => allocation.isPrimary) ?? null
   const additional = mappedAllocations.filter(allocation => !allocation.isPrimary)
-
-  await recordServerActivity({
-    event,
-    actorId: user.id,
-    action: 'server.network.viewed',
-    server: { id: server.id, uuid: server.uuid },
-    metadata: {
-      allocationCount: mappedAllocations.length,
-    },
-  })
 
   return {
     data: <NetworkData>{

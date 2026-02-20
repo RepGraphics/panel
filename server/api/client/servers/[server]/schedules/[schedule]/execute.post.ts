@@ -89,8 +89,8 @@ export default defineEventHandler(async (event) => {
 
   await db.update(tables.serverSchedules)
     .set({
-      lastRunAt: new Date(),
-      updatedAt: new Date(),
+      lastRunAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(tables.serverSchedules.id, scheduleId))
 

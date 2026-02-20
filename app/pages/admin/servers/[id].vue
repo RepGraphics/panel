@@ -58,7 +58,7 @@ const server = computed(() => serverData.value?.data ?? null)
                   icon="i-lucide-external-link" 
                   size="xs"
                   variant="ghost"
-                  :to="`/server/${server.identifier}`"
+                  :to="`/server/${server.identifier}/console`"
                 >
                   {{ t('admin.servers.viewServer') }}
                 </UButton>

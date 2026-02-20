@@ -1,9 +1,9 @@
-import { asc, desc, sql } from 'drizzle-orm'
+import { asc, desc, sql, or, like } from 'drizzle-orm'
 
 import type { AdminPaginatedMeta, AdminWingsNodeAllocationSummary, AdminWingsNodeAllocationsPayload } from '#shared/types/admin'
 
 import { requireAdmin } from '#server/utils/security'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, and } from '#server/utils/drizzle'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -35,12 +35,24 @@ export default defineEventHandler(async (event): Promise<AdminWingsNodeAllocatio
   const page = Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam
   const perPage = Number.isNaN(perPageParam) ? 25 : Math.min(Math.max(perPageParam, 1), 100)
   const offset = (page - 1) * perPage
+  const search = typeof query.search === 'string' && query.search.trim() ? query.search.trim() : null
 
   const db = useDrizzle()
 
+  const baseWhere = search
+    ? and(
+        eq(tables.serverAllocations.nodeId, id),
+        or(
+          like(tables.serverAllocations.ip, `%${search}%`),
+          like(sql`CAST(${tables.serverAllocations.port} AS TEXT)`, `%${search}%`),
+          like(tables.serverAllocations.ipAlias, `%${search}%`),
+        ),
+      )
+    : eq(tables.serverAllocations.nodeId, id)
+
   const [totalRow] = await db.select({ count: sql<number>`COUNT(*)` })
     .from(tables.serverAllocations)
-    .where(eq(tables.serverAllocations.nodeId, id))
+    .where(baseWhere)
 
   const rows = await db.select({
     id: tables.serverAllocations.id,
@@ -55,7 +67,7 @@ export default defineEventHandler(async (event): Promise<AdminWingsNodeAllocatio
   })
     .from(tables.serverAllocations)
     .leftJoin(tables.servers, eq(tables.serverAllocations.serverId, tables.servers.id))
-    .where(eq(tables.serverAllocations.nodeId, id))
+    .where(baseWhere)
     .orderBy(desc(tables.serverAllocations.isPrimary), asc(tables.serverAllocations.ip), asc(tables.serverAllocations.port))
     .limit(perPage)
     .offset(offset)

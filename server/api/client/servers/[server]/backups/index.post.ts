@@ -2,7 +2,13 @@ import { backupManager } from '#server/utils/backup-manager'
 import { WingsConnectionError, WingsAuthError } from '#server/utils/wings-client'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { z } from 'zod'
+
+const createBackupSchema = z.object({
+  name: z.string().trim().max(255).optional(),
+  ignored: z.string().trim().max(2048).optional(),
+})
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -21,11 +27,10 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.backup.create'],
   })
 
-  const body = await readBody<{ name?: string; ignored?: string }>(event)
-  const { name, ignored } = body
+  const { name, ignored } = await readValidatedBodyWithLimit(event, createBackupSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
-    const backup = await backupManager.createBackup(server.id, {
+    const backup = await backupManager.createBackup(server.uuid as string, {
       name,
       ignoredFiles: ignored,
       userId: accountContext.user.id,

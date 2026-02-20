@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
   if (path.startsWith('/api/auth'))
     return
 
-  if (path.startsWith('/api/'))
+  if (path.startsWith('/api/wings') || path.startsWith('/api/remote'))
     return
 
   const cookies = parseCookies(event)
@@ -69,6 +69,7 @@ export default defineEventHandler(async (event) => {
   const userAgent = getHeader(event, 'user-agent') || ''
   const ipAddress = getRequestIP(event) || 'Unknown'
   const now = new Date(nowTs)
+  const nowIso = now.toISOString()
   const deviceInfo = parseUserAgent(userAgent)
 
   try {
@@ -84,8 +85,8 @@ export default defineEventHandler(async (event) => {
 
     await db.insert(tables.sessionMetadata).values({
       sessionToken: cookieToken,
-      firstSeenAt: now,
-      lastSeenAt: now,
+      firstSeenAt: nowIso,
+      lastSeenAt: nowIso,
       ipAddress,
       userAgent,
       deviceName: deviceInfo.device,
@@ -94,7 +95,7 @@ export default defineEventHandler(async (event) => {
     }).onConflictDoUpdate({
       target: tables.sessionMetadata.sessionToken,
       set: {
-        lastSeenAt: now,
+        lastSeenAt: nowIso,
         ipAddress,
         userAgent,
         deviceName: deviceInfo.device,

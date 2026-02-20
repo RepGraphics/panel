@@ -4,6 +4,46 @@ import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-
 import type { AdminScheduleResponse, NitroTasksResponse } from '#shared/types/admin'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 
+function parseCronField(field: string): number | null {
+  if (!field || field === '*' || field.startsWith('*/')) return null
+  const val = parseInt(field, 10)
+  return isNaN(val) ? null : val
+}
+
+function computeNextRun(cronExpression: string): string {
+  const now = new Date()
+  const parts = cronExpression.trim().split(/\s+/)
+  const [mf = '*', hf = '*', df = '*', monf = '*', wdf = '*'] = parts
+
+  const targetMinute = parseCronField(mf)
+  const targetHour = parseCronField(hf)
+  const targetDay = parseCronField(df)
+  const targetMonth = parseCronField(monf)
+  const targetWeekday = parseCronField(wdf)
+
+  const next = new Date(now)
+  next.setSeconds(0)
+  next.setMilliseconds(0)
+  next.setMinutes(next.getMinutes() + 1)
+
+  for (let i = 0; i < 60 * 24 * 366; i++) {
+    const ok
+      = (targetMinute === null || next.getMinutes() === targetMinute)
+      && (targetHour === null || next.getHours() === targetHour)
+      && (targetDay === null || next.getDate() === targetDay)
+      && (targetMonth === null || next.getMonth() === targetMonth - 1)
+      && (targetWeekday === null || next.getDay() === targetWeekday)
+    if (ok) return next.toISOString()
+    next.setMinutes(next.getMinutes() + 1)
+  }
+
+  const fallback = new Date(now)
+  fallback.setMinutes(fallback.getMinutes() + 1)
+  fallback.setSeconds(0)
+  fallback.setMilliseconds(0)
+  return fallback.toISOString()
+}
+
 export default defineEventHandler(async (event) => {
   const session = await requireAdmin(event)
 
@@ -50,12 +90,11 @@ export default defineEventHandler(async (event) => {
       allSchedules.push({
         id: `nitro:${taskName}:${scheduledTask.cron}`,
         name: displayName,
-        description: taskName, 
+        description: taskName,
         serverName: 'Panel (Nitro)',
         cron: scheduledTask.cron,
-        nextRun: null, // Nitro handles scheduling internally
-        lastRun: null, // Nitro tasks don't log execution times
-        enabled: true, // Scheduled tasks are always enabled
+        nextRun: computeNextRun(scheduledTask.cron),
+        enabled: true,
         type: 'nitro',
       })
     }

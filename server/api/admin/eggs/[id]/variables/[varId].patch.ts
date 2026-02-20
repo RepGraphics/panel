@@ -25,13 +25,14 @@ export default defineEventHandler(async (event) => {
     .select()
     .from(tables.eggVariables)
     .where(eq(tables.eggVariables.id, varId))
+    .limit(1)
 
   if (!existing || existing.eggId !== eggId) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Variable not found' })
   }
 
   const updates: Record<string, string | boolean | Date | null> = {
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   if (body.name !== undefined) updates.name = body.name
@@ -48,6 +49,7 @@ export default defineEventHandler(async (event) => {
     .select()
     .from(tables.eggVariables)
     .where(eq(tables.eggVariables.id, varId))
+    .limit(1)
 
   if (!updated) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Variable not found after update' })

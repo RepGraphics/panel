@@ -16,10 +16,11 @@ export default defineEventHandler(async (event) => {
   const identity = rawIdentity.toLowerCase()
 
   const db = useDrizzle()
-  const user = db
+  const [user] = await db
     .select({ id: tables.users.id, email: tables.users.email })
     .from(tables.users)
     .where(or(eq(tables.users.email, identity), eq(tables.users.username, identity)))
+    .limit(1)
 
   if (!user?.email) {
     return {

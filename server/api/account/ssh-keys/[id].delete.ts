@@ -13,13 +13,14 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const key = db
+  const [key] = await db
     .select()
     .from(tables.sshKeys)
     .where(and(
       eq(tables.sshKeys.id, id),
       eq(tables.sshKeys.userId, user.id),
     ))
+    .limit(1)
 
   if (!key) {
     throw createError({ status: 404, statusText: 'SSH key not found' })

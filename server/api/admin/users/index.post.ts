@@ -1,21 +1,19 @@
 import { requireAdmin, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
 import { useDrizzle, tables, eq } from '#server/utils/drizzle'
-import { APIError } from 'better-auth/api'
 import { sendAdminUserCreatedEmail } from '#server/utils/email'
 import { requireAdminApiKeyPermission } from '#server/utils/admin-api-permissions'
 import { ADMIN_ACL_RESOURCES, ADMIN_ACL_PERMISSIONS } from '#server/utils/admin-acl'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
-import { auth, normalizeHeadersForAuth } from '#server/utils/auth'
 import { z } from 'zod'
+import bcrypt from 'bcryptjs'
+import { generateId } from 'better-auth'
 
 const adminCreateUserSchema = z.object({
   username: z.string().trim().min(1),
   email: z.string().trim().email(),
   password: z.string().min(8),
-  nameFirst: z.string().trim().optional(),
-  nameLast: z.string().trim().optional(),
   language: z.string().trim().optional(),
-  role: z.enum(['user', 'admin']),
+  role: z.enum(['user', 'admin']).default('user'),
 })
 
 export default defineEventHandler(async (event) => {
@@ -29,91 +27,77 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDrizzle()
-  const now = new Date()
+  const now = new Date().toISOString()
   const defaultLanguage = process.env.DEFAULT_LANGUAGE || 'en'
-  const fullName = [body.nameFirst, body.nameLast].filter(Boolean).join(' ') || body.username
+
+  const existing = await db
+    .select({ id: tables.users.id })
+    .from(tables.users)
+    .where(eq(tables.users.email, body.email))
+    .limit(1)
+
+  if (existing[0]) {
+    throw createError({ status: 409, statusText: 'Conflict', message: 'A user with this email already exists' })
+  }
+
+  const hashedPassword = await bcrypt.hash(body.password, 12)
+  const userId = generateId()
+
+  await db.insert(tables.users).values({
+    id: userId,
+    username: body.username,
+    email: body.email,
+    password: hashedPassword,
+    language: body.language || defaultLanguage,
+    rootAdmin: body.role === 'admin',
+    role: body.role,
+    emailVerified: now,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  await db.insert(tables.accounts).values({
+    id: generateId(),
+    userId,
+    type: 'credential',
+    provider: 'credential',
+    providerAccountId: userId,
+    accountId: userId,
+    password: hashedPassword,
+    createdAt: now,
+    updatedAt: now,
+  })
 
   try {
-    const created = await auth.api.createUser({
-      body: {
-        email: body.email,
-        password: body.password,
-        name: fullName,
-        role: body.role,
-      },
-      headers: normalizeHeadersForAuth(event.node.req.headers),
-    })
-
-    const newUser = {
-      id: created.user.id,
+    await sendAdminUserCreatedEmail({
+      to: body.email,
       username: body.username,
-      email: body.email,
-      nameFirst: body.nameFirst ?? null,
-      nameLast: body.nameLast ?? null,
-      language: body.language || defaultLanguage,
-      rootAdmin: body.role === 'admin',
-      createdAt: now,
-      updatedAt: now,
-    }
-
-    await db.update(tables.users)
-      .set({
-        username: newUser.username,
-        nameFirst: newUser.nameFirst,
-        nameLast: newUser.nameLast,
-        language: newUser.language,
-        rootAdmin: newUser.rootAdmin,
-        role: body.role,
-        updatedAt: now,
-      })
-      .where(eq(tables.users.id, newUser.id))
-
-    try {
-      await sendAdminUserCreatedEmail({
-        to: newUser.email,
-        username: newUser.username,
-      })
-    }
-    catch (error) {
-      console.error('Failed to send admin user created email', error)
-    }
-
-    await recordAuditEventFromRequest(event, {
-      actor: session.user.email || session.user.id,
-      actorType: 'user',
-      action: 'admin.user.created',
-      targetType: 'user',
-      targetId: newUser.id,
-      metadata: {
-        email: newUser.email,
-        username: newUser.username,
-        role: newUser.rootAdmin ? 'admin' : 'user',
-      },
     })
-
-    const displayName = newUser.nameFirst && newUser.nameLast
-      ? `${newUser.nameFirst} ${newUser.nameLast}`
-      : newUser.nameFirst || newUser.nameLast || null
-
-    return {
-      data: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-        name: displayName,
-        role: newUser.rootAdmin ? 'admin' : 'user',
-        createdAt: newUser.createdAt.toISOString(),
-      },
-    }
   }
   catch (error) {
-    if (error instanceof APIError) {
-      const statusCode = typeof error.status === 'number' ? error.status : Number(error.status ?? 500) || 500
-      throw createError({
-        statusCode,
-        statusMessage: error.message || 'Failed to create user',
-      })
-    }
-    throw error
+    console.error('Failed to send admin user created email', error)
+  }
+
+  await recordAuditEventFromRequest(event, {
+    actor: session.user.email || session.user.id,
+    actorType: 'user',
+    action: 'admin.user.created',
+    targetType: 'user',
+    targetId: userId,
+    metadata: {
+      email: body.email,
+      username: body.username,
+      role: body.role,
+    },
+  })
+
+  return {
+    data: {
+      id: userId,
+      username: body.username,
+      email: body.email,
+      role: body.role,
+      createdAt: now,
+    },
   }
 })

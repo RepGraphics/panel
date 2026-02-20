@@ -84,7 +84,10 @@ export interface AdminServerDetails extends Server {
     id: string
     uuid: string
     name: string
+    startup?: string | null
+    dockerImages?: Record<string, string>
   } | null
+  environment?: Record<string, string>
   nest?: {
     id: string
     uuid: string
@@ -1049,11 +1052,11 @@ export interface ScheduleInfo {
   name: string
   cron: string
   enabled: boolean
-  nextRunAt?: Date
-  lastRunAt?: Date
+  nextRunAt?: string
+  lastRunAt?: string
   tasks: ScheduleTask[]
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
 }
 
 export interface TaskExecutionResult {

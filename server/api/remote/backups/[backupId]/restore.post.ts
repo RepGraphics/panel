@@ -47,7 +47,7 @@ export default defineEventHandler(async (event: H3Event) => {
     await db.update(tables.servers)
       .set({
         status: successful ? null : 'restore_failed',
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.servers.id, server.id))
   }

@@ -21,12 +21,12 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const [egg] = await db.select().from(tables.eggs).where(eq(tables.eggs.id, eggId))
+  const [egg] = await db.select().from(tables.eggs).where(eq(tables.eggs.id, eggId)).limit(1)
   if (!egg) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Egg not found' })
   }
 
-  const now = new Date()
+  const now = new Date().toISOString()
 
   const newVariable = {
     id: randomUUID(),
@@ -68,8 +68,8 @@ export default defineEventHandler(async (event) => {
       userViewable: newVariable.userViewable,
       userEditable: newVariable.userEditable,
       rules: newVariable.rules,
-      createdAt: newVariable.createdAt.toISOString(),
-      updatedAt: newVariable.updatedAt.toISOString(),
+      createdAt: newVariable.createdAt,
+      updatedAt: newVariable.updatedAt,
     },
   }
 })

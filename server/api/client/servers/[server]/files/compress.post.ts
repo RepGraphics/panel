@@ -2,7 +2,8 @@ import { requireServerPermission } from '#server/utils/permission-middleware'
 import { getWingsClientForServer } from '#server/utils/wings-client'
 import { recordServerActivity } from '#server/utils/server-activity'
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { compressFilesSchema } from '#shared/schema/server/operations'
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -17,20 +18,12 @@ export default defineEventHandler(async (event) => {
 
   const { server } = await getServerWithAccess(serverIdentifier, accountContext.session)
 
-  const body = await readBody(event)
-  const { root, files } = body
-
-  if (!files || !Array.isArray(files) || files.length === 0) {
-    throw createError({
-      status: 400,
-      message: 'Files array is required',
-    })
-  }
-
   const permissionContext = await requireServerPermission(event, {
     serverId: server.id,
     requiredPermissions: ['server.files.compress'],
   })
+
+  const { root, files } = await readValidatedBodyWithLimit(event, compressFilesSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
     const { client } = await getWingsClientForServer(server.uuid)

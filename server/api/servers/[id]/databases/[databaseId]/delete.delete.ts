@@ -31,13 +31,14 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const database = await db
+  const [database] = await db
     .select()
     .from(tables.serverDatabases)
     .where(and(
       eq(tables.serverDatabases.id, databaseId),
       eq(tables.serverDatabases.serverId, server.id),
     ))
+    .limit(1)
 
   if (!database) {
     throw createError({ status: 404, statusText: 'Database not found' })

@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
   await rotateUserPassword(host, database.username, database.remote, newPassword)
 
   await db.update(tables.serverDatabases)
-    .set({ password: newPassword, updatedAt: new Date() })
+    .set({ password: newPassword, updatedAt: new Date().toISOString() })
     .where(eq(tables.serverDatabases.id, databaseId))
 
   await recordAuditEventFromRequest(event, {

@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
     databaseLimit: databaseLimit !== undefined ? databaseLimit : (existingLimits?.databaseLimit ?? null),
     allocationLimit: allocationLimit !== undefined ? allocationLimit : (existingLimits?.allocationLimit ?? null),
     backupLimit: backupLimit !== undefined ? backupLimit : (existingLimits?.backupLimit ?? null),
-    updatedAt: new Date() as Date,
+    updatedAt: new Date().toISOString() as string,
   }
 
   if (existingLimits) {
@@ -54,7 +54,7 @@ export default defineEventHandler(async (event) => {
       .set(updateData)
       .where(eq(tables.serverLimits.serverId, serverId))
   } else {
-    const now = new Date()
+    const nowIso = new Date().toISOString()
     await db.insert(tables.serverLimits)
       .values({
         serverId,
@@ -70,8 +70,8 @@ export default defineEventHandler(async (event) => {
         memoryOverallocate: null,
         diskOverallocate: null,
         oomDisabled: server.oomDisabled ?? true,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: nowIso,
+        updatedAt: nowIso,
       })
   }
 

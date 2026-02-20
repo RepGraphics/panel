@@ -203,7 +203,7 @@ export class WingsClient {
         {
           headers: {
             'Authorization': this.getToken(),
-            'Accept': 'application/json',
+            'Accept': 'text/plain, */*',
           },
           signal: controller.signal,
         }
@@ -212,7 +212,12 @@ export class WingsClient {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        throw new WingsConnectionError(`Failed to read file: ${response.status}`)
+        let errorMessage = `Failed to read file: ${response.status}`
+        try {
+          const body = await response.text()
+          if (body) errorMessage += ` - ${body}`
+        } catch { /* ignore */ }
+        throw new WingsConnectionError(errorMessage)
       }
 
       return response.text()

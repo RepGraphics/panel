@@ -2,7 +2,8 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { getWingsClientForServer } from '#server/utils/wings-client'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { copyFileSchema } from '#shared/schema/server/operations'
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -22,15 +23,7 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.files.write'],
   })
 
-  const body = await readBody(event)
-  const { location } = body
-
-  if (!location) {
-    throw createError({
-      status: 400,
-      message: 'File location is required',
-    })
-  }
+  const { location } = await readValidatedBodyWithLimit(event, copyFileSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
     const { client } = await getWingsClientForServer(server.uuid)

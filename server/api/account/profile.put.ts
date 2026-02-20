@@ -4,6 +4,7 @@ import { accountProfileUpdateSchema } from '#shared/schema/account'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 import { APIError } from 'better-auth/api'
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth'
+import { isEmailConfigured } from '#server/utils/email'
 
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PUT')
@@ -62,7 +63,7 @@ export default defineEventHandler(async (event) => {
       await db.update(tables.users)
         .set({
           username: body.username,
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.users.id, user.id))
 
@@ -80,30 +81,42 @@ export default defineEventHandler(async (event) => {
     }
 
     if (body.email !== undefined && body.email !== oldEmail) {
-      try {
-        await auth.api.changeEmail({
-          body: {
-            newEmail: body.email,
-            callbackURL: '/account/profile',
-          },
-          headers,
-        })
-      }
-      catch (error) {
-        if (error instanceof APIError) {
-          const statusCode = typeof error.status === 'number' ? error.status : Number(error.status ?? 500) || 500
-          throw createError({
-            statusCode,
-            statusMessage: error.message || 'Failed to request email change',
+      const emailEnabled = await isEmailConfigured()
+
+      if (emailEnabled) {
+        try {
+          await auth.api.changeEmail({
+            body: {
+              newEmail: body.email,
+              callbackURL: '/account/profile',
+            },
+            headers,
           })
         }
-        throw error
+        catch (error) {
+          if (error instanceof APIError) {
+            const statusCode = typeof error.status === 'number' ? error.status : Number(error.status ?? 500) || 500
+            throw createError({
+              statusCode,
+              statusMessage: error.message || 'Failed to request email change',
+            })
+          }
+          throw error
+        }
+      } else {
+        await db.update(tables.users)
+          .set({
+            email: body.email,
+            emailVerified: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(tables.users.id, user.id))
       }
 
       await recordAuditEventFromRequest(event, {
         actor: user.id,
         actorType: 'user',
-        action: 'account.email.change_requested',
+        action: emailEnabled ? 'account.email.change_requested' : 'account.email.updated',
         targetType: 'user',
         targetId: user.id,
         metadata: {

@@ -7,8 +7,6 @@ import { updateServerStartupSchema } from '~~/shared/schema/admin/server'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
 
 export default defineEventHandler(async (event) => {
-  assertMethod(event, 'PATCH')
-
   const session = await requireAdmin(event)
   
   await requireAdminApiKeyPermission(event, ADMIN_ACL_RESOURCES.SERVERS, ADMIN_ACL_PERMISSIONS.WRITE)
@@ -42,9 +40,9 @@ export default defineEventHandler(async (event) => {
 
   const serverId = server.id
 
-  const now = new Date()
+  const nowIso = new Date().toISOString()
   const serverUpdates: Record<string, unknown> = {
-    updatedAt: now,
+    updatedAt: nowIso,
   }
   
   if (startup !== undefined) {
@@ -107,8 +105,8 @@ export default defineEventHandler(async (event) => {
             serverId,
             key,
             value: String(value ?? ''),
-            createdAt: now,
-            updatedAt: now,
+            createdAt: nowIso,
+            updatedAt: nowIso,
           }))
         )
     }

@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
     .select()
     .from(tables.eggs)
     .where(eq(tables.eggs.id, eggId))
+    .limit(1)
 
   if (!egg) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Egg not found' })

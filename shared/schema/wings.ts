@@ -100,11 +100,11 @@ const remoteBackupPartSchema = z.object({
 })
 
 export const remoteBackupStatusSchema = z.object({
-  checksum: trimmedString,
-  checksum_type: trimmedString,
+  checksum: z.string().trim(),
+  checksum_type: z.string().trim(),
   size: z.coerce.number().int().nonnegative(),
   successful: z.boolean(),
-  parts: z.array(remoteBackupPartSchema).optional(),
+  parts: z.array(remoteBackupPartSchema).nullish(),
 })
 
 export const remoteBackupRestoreStatusSchema = z.object({

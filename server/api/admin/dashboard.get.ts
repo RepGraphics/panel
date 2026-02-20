@@ -181,11 +181,11 @@ async function fetchCriticalData(event: H3Event): Promise<Pick<DashboardResponse
   const nitroScheduleCount = await fetchNitroScheduleCount(event)
   const activeSchedules = activeServerSchedules + nitroScheduleCount
   const dueSoonThreshold = Date.now() + 30 * 60 * 1000
-  const dueSoonCount = scheduleRows.filter((schedule: { enabled: boolean | null; nextRunAt: Date | null }) => {
+  const dueSoonCount = scheduleRows.filter((schedule: { enabled: boolean | null; nextRunAt: string | null }) => {
     if (!schedule.enabled || !schedule.nextRunAt) {
       return false
     }
-    return schedule.nextRunAt.getTime() <= dueSoonThreshold
+    return new Date(schedule.nextRunAt).getTime() <= dueSoonThreshold
   }).length
 
   const metrics: DashboardMetric[] = [
@@ -309,7 +309,7 @@ async function fetchIncidents(): Promise<DashboardIncident[]> {
       }
     })(),
     id: event.id,
-    occurredAt: event.occurredAt.toISOString(),
+    occurredAt: typeof event.occurredAt === 'string' ? event.occurredAt : new Date(event.occurredAt).toISOString(),
     actor: event.actor,
     action: event.action,
     target: event.targetId ? `${event.targetType}#${event.targetId}` : event.targetType,

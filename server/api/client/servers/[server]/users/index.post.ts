@@ -35,10 +35,11 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDrizzle()
-  const targetUser = db
+  const [targetUser] = await db
     .select()
     .from(tables.users)
     .where(eq(tables.users.email, body.email))
+    .limit(1)
 
   if (!targetUser) {
     throw createError({
@@ -47,7 +48,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const existing = db
+  const [existing] = await db
     .select()
     .from(tables.serverSubusers)
     .where(
@@ -56,6 +57,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.serverSubusers.userId, targetUser.id)
       )
     )
+    .limit(1)
 
   if (existing) {
     throw createError({
@@ -77,10 +79,11 @@ export default defineEventHandler(async (event) => {
       updatedAt: now,
     })
 
-  const subuser = db
+  const [subuser] = await db
     .select()
     .from(tables.serverSubusers)
     .where(eq(tables.serverSubusers.id, subuserId))
+    .limit(1)
 
   await invalidateServerSubusersCache(server.id, [targetUser.id])
 

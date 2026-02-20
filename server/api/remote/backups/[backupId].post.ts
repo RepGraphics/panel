@@ -5,6 +5,7 @@ import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/secu
 import { getNodeIdFromAuth } from '#server/utils/wings/auth'
 import { invalidateServerBackupsCache } from '#server/utils/backups'
 import { remoteBackupStatusSchema } from '#shared/schema/wings'
+import { sendBackupCompletedEmail } from '#server/utils/email'
 
 export default defineEventHandler(async (event: H3Event) => {
   const db = useDrizzle()
@@ -37,10 +38,10 @@ export default defineEventHandler(async (event: H3Event) => {
   const updates = {
     checksum: successful ? `${checksum_type}:${checksum}` : null,
     bytes: successful ? size : 0,
-    completedAt: new Date(),
+    completedAt: new Date().toISOString(),
     isSuccessful: successful,
     isLocked: successful ? backup.isLocked : false,
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   await db.update(tables.serverBackups)
@@ -50,12 +51,34 @@ export default defineEventHandler(async (event: H3Event) => {
   await invalidateServerBackupsCache(backup.serverId)
 
   const serverRows = await db
-    .select()
+    .select({
+      id: tables.servers.id,
+      uuid: tables.servers.uuid,
+      name: tables.servers.name,
+      ownerId: tables.servers.ownerId,
+    })
     .from(tables.servers)
     .where(eq(tables.servers.id, backup.serverId))
     .limit(1)
 
   const server = serverRows[0]
+
+  if (successful && server?.ownerId) {
+    try {
+      const ownerRows = await db
+        .select({ email: tables.users.email, username: tables.users.username })
+        .from(tables.users)
+        .where(eq(tables.users.id, server.ownerId))
+        .limit(1)
+      const owner = ownerRows[0]
+      if (owner?.email) {
+        await sendBackupCompletedEmail(owner.email, server.name as string, backup.name)
+      }
+    }
+    catch {
+      // Non-fatal — don't fail the callback if email sending fails
+    }
+  }
 
   await recordAuditEventFromRequest(event, {
     actor: 'wings',

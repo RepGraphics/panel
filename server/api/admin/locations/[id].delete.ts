@@ -17,12 +17,11 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const existingRows = await db
+  const [existing] = await db
     .select()
     .from(tables.locations)
     .where(eq(tables.locations.id, locationId))
-
-  const existing = existingRows[0]
+    .limit(1)
 
   if (!existing) {
     throw createError({ status: 404, statusText: 'Not Found', message: 'Location not found' })

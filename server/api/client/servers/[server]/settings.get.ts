@@ -4,7 +4,6 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { useDrizzle, tables } from '#server/utils/drizzle'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { requireAccountUser } from '#server/utils/security'
-import { recordServerActivity } from '#server/utils/server-activity'
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -17,7 +16,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { server, user } = await getServerWithAccess(serverIdentifier, accountContext.session)
+  const { server } = await getServerWithAccess(serverIdentifier, accountContext.session)
 
   await requireServerPermission(event, {
     serverId: server.id,
@@ -68,13 +67,6 @@ export default defineEventHandler(async (event) => {
         }
       : null,
   }
-
-  await recordServerActivity({
-    event,
-    actorId: user.id,
-    action: 'server.settings.viewed',
-    server: { id: server.id, uuid: server.uuid },
-  })
 
   return {
     data: response,

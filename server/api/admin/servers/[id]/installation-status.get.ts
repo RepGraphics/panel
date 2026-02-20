@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
         .update(tables.servers)
         .set({
           status: status.status === 'running' ? 'online' : 'offline',
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(tables.servers.id, serverId))
     }

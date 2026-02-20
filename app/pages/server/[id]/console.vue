@@ -51,6 +51,7 @@ const {
   sendCommand,
   sendPowerAction,
   reconnect,
+  lifecycleStatus,
 } = useServerWebSocket(serverId)
 
 const showStats = ref(true)
@@ -247,9 +248,9 @@ function handleSearch() {
     <UPageBody>
       <UContainer>
         <ServerStatusBanner
-          :is-installing="false"
-          :is-transferring="false"
-          :is-suspended="false"
+          :is-installing="lifecycleStatus === 'installing' || server?.status === 'installing'"
+          :is-transferring="lifecycleStatus === 'transferring'"
+          :is-suspended="server?.suspended === true"
           :is-node-under-maintenance="false"
         />
 

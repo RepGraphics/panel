@@ -75,7 +75,7 @@ export default defineEventHandler(async (event): Promise<PaginatedServerActivity
 
   const data: ServerActivityEvent[] = rows.map(row => ({
     id: row.id,
-    occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : new Date(row.occurredAt).toISOString(),
+    occurredAt: row.occurredAt instanceof Date ? row.occurredAt : new Date(row.occurredAt).toISOString(),
     actor: row.actor,
     actorType: row.actorType as ActorType,
     action: row.action,

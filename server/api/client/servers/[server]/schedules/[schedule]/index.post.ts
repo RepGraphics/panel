@@ -90,7 +90,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const updates: Partial<ServerScheduleUpdate> = {
-    updatedAt: new Date(),
+    updatedAt: new Date().toISOString(),
   }
 
   if (body.name) {

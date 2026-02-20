@@ -53,8 +53,8 @@ export function useImpersonationControls(options?: UseImpersonationControlsOptio
         throw new Error(result.error.message || t('layout.impersonationStopFailed'))
       }
 
+      await authClient.getSession({ fetchOptions: { cache: 'no-store' } })
       clearNuxtData()
-      await authStore.syncSession({ disableCookieCache: true })
       await refreshNuxtData()
 
       const shouldNotify = override?.notifications ?? options?.notifications ?? true

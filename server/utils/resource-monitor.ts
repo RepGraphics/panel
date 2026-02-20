@@ -25,7 +25,7 @@ export class ResourceMonitor {
         networkRxBytes: details.utilization.network.rx_bytes,
         networkTxBytes: details.utilization.network.tx_bytes,
         uptime: details.utilization.uptime,
-        lastUpdated: new Date(),
+        lastUpdated: new Date().toISOString(),
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -97,7 +97,7 @@ export class ResourceMonitor {
         try {
           await this.db
             .update(tables.wingsNodes)
-            .set({ lastSeenAt, updatedAt: new Date() })
+            .set({ lastSeenAt, updatedAt: new Date().toISOString() })
             .where(eq(tables.wingsNodes.id, nodeId))
         } catch (err) {
           debugError('Failed to update node status:', err)
@@ -139,7 +139,7 @@ export class ResourceMonitor {
         try {
           await this.db
             .update(tables.wingsNodes)
-            .set({ lastSeenAt: node.lastSeenAt ?? null, updatedAt: new Date() })
+            .set({ lastSeenAt: node.lastSeenAt ?? null, updatedAt: new Date().toISOString() })
             .where(eq(tables.wingsNodes.id, nodeId))
         } catch (err) {
           debugError('Failed to update node status:', err)
@@ -243,14 +243,14 @@ export class ResourceMonitor {
       for (const node of nodeResources) {
         await this.db
           .update(tables.wingsNodes)
-          .set({ lastSeenAt: node.lastUpdated ?? null, updatedAt: new Date() })
+          .set({ lastSeenAt: node.lastUpdated ?? null, updatedAt: new Date().toISOString() })
           .where(eq(tables.wingsNodes.id, node.nodeId))
       }
 
       for (const resource of serverResources) {
         await this.db
           .update(tables.servers)
-          .set({ status: resource.state, updatedAt: new Date() })
+          .set({ status: resource.state, updatedAt: new Date().toISOString() })
           .where(eq(tables.servers.id, resource.serverId))
       }
 

@@ -21,16 +21,17 @@ export default defineEventHandler(async (event) => {
 
   const db = useDrizzle()
 
-  const targetUser = db
+  const [targetUser] = await db
     .select({ id: tables.users.id, username: tables.users.username })
     .from(tables.users)
     .where(eq(tables.users.id, userId))
+    .limit(1)
 
   if (!targetUser) {
     throw createError({ status: 404, statusText: 'User not found' })
   }
 
-  const apiKey = db
+  const [apiKey] = await db
     .select({
       id: tables.apiKeys.id,
       identifier: tables.apiKeys.identifier,
@@ -43,6 +44,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.apiKeys.userId, userId)
       )
     )
+    .limit(1)
 
   if (!apiKey) {
     throw createError({ status: 404, statusText: 'API key not found' })

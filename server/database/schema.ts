@@ -13,23 +13,23 @@ export const users = pgTable(
     language: text('language').notNull().default('en'),
     rootAdmin: boolean('root_admin').notNull().default(false),
     role: text('role').notNull().default('user'),
-    emailVerified: timestamp('email_verified'),
+    emailVerified: timestamp('email_verified', { mode: 'string' }),
     image: text('image'),
     suspended: boolean('suspended').notNull().default(false),
-    suspendedAt: timestamp('suspended_at'),
+    suspendedAt: timestamp('suspended_at', { mode: 'string' }),
     suspensionReason: text('suspension_reason'),
     passwordResetRequired: boolean('password_reset_required').notNull().default(false),
     banned: boolean('banned'),
     banReason: text('ban_reason'),
-    banExpires: timestamp('ban_expires'),
+    banExpires: timestamp('ban_expires', { mode: 'string' }),
 
     useTotp: boolean('use_totp').notNull().default(false),
     totpSecret: text('totp_secret'),
-    totpAuthenticatedAt: timestamp('totp_authenticated_at'),
+    totpAuthenticatedAt: timestamp('totp_authenticated_at', { mode: 'string' }),
     twoFactorEnabled: boolean('two_factor_enabled'),
     rememberToken: text('remember_token'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   (table) => [
     uniqueIndex('users_username_unique').on(table.username),
@@ -52,17 +52,17 @@ export const accounts = pgTable(
     refreshToken: text('refresh_token'),
     accessToken: text('access_token'),
     refreshTokenExpiresIn: integer('refresh_token_expires_in'),
-    expiresAt: timestamp('expires_at'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at'),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+    expiresAt: timestamp('expires_at', { mode: 'string' }),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { mode: 'string' }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { mode: 'string' }),
     tokenType: text('token_type'),
     scope: text('scope'),
     idToken: text('id_token'),
     sessionState: text('session_state'),
     oauthTokenSecret: text('oauth_token_secret'),
     oauthToken: text('oauth_token'),
-    createdAt: timestamp('created_at'),
-    updatedAt: timestamp('updated_at'),
+    createdAt: timestamp('created_at', { mode: 'string' }),
+    updatedAt: timestamp('updated_at', { mode: 'string' }),
   },
   (table) => [
     uniqueIndex('accounts_provider_provider_account_id_index').on(table.provider, table.providerAccountId),
@@ -74,12 +74,12 @@ export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
   sessionToken: text('session_token').notNull().unique(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  expires: timestamp('expires').notNull(),
-  expiresAt: timestamp('expires_at'),
+  expires: timestamp('expires', { mode: 'string' }).notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string' }),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
-  createdAt: timestamp('created_at'),
-  updatedAt: timestamp('updated_at'),
+  createdAt: timestamp('created_at', { mode: 'string' }),
+  updatedAt: timestamp('updated_at', { mode: 'string' }),
   impersonatedBy: text('impersonated_by').references(() => users.id, { onDelete: 'set null' }),
 }, (table) => [
   index('sessions_user_id_index').on(table.userId),
@@ -91,8 +91,8 @@ export const sessionMetadata = pgTable(
   'session_metadata',
   {
     sessionToken: text('session_token').primaryKey().references(() => sessions.sessionToken, { onDelete: 'cascade' }),
-    firstSeenAt: timestamp('first_seen_at'),
-    lastSeenAt: timestamp('last_seen_at'),
+    firstSeenAt: timestamp('first_seen_at', { mode: 'string' }),
+    lastSeenAt: timestamp('last_seen_at', { mode: 'string' }),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
     deviceName: text('device_name'),
@@ -111,10 +111,10 @@ export const verificationTokens = pgTable(
     identifier: text('identifier').notNull(),
     token: text('token').notNull(),
     value: text('value'),
-    expires: timestamp('expires').notNull(),
-    expiresAt: timestamp('expires_at'),
-    createdAt: timestamp('created_at'),
-    updatedAt: timestamp('updated_at'),
+    expires: timestamp('expires', { mode: 'string' }).notNull(),
+    expiresAt: timestamp('expires_at', { mode: 'string' }),
+    createdAt: timestamp('created_at', { mode: 'string' }),
+    updatedAt: timestamp('updated_at', { mode: 'string' }),
   },
   (table) => [
     uniqueIndex('verification_token_identifier_token_index').on(table.identifier, table.token),
@@ -128,8 +128,8 @@ export const locations = pgTable(
     id: text('id').primaryKey(),
     short: text('short').notNull(),
     long: text('long'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('locations_short_unique').on(table.short),
@@ -162,9 +162,9 @@ export const wingsNodes = pgTable(
     tokenSecret: text('token_secret').notNull(),
     apiToken: text('api_token').notNull(),
     locationId: text('location_id').references(() => locations.id),
-    lastSeenAt: timestamp('last_seen_at'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    lastSeenAt: timestamp('last_seen_at', { mode: 'string' }),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   (table) => [
     uniqueIndex('wings_nodes_base_url_unique').on(table.baseUrl),
@@ -183,8 +183,8 @@ export const serverAllocations = pgTable(
     isPrimary: boolean('is_primary').notNull().default(false),
     ipAlias: text('ip_alias'),
     notes: text('notes'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_allocations_unique').on(table.nodeId, table.ip, table.port),
@@ -215,9 +215,9 @@ export const servers = pgTable(
     databaseLimit: integer('database_limit'),
     backupLimit: integer('backup_limit').notNull().default(0),
     oomDisabled: boolean('oom_disabled').notNull().default(true),
-    installedAt: timestamp('installed_at'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    installedAt: timestamp('installed_at', { mode: 'string' }),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('servers_uuid_unique').on(table.uuid),
@@ -243,8 +243,8 @@ export const serverLimits = pgTable('server_limits', {
   databaseLimit: integer('database_limit'),
   allocationLimit: integer('allocation_limit'),
   backupLimit: integer('backup_limit'),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export const serverStartupEnv = pgTable(
@@ -256,8 +256,8 @@ export const serverStartupEnv = pgTable(
     value: text('value').notNull(),
     description: text('description'),
     isEditable: boolean('is_editable').notNull().default(true),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_env_key_unique').on(table.serverId, table.key),
@@ -274,11 +274,11 @@ export const serverSchedules = pgTable(
     name: text('name').notNull(),
     cron: text('cron').notNull(),
     action: text('action').notNull(),
-    nextRunAt: timestamp('next_run_at'),
-    lastRunAt: timestamp('last_run_at'),
+    nextRunAt: timestamp('next_run_at', { mode: 'string' }),
+    lastRunAt: timestamp('last_run_at', { mode: 'string' }),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     index('server_schedules_enabled_next_run_index').on(table.enabled, table.nextRunAt),
@@ -297,8 +297,8 @@ export const serverScheduleTasks = pgTable(
     timeOffset: integer('time_offset').notNull().default(0),
     continueOnFailure: boolean('continue_on_failure').notNull().default(false),
     isQueued: boolean('is_queued').notNull().default(false),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_schedule_tasks_sequence').on(table.scheduleId, table.sequenceId),
@@ -317,8 +317,8 @@ export const databaseHosts = pgTable(
     database: text('database'),
     nodeId: text('node_id').references(() => wingsNodes.id),
     maxDatabases: integer('max_databases'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
 )
 
@@ -334,8 +334,8 @@ export const serverDatabases = pgTable(
     remote: text('remote').notNull(),
     maxConnections: integer('max_connections'),
     status: text('status').notNull().default('ready'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_databases_unique_name_per_server').on(table.serverId, table.name),
@@ -349,8 +349,8 @@ export const serverSubusers = pgTable(
     serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     permissions: text('permissions').notNull(),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_subusers_unique_user_per_server').on(table.serverId, table.userId),
@@ -370,9 +370,9 @@ export const serverBackups = pgTable(
     bytes: integer('bytes').notNull().default(0),
     isSuccessful: boolean('is_successful').notNull().default(false),
     isLocked: boolean('is_locked').notNull().default(false),
-    completedAt: timestamp('completed_at'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    completedAt: timestamp('completed_at', { mode: 'string' }),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('server_backups_uuid_unique').on(table.uuid),
@@ -393,8 +393,8 @@ export const serverTransfers = pgTable(
     newAdditionalAllocations: text('new_additional_allocations'),
     successful: boolean('successful').notNull().default(false),
     archived: boolean('archived').notNull().default(false),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   },
 )
 
@@ -402,14 +402,14 @@ export const auditEvents = pgTable(
   'audit_events',
   {
     id: text('id').primaryKey(),
-    occurredAt: timestamp('occurred_at').notNull(),
+    occurredAt: timestamp('occurred_at', { mode: 'string' }).notNull(),
     actor: text('actor').notNull(),
     actorType: text('actor_type').notNull(),
     action: text('action').notNull(),
     targetType: text('target_type').notNull(),
     targetId: text('target_id'),
     metadata: text('metadata'),
-    createdAt: timestamp('created_at').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
   },
   table => [
     uniqueIndex('audit_events_occurred_id').on(table.occurredAt, table.id),
@@ -423,8 +423,8 @@ export const recoveryTokens = pgTable('recovery_tokens', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   token: text('token').notNull(),
-  usedAt: timestamp('used_at'),
-  createdAt: timestamp('created_at').notNull(),
+  usedAt: timestamp('used_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
 })
 
 export const nests = pgTable('nests', {
@@ -433,8 +433,8 @@ export const nests = pgTable('nests', {
   author: text('author').notNull(),
   name: text('name').notNull(),
   description: text('description'),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export const eggs = pgTable('eggs', {
@@ -458,8 +458,8 @@ export const eggs = pgTable('eggs', {
   scriptEntry: text('script_entry'),
   scriptInstall: text('script_install'),
   copyScriptFrom: text('copy_script_from'),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export const eggVariables = pgTable('egg_variables', {
@@ -472,8 +472,8 @@ export const eggVariables = pgTable('egg_variables', {
   userViewable: boolean('user_viewable').notNull().default(true),
   userEditable: boolean('user_editable').notNull().default(true),
   rules: text('rules'),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export const mounts = pgTable('mounts', {
@@ -485,8 +485,8 @@ export const mounts = pgTable('mounts', {
   target: text('target').notNull(),
   readOnly: boolean('read_only').notNull().default(false),
   userMountable: boolean('user_mountable').notNull().default(false),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export const mountEgg = pgTable('mount_egg', {
@@ -550,18 +550,18 @@ export const apiKeys = pgTable('apikey', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   refillInterval: integer('refill_interval'),
   refillAmount: integer('refill_amount'),
-  lastRefillAt: timestamp('last_refill_at'),
-  lastUsedAt: timestamp('last_used_at'),
+  lastRefillAt: timestamp('last_refill_at', { mode: 'string' }),
+  lastUsedAt: timestamp('last_used_at', { mode: 'string' }),
   enabled: boolean('enabled').notNull().default(true),
   rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(true),
   rateLimitTimeWindow: integer('rate_limit_time_window'),
   rateLimitMax: integer('rate_limit_max'),
   requestCount: integer('request_count').notNull().default(0),
   remaining: integer('remaining'),
-  lastRequest: timestamp('last_request'),
-  expiresAt: timestamp('expires_at'),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  lastRequest: timestamp('last_request', { mode: 'string' }),
+  expiresAt: timestamp('expires_at', { mode: 'string' }),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
   permissions: text('permissions'),
   metadata: text('metadata'),
 }, (table) => [
@@ -574,7 +574,7 @@ export const apiKeyMetadata = pgTable('api_key_metadata', {
   keyType: integer('key_type').notNull().default(1),
   allowedIps: text('allowed_ips'),
   memo: text('memo'),
-  lastUsedAt: timestamp('last_used_at'),
+  lastUsedAt: timestamp('last_used_at', { mode: 'string' }),
   
   rServers: integer('r_servers').notNull().default(0),
   rNodes: integer('r_nodes').notNull().default(0),
@@ -586,8 +586,8 @@ export const apiKeyMetadata = pgTable('api_key_metadata', {
   rDatabaseHosts: integer('r_database_hosts').notNull().default(0),
   rServerDatabases: integer('r_server_databases').notNull().default(0),
   
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 }, (table) => [
   index('api_key_metadata_api_key_id_index').on(table.apiKeyId),
 ])
@@ -601,8 +601,8 @@ export const sshKeys = pgTable('ssh_keys', {
   name: text('name').notNull(),
   fingerprint: text('fingerprint').notNull().unique(),
   publicKey: text('public_key').notNull(),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 })
 
 export type SshKeyRow = typeof sshKeys.$inferSelect
@@ -631,8 +631,8 @@ export const jwks = pgTable('jwks', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
-  createdAt: timestamp('created_at').notNull(),
-  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string' }),
 })
 
 export const emailTemplates = pgTable('email_templates', {
@@ -642,8 +642,8 @@ export const emailTemplates = pgTable('email_templates', {
   subject: text('subject').notNull(),
   htmlContent: text('html_content').notNull(),
   isCustom: boolean('is_custom').notNull().default(false),
-  createdAt: timestamp('created_at').notNull(),
-  updatedAt: timestamp('updated_at').notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).notNull(),
 }, (table) => [
   index('email_templates_template_id_index').on(table.templateId),
 ])

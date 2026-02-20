@@ -313,15 +313,10 @@ async function impersonateUser() {
     return
 
   const response = await runAction('impersonate', async () => {
-    const result = await authClient.admin.impersonateUser({
-      userId: userId.value,
+    await $fetch(`/api/admin/users/${userId.value}/actions/impersonate`, {
+      method: 'POST',
     })
-
-    if (result.error) {
-      throw new Error(result.error.message || t('admin.users.impersonationFailed'))
-    }
-
-    return result.data ?? { success: true }
+    return { success: true }
   }, {
     refreshAfter: false,
   })
@@ -329,8 +324,8 @@ async function impersonateUser() {
   if (!response)
     return
 
-  await clearNuxtData()
-  await useAuthStore().syncSession({ disableCookieCache: true })
+  await authClient.getSession({ fetchOptions: { cache: 'no-store' } })
+  clearNuxtData()
   await refreshNuxtData()
 
   toast.add({

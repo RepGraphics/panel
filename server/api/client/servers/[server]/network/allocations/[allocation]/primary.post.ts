@@ -49,11 +49,11 @@ export default defineEventHandler(async (event) => {
     .where(eq(tables.servers.id, server.id))
 
   await db.update(tables.serverAllocations)
-    .set({ isPrimary: false, updatedAt: new Date() })
+    .set({ isPrimary: false, updatedAt: new Date().toISOString() })
     .where(eq(tables.serverAllocations.serverId, server.id))
 
   await db.update(tables.serverAllocations)
-    .set({ isPrimary: true, updatedAt: new Date() })
+    .set({ isPrimary: true, updatedAt: new Date().toISOString() })
     .where(eq(tables.serverAllocations.id, allocation.id))
 
   await recordServerActivity({

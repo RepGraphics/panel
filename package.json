@@ -36,6 +36,8 @@
     "db:docker:down": "docker compose -f docker-compose.db.yml down",
     "db:docker:logs": "docker compose -f docker-compose.db.yml logs -f postgres redis",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:local": "DATABASE_URL=\"postgresql://${DB_USER:-xyra}:${DB_PASSWORD:-changeme}@localhost:${DB_PORT:-5432}/${DB_NAME:-xyrapanel}\" pnpm db:migrate",
     "db:push": "drizzle-kit push",
     "db:push:db": "DATABASE_URL=\"postgresql://${DB_USER:-xyra}:${DB_PASSWORD:-changeme}@localhost:${DB_PORT:-5432}/${DB_NAME:-xyrapanel}\" pnpm db:push",
     "test": "vitest run",

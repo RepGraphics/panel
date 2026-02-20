@@ -1,5 +1,5 @@
 import { getServerWithAccess } from '#server/utils/server-helpers'
-import { useDrizzle, tables, eq } from '#server/utils/drizzle'
+import { useDrizzle, tables, eq, isNull, and } from '#server/utils/drizzle'
 import { invalidateServerCaches } from '#server/utils/serversStore'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { requireAccountUser } from '#server/utils/security'
@@ -39,8 +39,12 @@ export default defineEventHandler(async (event) => {
 
   const availableAllocations = await db.select()
     .from(tables.serverAllocations)
-    .where(eq(tables.serverAllocations.nodeId, server.nodeId!))
-    .filter(alloc => !alloc.serverId)
+    .where(
+      and(
+        eq(tables.serverAllocations.nodeId, server.nodeId!),
+        isNull(tables.serverAllocations.serverId)
+      )
+    )
 
   if (availableAllocations.length === 0) {
     throw createError({

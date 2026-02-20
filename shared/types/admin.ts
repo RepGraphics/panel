@@ -34,7 +34,7 @@ export interface AdminScheduleResponse {
   serverName: string
   cron: string
   nextRun: string | null
-  lastRun: string | null
+  lastRun?: string | null
   enabled: boolean
   type?: 'wings' | 'nitro'
 }

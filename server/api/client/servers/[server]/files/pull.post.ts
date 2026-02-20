@@ -2,7 +2,8 @@ import { getServerWithAccess } from '#server/utils/server-helpers'
 import { getWingsClientForServer } from '#server/utils/wings-client'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { recordAuditEventFromRequest } from '#server/utils/audit'
-import { requireAccountUser } from '#server/utils/security'
+import { requireAccountUser, readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security'
+import { pullFileSchema } from '#shared/schema/server/operations'
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event)
@@ -22,19 +23,11 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.files.write'],
   })
 
-  const body = await readBody(event)
-  const { url, directory, filename, use_header } = body
-
-  if (!url) {
-    throw createError({
-      status: 400,
-      message: 'URL is required',
-    })
-  }
+  const { url, directory } = await readValidatedBodyWithLimit(event, pullFileSchema, BODY_SIZE_LIMITS.SMALL)
 
   try {
     const { client } = await getWingsClientForServer(server.uuid)
-    await client.pullFile(server.uuid, url, directory || '/', filename, use_header, true)
+    await client.pullFile(server.uuid, url, directory || '/', undefined, undefined, true)
 
     await recordAuditEventFromRequest(event, {
       actor: accountContext.user.id,
@@ -42,7 +35,7 @@ export default defineEventHandler(async (event) => {
       action: 'server.file.pull',
       targetType: 'server',
       targetId: server.id,
-      metadata: { url, directory: directory || '/', filename },
+      metadata: { url, directory: directory || '/' },
     })
 
     return {

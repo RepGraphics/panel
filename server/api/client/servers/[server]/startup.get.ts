@@ -3,7 +3,6 @@ import { useDrizzle, tables, eq } from '#server/utils/drizzle'
 import type { ServerStartupVariable } from '#shared/types/server'
 import { requireServerPermission } from '#server/utils/permission-middleware'
 import { requireAccountUser } from '#server/utils/security'
-import { recordServerActivity } from '#server/utils/server-activity'
 
 export default defineEventHandler(async (event) => {
   const serverId = getRouterParam(event, 'server')
@@ -16,7 +15,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const accountContext = await requireAccountUser(event)
-  const { server, user } = await getServerWithAccess(serverId, accountContext.session)
+  const { server } = await getServerWithAccess(serverId, accountContext.session)
 
   await requireServerPermission(event, {
     serverId: server.id,
@@ -110,16 +109,6 @@ export default defineEventHandler(async (event) => {
   if (Object.keys(dockerImages).length === 0 && egg?.dockerImage) {
     dockerImages = { [egg.name || 'Default']: egg.dockerImage }
   }
-
-  await recordServerActivity({
-    event,
-    actorId: user.id,
-    action: 'server.startup.viewed',
-    server: { id: server.id, uuid: server.uuid },
-    metadata: {
-      variableCount: variables.length,
-    },
-  })
 
   return {
     data: {

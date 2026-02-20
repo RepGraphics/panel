@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBodyWithLimit(event, serverSubuserPermissionsSchema, BODY_SIZE_LIMITS.SMALL)
 
   const db = useDrizzle()
-  const subuser = db
+  const [subuser] = await db
     .select()
     .from(tables.serverSubusers)
     .where(
@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
         eq(tables.serverSubusers.serverId, server.id)
       )
     )
+    .limit(1)
 
   if (!subuser) {
     throw createError({
@@ -66,7 +67,7 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  const result = db
+  const [result] = await db
     .select({
       subuser: tables.serverSubusers,
       user: tables.users,
@@ -74,6 +75,7 @@ export default defineEventHandler(async (event) => {
     .from(tables.serverSubusers)
     .leftJoin(tables.users, eq(tables.serverSubusers.userId, tables.users.id))
     .where(eq(tables.serverSubusers.id, subuserId))
+    .limit(1)
 
   await invalidateServerSubusersCache(server.id, [subuser.userId])
 

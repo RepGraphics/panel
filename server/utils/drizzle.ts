@@ -35,6 +35,10 @@ function getPgPool() {
 
 export type DrizzleDatabase = NodePgDatabase<typeof schema>
 
+export function usePool(): Pool {
+  return getPgPool()
+}
+
 export function useDrizzle(): DrizzleDatabase {
   if (!db) {
     db = drizzle(getPgPool(), { schema })

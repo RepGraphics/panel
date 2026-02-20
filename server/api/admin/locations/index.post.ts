@@ -43,8 +43,8 @@ export default defineEventHandler(async (event) => {
       id: newLocation.id,
       short: newLocation.short,
       long: newLocation.long,
-      createdAt: newLocation.createdAt.toISOString(),
-      updatedAt: newLocation.updatedAt.toISOString(),
+      createdAt: newLocation.createdAt,
+      updatedAt: newLocation.updatedAt,
     },
   }
 })

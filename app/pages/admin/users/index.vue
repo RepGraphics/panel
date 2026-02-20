@@ -152,7 +152,6 @@ const userForm = ref({
   username: '',
   email: '',
   password: '',
-  name: '',
   role: 'user' as 'user' | 'admin',
 })
 
@@ -161,7 +160,6 @@ function resetForm() {
     username: '',
     email: '',
     password: '',
-    name: '',
     role: 'user',
   }
   editingUser.value = null
@@ -178,7 +176,6 @@ function openEditModal(user: AdminUserResponse) {
     username: user.username,
     email: user.email,
     password: '',
-    name: user.name || '',
     role: user.role as 'user' | 'admin',
   }
   showUserModal.value = true
@@ -384,10 +381,6 @@ async function handleDelete() {
               :disabled="isSubmitting" class="w-full" />
           </UFormField>
 
-          <UFormField :label="t('common.name')" name="name">
-            <UInput v-model="userForm.name" :placeholder="t('common.name')" :disabled="isSubmitting" class="w-full" />
-          </UFormField>
-
           <UFormField :label="t('auth.password')" name="password" :required="!editingUser">
             <UInput v-model="userForm.password" type="password"
               :placeholder="editingUser ? t('auth.password') : t('auth.password')" :required="!editingUser"
@@ -398,10 +391,10 @@ async function handleDelete() {
           </UFormField>
 
           <UFormField :label="t('admin.users.role')" name="role" required>
-            <USelect v-model="userForm.role" :options="[
+            <USelect v-model="userForm.role" :items="[
               { label: t('admin.users.userRole'), value: 'user' },
               { label: t('admin.users.admin'), value: 'admin' },
-            ]" :disabled="isSubmitting" class="w-full" />
+            ]" value-key="value" :disabled="isSubmitting" class="w-full" />
           </UFormField>
         </form>
       </template>

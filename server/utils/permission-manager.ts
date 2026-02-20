@@ -237,7 +237,7 @@ export class PermissionManager {
       throw new Error('User is already the server owner')
     }
 
-    const now = new Date()
+    const now = new Date().toISOString()
     await this.db.insert(tables.serverSubusers).values({
       id: randomUUID(),
       serverId,
@@ -279,7 +279,7 @@ export class PermissionManager {
       .update(tables.serverSubusers)
       .set({
         permissions: JSON.stringify(permissions),
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(tables.serverSubusers.id, subuser.id))
 
