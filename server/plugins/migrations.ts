@@ -15,7 +15,7 @@ async function baselineIfNeeded(pool: Pool, migrationsFolder: string) {
         AND table_name = '__drizzle_migrations'
       ) AS exists
     `)
-    if (!!trackingRes.rows[0]?.exists) return
+    if (trackingRes.rows[0]?.exists) return
 
     const usersRes = await client.query(`
       SELECT EXISTS (
@@ -36,11 +36,12 @@ async function baselineIfNeeded(pool: Pool, migrationsFolder: string) {
       )
     `)
 
-    const journal = JSON.parse(
+    interface MigrationJournal { entries: Array<{ tag: string; when: number }> }
+    const journalRaw: MigrationJournal = JSON.parse(
       readFileSync(resolve(migrationsFolder, 'meta/_journal.json'), 'utf-8')
-    ) as { entries: Array<{ tag: string; when: number }> }
+    )
 
-    for (const entry of journal.entries) {
+    for (const entry of journalRaw.entries) {
       const existing = await client.query(
         `SELECT id FROM drizzle.__drizzle_migrations WHERE hash = $1`,
         [entry.tag]
@@ -69,6 +70,8 @@ export default defineNitroPlugin(async () => {
     resolve(__dirname, '../database/migrations'),
     resolve(__dirname, '../../server/database/migrations'),
     resolve(process.cwd(), 'server/database/migrations'),
+    resolve(process.cwd(), 'migrations'),
+    '/app/migrations',
   ]
 
   const { existsSync } = await import('fs')

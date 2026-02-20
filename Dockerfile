@@ -1,8 +1,8 @@
 # Build
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN apk add --no-cache libc6-compat
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN pnpm run generate-pwa-assets
 RUN NODE_OPTIONS="--max-old-space-size=6144" pnpm build
 
 # Production
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
@@ -30,6 +30,7 @@ RUN addgroup --system --gid 1001 xyra && \
 
 COPY --from=builder --chown=xyra:xyra /app/.output ./.output
 COPY --from=builder --chown=xyra:xyra /app/ecosystem.config.cjs ./ecosystem.config.cjs
+COPY --from=builder --chown=xyra:xyra /app/server/database/migrations ./migrations
 
 EXPOSE 3000
 
