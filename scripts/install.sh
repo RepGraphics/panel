@@ -396,18 +396,21 @@ for i in $(seq 1 60); do
   printf "${GRAY}.${RESET}"; sleep 2
 done
 echo; log_success "App is responding on port 3000"
+log_start "Waiting for database migrations to complete"
+sleep 10
 
 # step 14 — seed admin
 log_step "Seeding admin account"
 SEED_SECRET_VAL=$(grep '^SEED_SECRET=' "$INSTALL_DIR/.env" | sed 's/^SEED_SECRET=//')
-for i in $(seq 1 20); do
+for i in $(seq 1 30); do
   HTTP_CODE=$(curl -s -o /tmp/seed-response.json -w "%{http_code}" \
     -X POST "http://127.0.0.1:3000/api/system/seed" \
     -H "Authorization: Bearer ${SEED_SECRET_VAL}" \
     -H "Content-Type: application/json")
   [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "409" ]] && break
-  sleep 3
+  printf "${GRAY}.${RESET}"; sleep 5
 done
+echo
 if [[ "$HTTP_CODE" == "200" ]]; then
   log_success "Admin created ${GRAY}•${RESET} ${WHITE}${ADMIN_EMAIL}${RESET}"
 elif [[ "$HTTP_CODE" == "409" ]]; then
