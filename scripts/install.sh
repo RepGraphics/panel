@@ -388,7 +388,7 @@ STARTEOF
 pm2 delete xyrapanel 2>/dev/null || true
 pm2 start "$INSTALL_DIR/start.mjs" --name xyrapanel -i max
 pm2 save
-env PATH="$PATH:/usr/bin:/usr/local/bin" pm2 startup systemd -u root --hp /root | tail -1 | bash
+env PATH="$PATH:/usr/bin:/usr/local/bin" pm2 startup systemd -u root --hp /root | grep -E '^sudo|^env ' | bash || true
 log_success "PM2 started and registered for boot"
 log_start "Waiting for app to be ready"
 for i in $(seq 1 60); do
