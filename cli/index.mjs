@@ -336,7 +336,7 @@ const pm2LogsCommand = createPm2Command(
   },
 );
 
-const PASTE_SERVICE_URL = 'https://paste.xyrapanel.com/paste';
+const PASTE_SERVICE_URL = 'https://paste.xyrapanel.com/api/pastes';
 
 const pm2PasteLogsCommand = defineCommand({
   meta: {
@@ -369,8 +369,9 @@ const pm2PasteLogsCommand = defineCommand({
   run: async ({ args }) => {
     const pasteUrl = PASTE_SERVICE_URL;
 
-    const pm2Args = ['logs', args.name, '--lines', String(args.lines), '--nostream'];
-    logger.start(`Collecting PM2 logs for ${String(args.name)}`);
+    const processName = String(args.name || defaultPm2App);
+    const pm2Args = ['logs', processName, '--lines', String(args.lines), '--nostream'];
+    logger.start(`Collecting PM2 logs for ${processName}`);
     const { stdout } = await execa('pm2', pm2Args, { cwd: projectRoot });
 
     const filtered = (() => {
@@ -380,28 +381,45 @@ const pm2PasteLogsCommand = defineCommand({
     })();
 
     const maxBytes = 256 * 1024;
-    const body = filtered.length > maxBytes ? filtered.slice(-maxBytes) : filtered;
+    const bodyContent = filtered.length > maxBytes ? filtered.slice(-maxBytes) : filtered;
 
-    const payloadHeaders = { 'Content-Type': 'text/plain' };
-    const pasteEndpoint = new URL(pasteUrl);
-    if (args.source) pasteEndpoint.searchParams.set('source', args.source);
-    if (args.expires) pasteEndpoint.searchParams.set('expires', args.expires);
+    const expiresMap = {
+      '10m': 10,
+      '1h': 60,
+      '6h': 360,
+      '1d': 1440,
+      '7d': 10080,
+      never: null,
+    };
+    const expiresInMinutes = expiresMap[args.expires] ?? expiresMap['1d'];
 
-    logger.start(`Uploading logs to paste service: ${pasteEndpoint.toString()}`);
-    const response = await fetch(pasteEndpoint, {
+    const payload = {
+      content: bodyContent,
+      source: args.source || undefined,
+      expiresInMinutes,
+    };
+
+    logger.start(`Uploading logs to paste service: ${pasteUrl}`);
+    const response = await fetch(pasteUrl, {
       method: 'POST',
-      headers: payloadHeaders,
-      body,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    const text = await response.text();
+    const resultText = await response.text();
     if (!response.ok) {
-      logger.error(`Paste upload failed (${response.status}): ${text}`);
+      logger.error(`Paste upload failed (${response.status}): ${resultText}`);
       process.exit(1);
     }
 
-    logger.success('Paste created');
-    console.log(text.trim());
+    try {
+      const json = JSON.parse(resultText);
+      logger.success('Paste created');
+      console.log(json.url || resultText.trim());
+    } catch {
+      logger.success('Paste created');
+      console.log(resultText.trim());
+    }
   },
 });
 
