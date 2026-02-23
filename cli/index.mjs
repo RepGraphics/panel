@@ -52,7 +52,7 @@ const renderRootHelp = () =>
     `${accent('╚██╗██╔╝ ╚██╗ ██╔╝ ██╔══██╗██╔══██╗██╔══██╗██╔══██╗████╗  ██║██╔════╝██║')} ${colors.dim('by @26bz & contributors')}`,
     accent(' ╚███╔╝   ╚████╔╝  ██████╔╝███████║██████╔╝███████║██╔██╗ ██║█████╗  ██║'),
     accent(' ██╔██╗    ╚██╔╝   ██╔══██╗██╔══██║██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║'),
-    `${accent('██╔╝ ██╗    ██║    ██║  ██║██║  ██║██║     ██║  ██║██║ ╚████║███████╗███████╗')}`,
+    accent('██╔╝ ██╗    ██║    ██║  ██║██║  ██║██║     ██║  ██║██║ ╚████║███████╗███████╗'),
     accent('╚═╝  ╚═╝    ╚═╝    ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝'),
     divider,
     `${accentSoft('Usage')}\n  ${colors.white('xyra <command> [options]')}`,
@@ -336,6 +336,75 @@ const pm2LogsCommand = createPm2Command(
   },
 );
 
+const PASTE_SERVICE_URL = 'https://paste.xyrapanel.com/paste';
+
+const pm2PasteLogsCommand = defineCommand({
+  meta: {
+    name: 'paste-logs',
+    description: 'Upload recent PM2 logs to the paste service',
+  },
+  args: {
+    name: nameArg,
+    lines: {
+      type: 'number',
+      default: 400,
+      description: 'Lines to pull from PM2 logs',
+    },
+    stream: {
+      type: 'string',
+      default: 'both',
+      description: 'Select which stream to include: both | out | err',
+    },
+    source: {
+      type: 'string',
+      description: 'Optional host label to annotate the paste (e.g. node-04)',
+      default: '',
+    },
+    expires: {
+      type: 'string',
+      default: '1d',
+      description: 'Paste expiration (e.g. 10m, 1h, 6h, 1d, 7d, never)',
+    },
+  },
+  run: async ({ args }) => {
+    const pasteUrl = PASTE_SERVICE_URL;
+
+    const pm2Args = ['logs', args.name, '--lines', String(args.lines), '--nostream'];
+    logger.start(`Collecting PM2 logs for ${String(args.name)}`);
+    const { stdout } = await execa('pm2', pm2Args, { cwd: projectRoot });
+
+    const filtered = (() => {
+      if (args.stream === 'out') return stdout.replace(/\n\[.*?\]\s*err.*?(?=\n\[|$)/gms, '');
+      if (args.stream === 'err') return stdout.replace(/\n\[.*?\]\s*out.*?(?=\n\[|$)/gms, '');
+      return stdout;
+    })();
+
+    const maxBytes = 256 * 1024;
+    const body = filtered.length > maxBytes ? filtered.slice(-maxBytes) : filtered;
+
+    const payloadHeaders = { 'Content-Type': 'text/plain' };
+    const pasteEndpoint = new URL(pasteUrl);
+    if (args.source) pasteEndpoint.searchParams.set('source', args.source);
+    if (args.expires) pasteEndpoint.searchParams.set('expires', args.expires);
+
+    logger.start(`Uploading logs to paste service: ${pasteEndpoint.toString()}`);
+    const response = await fetch(pasteEndpoint, {
+      method: 'POST',
+      headers: payloadHeaders,
+      body,
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      logger.error(`Paste upload failed (${response.status}): ${text}`);
+      process.exit(1);
+    }
+
+    logger.success('Paste created');
+    console.log(text.trim());
+  },
+});
+
 const pm2Command = defineCommand({
   meta: {
     name: 'pm2',
@@ -349,6 +418,7 @@ const pm2Command = defineCommand({
     delete: pm2DeleteCommand,
     status: pm2StatusCommand,
     logs: pm2LogsCommand,
+    'paste-logs': pm2PasteLogsCommand,
   },
 });
 
