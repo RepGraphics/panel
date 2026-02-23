@@ -427,6 +427,7 @@
       "connectionClosedWithReason": "Connection closed: {reason}",
       "connectionClosedWithCode": "Connection closed (code {code})",
       "connectionTimeout": "Connection timed out",
+      "connectionFailed": "Connection failed after multiple attempts",
       "failedToConnect": "Failed to connect",
       "failedToEstablish": "Failed to establish connection",
       "failedToRefreshToken": "Failed to refresh WebSocket token",

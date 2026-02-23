@@ -57,8 +57,8 @@ export default defineEventHandler(async (event): Promise<WebSocketToken | WebSoc
   });
 
   try {
-    const { client } = await getWingsClientForServer(server.uuid as string);
-    await client.getServerDetails(server.uuid as string);
+    const { client } = await getWingsClientForServer(server.uuid);
+    await client.getServerDetails(server.uuid);
   } catch (error) {
     if (isMissingWingsServer(error)) {
       return {
@@ -92,7 +92,20 @@ export default defineEventHandler(async (event): Promise<WebSocketToken | WebSoc
     });
   }
 
-  const baseUrl = `${node.scheme}://${node.fqdn}:${node.daemonListen}`;
+  const fallbackBaseUrl = `${node.scheme}://${node.fqdn}:${node.daemonListen}`;
+  const normalizedBaseUrl = (node.baseUrl || fallbackBaseUrl).replace(/\/+$/, '');
+
+  let baseUrl = normalizedBaseUrl;
+  let socketUrl = `${node.scheme === 'https' ? 'wss' : 'ws'}://${node.fqdn}:${node.daemonListen}/api/servers/${server.uuid}/ws`;
+
+  try {
+    const parsedNodeUrl = new URL(normalizedBaseUrl);
+    const socketProtocol = parsedNodeUrl.protocol === 'https:' ? 'wss' : 'ws';
+    baseUrl = parsedNodeUrl.origin;
+    socketUrl = `${socketProtocol}://${parsedNodeUrl.host}/api/servers/${server.uuid}/ws`;
+  } catch {
+    // Keep legacy fallback URL handling for malformed stored node URLs.
+  }
 
   const token = await generateWingsJWT(
     {
@@ -107,9 +120,6 @@ export default defineEventHandler(async (event): Promise<WebSocketToken | WebSoc
       expiresIn: 900,
     },
   );
-
-  const protocol = node.scheme === 'https' ? 'wss' : 'ws';
-  const socketUrl = `${protocol}://${node.fqdn}:${node.daemonListen}/api/servers/${server.uuid}/ws`;
 
   const response: WebSocketToken = {
     token,

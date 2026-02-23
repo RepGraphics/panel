@@ -7,7 +7,9 @@ import type {
 } from '#shared/types/websocket';
 
 const MAX_HISTORY_POINTS = 60;
-const RECONNECT_DELAY = 5000;
+const RECONNECT_BASE_DELAY = 5000;
+const RECONNECT_MAX_DELAY = 60000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 const websocketInstances = new Map<
   string,
@@ -35,6 +37,15 @@ function getOrCreateInstance(serverId: string) {
   return websocketInstances.get(serverId)!;
 }
 
+const allowedServerStates = ['offline', 'starting', 'stopping', 'running', 'stopped'] as const satisfies readonly ServerState[];
+
+const isServerState = (value: unknown): value is ServerState =>
+  typeof value === 'string' && (allowedServerStates as readonly string[]).includes(value);
+
+const coerceServerState = (value: unknown): ServerState => {
+  return isServerState(value) ? value : 'offline';
+};
+
 function mapWingsStats(payload: WingsStatsPayload): ServerStats {
   const network = payload.network || {};
   return {
@@ -43,7 +54,7 @@ function mapWingsStats(payload: WingsStatsPayload): ServerStats {
     cpuAbsolute: Number(payload.cpu_absolute ?? payload.cpu ?? 0),
     diskBytes: Number(payload.disk_bytes ?? payload.disk ?? 0),
     uptime: Number(payload.uptime ?? 0),
-    state: (payload.state ?? payload.status ?? 'offline') as ServerState,
+    state: coerceServerState(payload.state ?? payload.status),
     networkRxBytes: Number(network.rx_bytes ?? payload.network_rx_bytes ?? 0),
     networkTxBytes: Number(network.tx_bytes ?? payload.network_tx_bytes ?? 0),
   };
@@ -65,7 +76,7 @@ function normalizeMessageArgs(args?: unknown[]): string[] {
       try {
         return JSON.stringify(value);
       } catch {
-        return String(value);
+        return '';
       }
     })
     .filter((value): value is string => value.length > 0);
@@ -145,7 +156,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   const currentToken = ref<string | null>(null);
   const currentSocketUrl = ref<string | null>(null);
   const tokenRefreshInFlight = ref(false);
-  const reconnectTimer = ref<number | null>(null);
+  const reconnectTimer = ref<ReturnType<typeof setTimeout> | null>(null);
   const lifecycleStatus = ref<'normal' | 'installing' | 'transferring' | 'restoring' | 'error'>(
     'normal',
   );
@@ -157,6 +168,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   let intentionalClose = false;
   let reconnectAfterClose = false;
   let disposed = false;
+  let reconnectAttempts = 0;
 
   const recordEvent = (details: ServerEventDetails) => {
     recentEvents.value.unshift(details);
@@ -188,15 +200,28 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
     }
   };
 
-  const scheduleReconnect = (delay = RECONNECT_DELAY) => {
+  const scheduleReconnect = (delay?: number) => {
     if (disposed || reconnectTimer.value !== null || !import.meta.client) {
       return;
     }
 
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn(`[WebSocket] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, giving up`);
+      error.value = t('server.websocket.connectionFailed');
+      return;
+    }
+
+    const backoff = delay ?? Math.min(
+      RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
+      RECONNECT_MAX_DELAY,
+    );
+    reconnectAttempts++;
+    console.log(`[WebSocket] Scheduling reconnect #${reconnectAttempts} in ${backoff}ms`);
+
     reconnectTimer.value = setTimeout(() => {
       reconnectTimer.value = null;
       void connect();
-    }, delay) as unknown as number;
+    }, backoff);
   };
 
   const send = (event: string, args: string[] = []) => {
@@ -234,7 +259,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
       typeof args[0] === 'string' &&
       args[0].includes('\u001b')
     ) {
-      normalized = args as string[];
+      normalized = (args as unknown[]).filter((item): item is string => typeof item === 'string');
     } else {
       normalized = normalizeMessageArgs(args);
     }
@@ -258,18 +283,22 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
 
   const handleStats = (raw: string) => {
     try {
-      const parsed = JSON.parse(raw) as WingsStatsPayload;
-      const mapped = mapWingsStats(parsed);
-      stats.value = mapped;
-      serverState.value = mapped.state;
+      const parsed = parseJson<WingsStatsPayload>(raw, (data): data is WingsStatsPayload =>
+        typeof data === 'object' && data !== null,
+      );
+      if (parsed) {
+        const mapped = mapWingsStats(parsed);
+        stats.value = mapped;
+        serverState.value = mapped.state;
 
-      statsHistory.value.push({
-        timestamp: Date.now(),
-        stats: mapped,
-      });
+        statsHistory.value.push({
+          timestamp: Date.now(),
+          stats: mapped,
+        });
 
-      if (statsHistory.value.length > MAX_HISTORY_POINTS) {
-        statsHistory.value.shift();
+        if (statsHistory.value.length > MAX_HISTORY_POINTS) {
+          statsHistory.value.shift();
+        }
       }
     } catch (err) {
       console.error('Failed to parse stats payload:', err);
@@ -282,6 +311,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         console.log('[WebSocket] Authentication successful, requesting logs and stats');
         connected.value = true;
         error.value = null;
+        reconnectAttempts = 0;
         send('send logs', []);
         send('send stats', []);
         console.log('[WebSocket] Waiting for console output events from Wings...');
@@ -297,7 +327,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
           const stateArg = message.args?.[0];
           if (typeof stateArg === 'string') {
             const previousState = serverState.value;
-            serverState.value = stateArg as ServerState;
+            serverState.value = coerceServerState(stateArg);
             recordEvent({ event: 'status', message: stateArg, timestamp: Date.now() });
 
             if (previousState !== stateArg) {
@@ -397,15 +427,21 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         {
           const raw = message.args?.[0];
           if (typeof raw === 'string') {
-            const payload = parseJson<{ progress?: number; status?: string; message?: string }>(
-              raw,
+            const payload = parseJson<
+              { progress?: number; status?: string; message?: string }
+            >(raw, (data): data is { progress?: number; status?: string; message?: string } =>
+              typeof data === 'object' && data !== null,
             );
-            setLifecycle(
-              'transferring',
-              payload?.message ?? payload?.status ?? t('server.websocket.transferInProgress'),
-              payload?.progress,
-            );
-            recordEvent({ event: 'transfer status', raw, timestamp: Date.now() });
+            if (payload) {
+              if (typeof payload.status === 'string') {
+                setLifecycle('transferring', payload.status);
+              } else if (typeof payload.message === 'string') {
+                setLifecycle('transferring', payload.message);
+              }
+              if (typeof payload.progress === 'number') {
+                setLifecycle('transferring', lifecycleMessage.value, payload.progress);
+              }
+            }
           }
         }
         break;
@@ -423,7 +459,11 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         {
           const raw = message.args?.[0];
           if (typeof raw === 'string') {
-            const payload = parseJson<{ successful?: boolean; message?: string }>(raw);
+            const payload = parseJson<{ successful?: boolean; message?: string }>(
+              raw,
+              (data): data is { successful?: boolean; message?: string } =>
+                typeof data === 'object' && data !== null,
+            );
             if (payload?.successful === false) {
               setLifecycle('error', payload.message ?? t('server.websocket.backupRestoreFailed'));
             } else {
@@ -691,9 +731,12 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
           throw new Error(t('server.websocket.invalidResponseFormat'));
         }
       } catch (fetchError: unknown) {
-        const error = fetchError as { message?: string; data?: unknown };
-        const errorMessage = error.message || '';
-        const errorData = error.data;
+        const fetchErrObj =
+          typeof fetchError === 'object' && fetchError !== null
+            ? (fetchError as { message?: string; data?: unknown })
+            : { message: String(fetchError), data: undefined };
+        const errorMessage = fetchErrObj.message || '';
+        const errorData = fetchErrObj.data;
         const isUnavailable = errorMessage
           .toLowerCase()
           .includes('not available on the assigned wings node');
@@ -716,11 +759,9 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
 
         // $fetch throws H3Error objects for non-2xx responses
         if (errorData && typeof errorData === 'object' && errorData !== null) {
-          const errDataObj = errorData as Record<string, unknown>;
-          if ('message' in errDataObj && typeof errDataObj.message === 'string') {
-            throw new Error(
-              errDataObj.message || error.message || t('server.websocket.failedToFetchCredentials'),
-            );
+          const msg = (errorData as { message?: unknown }).message;
+          if (typeof msg === 'string') {
+            throw new Error(msg || fetchErrObj.message || t('server.websocket.failedToFetchCredentials'));
           }
         }
 
@@ -728,7 +769,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
           throw fetchError;
         }
 
-        throw new Error(error.message || t('server.websocket.failedToFetchCredentials'));
+        throw new Error(fetchErrObj.message || t('server.websocket.failedToFetchCredentials'));
       }
 
       if (
@@ -759,7 +800,12 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
         socket.value.close();
       }
 
-      const wsUrl = `${credentials.socket}?token=${credentials.token}`;
+      let wsUrl = credentials.socket;
+      if (window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
+        wsUrl = `wss://${wsUrl.slice('ws://'.length)}`;
+        console.log('[WebSocket] Upgraded insecure socket URL to wss:// due to HTTPS page context');
+      }
+
       console.log(
         `[WebSocket] Connecting to: ${wsUrl.length > 80 ? wsUrl.substring(0, 80) + '...' : wsUrl}`,
       );
@@ -779,9 +825,11 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
           console.error('[WebSocket] Connection timeout after 10s, state:', ws.readyState);
           connecting.value = false;
           error.value = t('server.websocket.connectionTimeout');
+          intentionalClose = true;
           if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
             ws.close();
           }
+          scheduleReconnect();
         }
       }, 10000);
 
@@ -798,21 +846,6 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
       };
 
       attachSocketHandlers(ws);
-
-      ws.addEventListener('error', (event) => {
-        console.error('[WebSocket] Error event:', event);
-        if (!hasOpened) {
-          connecting.value = false;
-          if (connectionTimeout) {
-            clearTimeout(connectionTimeout);
-            connectionTimeout = null;
-          }
-          if (!error.value || error.value === t('server.websocket.connecting')) {
-            error.value = t('server.websocket.failedToConnect');
-          }
-          reconnectAfterClose = false;
-        }
-      });
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : t('server.websocket.failedToEstablish');
@@ -841,6 +874,9 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
     clearReconnectTimer();
     reconnectAfterClose = reconnectSoon;
     intentionalClose = !reconnectSoon;
+    if (!reconnectSoon) {
+      reconnectAttempts = 0;
+    }
 
     if (socket.value) {
       socket.value.close();
@@ -853,6 +889,7 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   };
 
   const reconnect = () => {
+    reconnectAttempts = 0;
     if (socket.value) {
       disconnect(true);
     } else {
@@ -922,9 +959,13 @@ export function useServerWebSocket(serverId: string | ComputedRef<string>) {
   };
 }
 
-function parseJson<T>(value: string): T | null {
+function parseJson<T>(value: string, guard: (data: unknown) => data is T): T | null {
   try {
-    return JSON.parse(value) as T;
+    const parsed: unknown = JSON.parse(value);
+    if (!guard(parsed)) {
+      return null;
+    }
+    return parsed;
   } catch (error) {
     console.warn('Failed to parse JSON payload', error);
     return null;

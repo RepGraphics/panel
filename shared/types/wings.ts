@@ -228,6 +228,8 @@ export interface UpdateWingsNodeInput {
   name?: string;
   description?: string;
   baseURL?: string;
+  fqdn?: string;
+  scheme?: string;
   apiToken?: string;
   allowInsecure?: boolean;
   public?: boolean;

@@ -100,14 +100,8 @@ function mapRowToStored(row: typeof tables.wingsNodes.$inferSelect): StoredWings
     daemonListen: toNumber(row.daemonListen, 8080),
     daemonSftp: toNumber(row.daemonSftp, 2022),
     lastSeenAt: row.lastSeenAt ? new Date(row.lastSeenAt).toISOString() : null,
-    createdAt:
-      row.createdAt instanceof Date
-        ? row.createdAt.toISOString()
-        : new Date(row.createdAt).toISOString(),
-    updatedAt:
-      row.updatedAt instanceof Date
-        ? row.updatedAt.toISOString()
-        : new Date(row.updatedAt).toISOString(),
+    createdAt: new Date(row.createdAt).toISOString(),
+    updatedAt: new Date(row.updatedAt).toISOString(),
   };
 }
 
@@ -324,7 +318,7 @@ function parseBaseUrl(raw: string) {
   }
 
   const scheme = url.protocol.replace(':', '') || 'https';
-  const port = url.port ? Number(url.port) : 8080;
+  const port = url.port ? Number(url.port) : scheme === 'https' ? 443 : 80;
 
   return {
     sanitized,
@@ -332,6 +326,10 @@ function parseBaseUrl(raw: string) {
     fqdn: url.hostname,
     daemonListen: port,
   };
+}
+
+function buildBaseUrlFromParts(scheme: string, fqdn: string, daemonListen: number): string {
+  return `${scheme}://${fqdn}:${daemonListen}`;
 }
 
 function generateTokenParts() {
@@ -373,7 +371,7 @@ export async function createWingsNode(input: CreateWingsNodeInput): Promise<Stor
   const requestedId = input.id?.trim();
   const id = requestedId || (await generateNodeId(input.name));
 
-  const now = new Date();
+  const now = new Date().toISOString();
 
   const { sanitized, scheme, fqdn, daemonListen } = parseBaseUrl(input.baseURL);
 
@@ -464,14 +462,43 @@ export async function updateWingsNode(
     ? existing.apiToken
     : formatCombinedToken(existing.tokenIdentifier, existing.tokenSecret);
 
+  const scheme =
+    input.scheme !== undefined
+      ? input.scheme.trim() || existing.scheme
+      : baseUrlUpdates
+        ? baseUrlUpdates.scheme
+        : existing.scheme;
+
+  const fqdn =
+    input.fqdn !== undefined
+      ? input.fqdn.trim() || existing.fqdn
+      : baseUrlUpdates
+        ? baseUrlUpdates.fqdn
+        : existing.fqdn;
+
+  const daemonListen =
+    input.daemonListen !== undefined
+      ? Number(input.daemonListen)
+      : baseUrlUpdates
+        ? baseUrlUpdates.daemonListen
+        : existing.daemonListen;
+
+  const baseUrl =
+    baseUrlUpdates &&
+    input.fqdn === undefined &&
+    input.scheme === undefined &&
+    input.daemonListen === undefined
+      ? baseUrlUpdates.sanitized
+      : buildBaseUrlFromParts(scheme, fqdn, daemonListen);
+
   const updated = {
     name: input.name !== undefined ? input.name.trim() : existing.name,
     description:
       input.description !== undefined ? input.description.trim() || null : existing.description,
-    baseUrl: baseUrlUpdates ? baseUrlUpdates.sanitized : existing.baseUrl,
-    fqdn: baseUrlUpdates ? baseUrlUpdates.fqdn : existing.fqdn,
-    scheme: baseUrlUpdates ? baseUrlUpdates.scheme : existing.scheme,
-    daemonListen: baseUrlUpdates ? baseUrlUpdates.daemonListen : existing.daemonListen,
+    baseUrl,
+    fqdn,
+    scheme,
+    daemonListen,
     apiToken: tokenUpdates ? tokenUpdates.combined : existingToken,
     tokenIdentifier: tokenUpdates ? tokenUpdates.identifier : existing.tokenIdentifier,
     tokenSecret: tokenUpdates ? tokenUpdates.secret : existing.tokenSecret,
@@ -515,7 +542,8 @@ export async function updateWingsNode(
 export async function deleteWingsNode(id: string): Promise<void> {
   const db = useDrizzle();
   const result = await db.delete(tables.wingsNodes).where(eq(tables.wingsNodes.id, id));
-  const changes = (result as any)?.rowCount ?? 0;
+  const rowCount = (result as { rowCount?: unknown })?.rowCount;
+  const changes = typeof rowCount === 'number' ? rowCount : 0;
   if (changes === 0) {
     throw new Error(`Node ${id} not found`);
   }
