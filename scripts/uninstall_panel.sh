@@ -3,8 +3,13 @@
 # Called by install.sh — expects PKG_MANAGER, FIREWALL etc to be exported
 
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common.sh"
+SCRIPTS_BASE="https://raw.githubusercontent.com/XyraPanel/panel/main/scripts"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+if [[ -f "${SCRIPT_DIR}/common.sh" ]]; then
+  source "${SCRIPT_DIR}/common.sh"
+else
+  source <(curl -fsSL "${SCRIPTS_BASE}/common.sh")
+fi
 
 echo -e "\n$DIVIDER"
 echo -e "  ${RB}${BOLD}This will permanently remove XyraPanel and all its data.${RESET}"

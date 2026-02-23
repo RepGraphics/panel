@@ -3,8 +3,14 @@
 # Called by install.sh — expects OS_ID, PKG_MANAGER, FIREWALL, TOTAL_RAM_MB to be exported
 
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common.sh"
+SCRIPTS_BASE="https://raw.githubusercontent.com/XyraPanel/panel/main/scripts"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+COMMON_LOCAL="${SCRIPT_DIR}/common.sh"
+if [[ -f "$COMMON_LOCAL" ]]; then
+  source "$COMMON_LOCAL"
+else
+  source <(curl -fsSL "${SCRIPTS_BASE}/common.sh")
+fi
 
 # prompts
 log_step "Configuration"; echo
