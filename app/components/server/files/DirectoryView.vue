@@ -110,9 +110,11 @@ const { t } = useI18n();
               @update:model-value="props.toggleEntrySelection(entry, $event as boolean)"
             />
 
-            <button
-              class="flex items-center gap-2 truncate text-left"
+            <UButton
+              variant="ghost"
+              color="neutral"
               type="button"
+              class="flex items-center gap-2 truncate text-left"
               @click="props.handleEntryClick(entry)"
             >
               <UIcon
@@ -120,7 +122,7 @@ const { t } = useI18n();
                 class="size-4 text-primary"
               />
               <span class="truncate">{{ entry.name }}</span>
-            </button>
+            </UButton>
 
             <span
               class="text-xs uppercase"

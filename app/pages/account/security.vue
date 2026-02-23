@@ -296,13 +296,14 @@ async function disableTotp() {
             :disabled="isSavingPassword"
             @submit="handlePasswordSubmit"
           >
-            <input
+            <UInput
               type="text"
               name="username"
               autocomplete="username"
-              :value="usernameValue"
+              :model-value="usernameValue"
               tabindex="-1"
               aria-hidden="true"
+              variant="none"
               class="sr-only"
               readonly
             />
@@ -401,13 +402,14 @@ async function disableTotp() {
               <p class="text-sm text-muted-foreground">
                 {{ t('account.security.twoFactor.enterPasswordToEnable') }}
               </p>
-              <input
+              <UInput
                 type="text"
                 name="username"
                 autocomplete="username"
-                :value="usernameValue"
+                :model-value="usernameValue"
                 tabindex="-1"
                 aria-hidden="true"
+                variant="none"
                 class="sr-only"
                 readonly
               />
@@ -531,13 +533,14 @@ async function disableTotp() {
               <p class="text-sm text-muted-foreground">
                 {{ t('account.security.twoFactor.twoFactorActive') }}
               </p>
-              <input
+              <UInput
                 type="text"
                 name="username"
                 autocomplete="username"
-                :value="usernameValue"
+                :model-value="usernameValue"
                 tabindex="-1"
                 aria-hidden="true"
+                variant="none"
                 class="sr-only"
                 readonly
               />

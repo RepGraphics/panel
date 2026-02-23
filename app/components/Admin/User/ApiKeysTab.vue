@@ -148,7 +148,10 @@ async function confirmApiKeyDelete() {
           class="rounded-lg border border-default overflow-hidden"
           :class="{ 'opacity-70': key.expiresAt && new Date(key.expiresAt) <= new Date() }"
         >
-          <button
+          <UButton
+            variant="ghost"
+            color="neutral"
+            type="button"
             class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
             @click="toggleApiKey(key.identifier)"
           >
@@ -199,7 +202,7 @@ async function confirmApiKeyDelete() {
                 </span>
               </div>
             </div>
-          </button>
+          </UButton>
 
           <div
             v-if="expandedApiKeys.has(key.identifier)"

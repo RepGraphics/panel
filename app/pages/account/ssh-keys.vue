@@ -319,7 +319,10 @@ async function confirmDelete() {
             :key="key.id"
             class="rounded-lg border border-default overflow-hidden"
           >
-            <button
+            <UButton
+              variant="ghost"
+              color="neutral"
+              type="button"
               class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
               @click="toggleKey(key.id)"
             >
@@ -367,7 +370,7 @@ async function confirmDelete() {
                   </UButton>
                 </div>
               </div>
-            </button>
+            </UButton>
 
             <div v-if="expandedKeys.has(key.id)" class="border-t border-default bg-muted/30 p-4">
               <div class="space-y-2">

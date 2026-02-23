@@ -324,7 +324,9 @@ async function handleSignOutAll(includeCurrent = false) {
             class="rounded-lg border border-default overflow-hidden"
           >
             <div class="w-full flex items-center gap-3 p-3 hover:bg-elevated/50 transition-colors">
-              <button
+              <UButton
+                variant="ghost"
+                color="neutral"
                 type="button"
                 class="flex flex-1 items-center gap-3 text-left cursor-pointer bg-transparent border-0 p-0 min-w-0"
                 @click="toggleSession(session.token)"
@@ -410,7 +412,7 @@ async function handleSignOutAll(includeCurrent = false) {
                     </div>
                   </div>
                 </div>
-              </button>
+              </UButton>
 
               <div class="flex items-center gap-2 shrink-0">
                 <UButton
@@ -418,8 +420,7 @@ async function handleSignOutAll(includeCurrent = false) {
                   color="error"
                   size="xs"
                   :loading="updatingSessions"
-                  :disabled="session.token === currentSessionToken && updatingSessions"
-                  @click.stop="handleSignOut(session.token)"
+                  @click="handleSignOut(session.token)"
                 >
                   {{ t('account.sessions.revoke') }}
                 </UButton>

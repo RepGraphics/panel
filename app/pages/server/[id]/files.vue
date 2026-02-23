@@ -520,9 +520,10 @@ const isEditorDirty = computed(() => {
                 :actions="fileActions"
                 :show-loading-badge="directoryPending"
               >
-                <input
+                <UInput
                   ref="fileUploadInput"
                   type="file"
+                  variant="none"
                   class="hidden"
                   @change="handleFileUpload"
                 />
@@ -575,14 +576,16 @@ const isEditorDirty = computed(() => {
                   <nav
                     class="flex items-center justify-between gap-2 text-xs text-muted-foreground"
                   >
-                    <button
-                      class="flex items-center gap-2 hover:text-foreground"
+                    <UButton
+                      variant="ghost"
+                      color="neutral"
                       type="button"
+                      class="flex items-center gap-2 hover:text-foreground"
                       @click="selectedFile = null"
                     >
                       <UIcon name="i-lucide-arrow-left" class="size-3" />
                       {{ t('server.files.backToFiles') }}
-                    </button>
+                    </UButton>
                     <div class="flex items-center gap-2">
                       <span class="uppercase">{{ t('server.files.editing') }}</span>
                       <span class="font-semibold text-foreground">{{ selectedFile.name }}</span>

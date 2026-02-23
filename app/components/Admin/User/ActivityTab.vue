@@ -111,7 +111,10 @@ async function copyActivityJson(entry: (typeof activity.value)[0]) {
         :key="entry.id"
         class="rounded-lg border border-default overflow-hidden"
       >
-        <button
+        <UButton
+          variant="ghost"
+          color="neutral"
+          type="button"
           class="w-full flex flex-col gap-2 p-3 text-left hover:bg-elevated/50 transition-colors md:flex-row md:items-center md:justify-between"
           @click="toggleActivityEntry(entry.id)"
         >
@@ -137,7 +140,7 @@ async function copyActivityJson(entry: (typeof activity.value)[0]) {
           <div class="text-xs text-muted-foreground shrink-0">
             <NuxtTime :datetime="entry.occurredAt" relative />
           </div>
-        </button>
+        </UButton>
 
         <div
           v-if="expandedActivityEntries.has(entry.id)"

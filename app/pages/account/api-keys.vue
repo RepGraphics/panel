@@ -527,7 +527,10 @@ async function copyToken() {
             :key="key.identifier"
             class="rounded-lg border border-default overflow-hidden"
           >
-            <button
+            <UButton
+              variant="ghost"
+              color="neutral"
+              type="button"
               class="w-full flex items-center gap-3 p-3 text-left hover:bg-elevated/50 transition-colors"
               @click="toggleKey(key.identifier)"
             >
@@ -587,7 +590,7 @@ async function copyToken() {
                   </UButton>
                 </div>
               </div>
-            </button>
+            </UButton>
 
             <div
               v-if="expandedKeys.has(key.identifier)"
