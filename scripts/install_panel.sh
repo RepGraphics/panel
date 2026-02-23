@@ -191,15 +191,17 @@ if [[ "$FIREWALL" == "ufw" ]]; then
   ufw allow 22/tcp comment "SSH"    >/dev/null
   ufw allow 80/tcp comment "HTTP"   >/dev/null
   ufw allow 443/tcp comment "HTTPS" >/dev/null
+  ufw allow 8080/tcp comment "Wings daemon" >/dev/null
   ufw reload >/dev/null
-  log_success "ufw ${GRAY}•${RESET} ports 22 80 443 open"
+  log_success "ufw ${GRAY}•${RESET} ports 22 80 443 8080 open"
 else
   systemctl enable --now firewalld
   firewall-cmd --permanent --add-service=ssh   >/dev/null
   firewall-cmd --permanent --add-service=http  >/dev/null
   firewall-cmd --permanent --add-service=https >/dev/null
+  firewall-cmd --permanent --add-port=8080/tcp >/dev/null
   firewall-cmd --reload >/dev/null
-  log_success "firewalld ${GRAY}•${RESET} ports 22 80 443 open"
+  log_success "firewalld ${GRAY}•${RESET} ports 22 80 443 8080 open"
 fi
 
 # step 7 — system user

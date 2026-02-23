@@ -11,6 +11,39 @@ else
   source <(curl -fsSL "${SCRIPTS_BASE}/common.sh")
 fi
 
+load_env_file() {
+  local env_path="$1"
+  [[ -f "$env_path" ]] || return 1
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%$'\r'}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+
+    if [[ "$line" == export* ]]; then
+      line="${line#export }"
+    fi
+    [[ "$line" == *=* ]] || continue
+
+    local key="${line%%=*}"
+    local value="${line#*=}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ ${#value} -ge 2 && "${value:0:1}" == '"' && "${value: -1}" == '"' ]]; then
+      value="${value:1:-1}"
+    elif [[ ${#value} -ge 2 && "${value:0:1}" == "'" && "${value: -1}" == "'" ]]; then
+      value="${value:1:-1}"
+    fi
+
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$env_path"
+}
+
 echo -e "\n$DIVIDER"
 log_info "Mode       ${GRAY}•${RESET} ${WHITE}Update${RESET}"
 log_info "Install at ${GRAY}•${RESET} ${WHITE}${INSTALL_DIR}${RESET}"
@@ -68,9 +101,37 @@ fi
 chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
 
 # restart
+PM2_APP="xyrapanel"
+PM2_ENV="production"
+ECOSYSTEM_FILE="${INSTALL_DIR}/ecosystem.config.cjs"
+ENV_FILE="${INSTALL_DIR}/.env"
+
+[[ -f "$ECOSYSTEM_FILE" ]] || log_error "Missing ecosystem config at ${ECOSYSTEM_FILE}"
+
+if [[ -f "$ENV_FILE" ]]; then
+  log_start "Loading environment variables"
+  if load_env_file "$ENV_FILE"; then
+    log_success "Environment variables loaded"
+  else
+    log_warn "Failed to parse ${ENV_FILE} — proceeding with existing environment"
+  fi
+else
+  log_warn "No .env file found at ${ENV_FILE} — continuing without exporting environment variables"
+fi
+
+mkdir -p "${INSTALL_DIR}/.pm2/logs"
+
 log_step "Restarting XyraPanel"
-pm2 restart xyrapanel
-log_success "PM2 restarted"
+if pm2 reload "$PM2_APP" --update-env; then
+  log_success "PM2 reloaded ${PM2_APP}"
+else
+  log_warn "PM2 reload failed — attempting clean start"
+  if pm2 start "$ECOSYSTEM_FILE" --env "$PM2_ENV" --only "$PM2_APP" --update-env; then
+    log_success "PM2 started ${PM2_APP} via ecosystem config"
+  else
+    log_error "PM2 could not start ${PM2_APP}. Check pm2 logs for details."
+  fi
+fi
 
 log_start "Waiting for app to be ready"
 for i in $(seq 1 60); do
@@ -81,8 +142,19 @@ echo; log_success "App is responding on port 3000"
 
 # migrations
 log_step "Running database migrations"
-DATABASE_URL="$(grep '^DATABASE_URL=' "$INSTALL_DIR/.env" | sed 's/^DATABASE_URL=//' | tr -d '"')"
-if DATABASE_URL="$DATABASE_URL" "$PNPM_BIN" --dir "$INSTALL_DIR" db:migrate; then
+if [[ ! -f "$ENV_FILE" ]]; then
+  log_warn "Cannot find ${ENV_FILE}; skipping automatic migrations"
+elif [[ -z "${DATABASE_URL:-}" ]]; then
+  if load_env_file "$ENV_FILE" && [[ -n "${DATABASE_URL:-}" ]]; then
+    log_info "Loaded DATABASE_URL for migrations"
+  else
+    log_warn "DATABASE_URL missing; run migrations manually after fixing .env"
+    printf '\n'
+    exit 0
+  fi
+fi
+
+if "$PNPM_BIN" --dir "$INSTALL_DIR" db:migrate; then
   log_success "Migrations applied"
 else
   log_warn "Migration failed — run manually: cd ${INSTALL_DIR} && pnpm db:migrate"
