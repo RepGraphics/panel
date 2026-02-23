@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.1.0-alpha.1
+
+[compare changes](https://github.com/XyraPanel/panel/compare/v0.1.0-alpha.0...v0.1.0-alpha.1)
+
+### 🚀 Enhancements
+
+- Enable build cache and add vite overrides in configuration ([14a106d](https://github.com/XyraPanel/panel/commit/14a106d))
+- Install, uninstall & update scripts ([3e14bc8](https://github.com/XyraPanel/panel/commit/3e14bc8))
+- Enhance WebSocket connection handling ([a87f17f](https://github.com/XyraPanel/panel/commit/a87f17f))
+
+### 🩹 Fixes
+
+- Improve accessibility and semantic HTML across layouts ([#75](https://github.com/XyraPanel/panel/pull/75))
+- Missing env vars from .env file in update script ([38c6566](https://github.com/XyraPanel/panel/commit/38c6566))
+
+### 💅 Refactors
+
+- Replace button with UButton & input with UInput ([2538511](https://github.com/XyraPanel/panel/commit/2538511))
+- Update script sourcing logic ([03f3d49](https://github.com/XyraPanel/panel/commit/03f3d49))
+
+### 🏡 Chore
+
+- Add GHCR publish workflow ([2bb9901](https://github.com/XyraPanel/panel/commit/2bb9901))
+
+### ❤️ Contributors
+
+- 26bz <26bz@proton.me>
+- Bz <26bz@proton.me>
+
 ## v0.1.0-alpha.0
 
 ### 🚀 Enhancements
