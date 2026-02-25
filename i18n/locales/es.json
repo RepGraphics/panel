@@ -541,7 +541,24 @@
       "powerActionSent": "Power action sent",
       "powerActionSentDescription": "Power action has been sent to the server.",
       "failedToSendPowerAction": "Failed to send power action",
-      "noPermission": "You don't have permission to perform this action."
+      "noPermission": "You don't have permission to perform this action.",
+      "eula": {
+        "modalTitle": "Minecraft EULA acceptance required",
+        "modalDescription": "This server cannot start until the Minecraft EULA is accepted.",
+        "alertTitle": "Minecraft EULA required",
+        "alertDescription": "The server reported that the Minecraft EULA must be accepted before startup can continue.",
+        "likelyMinecraftDescription": "If you accept, the panel will set eula=true in eula.txt.",
+        "genericDescription": "A server EULA file was detected and needs confirmation before startup can continue.",
+        "readOfficialLink": "Read the official Minecraft EULA",
+        "declineButton": "Decline",
+        "acceptButton": "Accept EULA",
+        "acceptedTitle": "Minecraft EULA accepted",
+        "acceptedDescription": "eula.txt has been updated to eula=true.",
+        "declinedTitle": "Minecraft EULA declined",
+        "declinedDescription": "eula.txt remains set to eula=false.",
+        "updateFailedTitle": "Failed to update Minecraft EULA",
+        "updateFailedDescription": "Unable to update eula.txt."
+      }
     },
     "power": {
       "start": "Start",

@@ -201,8 +201,8 @@ async function setMinecraftEulaAccepted(accepted: boolean) {
 
     if (accepted) {
       toast.add({
-        title: 'Minecraft EULA accepted',
-        description: 'eula.txt has been updated to eula=true.',
+        title: t('server.console.eula.acceptedTitle'),
+        description: t('server.console.eula.acceptedDescription'),
         color: 'success',
       });
 
@@ -213,8 +213,8 @@ async function setMinecraftEulaAccepted(accepted: boolean) {
     } else {
       eulaPendingStart.value = false;
       toast.add({
-        title: 'Minecraft EULA declined',
-        description: 'eula.txt remains set to eula=false.',
+        title: t('server.console.eula.declinedTitle'),
+        description: t('server.console.eula.declinedDescription'),
         color: 'warning',
       });
     }
@@ -224,8 +224,9 @@ async function setMinecraftEulaAccepted(accepted: boolean) {
     }
   } catch (error) {
     toast.add({
-      title: 'Failed to update Minecraft EULA',
-      description: error instanceof Error ? error.message : 'Unable to update eula.txt.',
+      title: t('server.console.eula.updateFailedTitle'),
+      description:
+        error instanceof Error ? error.message : t('server.console.eula.updateFailedDescription'),
       color: 'error',
     });
   } finally {
@@ -697,27 +698,26 @@ function handleSearch() {
 
     <UModal
       v-model:open="eulaModalOpen"
-      title="Minecraft EULA acceptance required"
-      description="This server cannot start until the Minecraft EULA is accepted."
+      :title="t('server.console.eula.modalTitle')"
+      :description="t('server.console.eula.modalDescription')"
     >
       <template #body>
         <div class="space-y-4">
           <UAlert color="warning" icon="i-lucide-alert-triangle">
-            <template #title>Minecraft EULA required</template>
+            <template #title>{{ t('server.console.eula.alertTitle') }}</template>
             <template #description>
               <p class="text-sm">
-                The server reported that the Minecraft EULA must be accepted before startup can
-                continue.
+                {{ t('server.console.eula.alertDescription') }}
               </p>
             </template>
           </UAlert>
 
           <p class="text-sm text-muted-foreground">
             <template v-if="eulaLikelyMinecraft">
-              If you accept, the panel will set <code>eula=true</code> in <code>eula.txt</code>.
+              {{ t('server.console.eula.likelyMinecraftDescription') }}
             </template>
             <template v-else>
-              A server EULA file was detected and needs confirmation before startup can continue.
+              {{ t('server.console.eula.genericDescription') }}
             </template>
           </p>
 
@@ -727,7 +727,7 @@ function handleSearch() {
             rel="noreferrer noopener"
             class="text-sm text-primary hover:underline"
           >
-            Read the official Minecraft EULA
+            {{ t('server.console.eula.readOfficialLink') }}
           </a>
         </div>
       </template>
@@ -736,20 +736,20 @@ function handleSearch() {
         <div class="flex justify-end gap-2">
           <UButton
             variant="ghost"
-            color="warning"
+            color="neutral"
             :loading="eulaUpdateInFlight"
             :disabled="eulaUpdateInFlight"
             @click="setMinecraftEulaAccepted(false)"
           >
-            Decline
+            {{ t('server.console.eula.declineButton') }}
           </UButton>
           <UButton
-            color="success"
+            color="primary"
             :loading="eulaUpdateInFlight"
             :disabled="eulaUpdateInFlight"
             @click="setMinecraftEulaAccepted(true)"
           >
-            Accept EULA
+            {{ t('server.console.eula.acceptButton') }}
           </UButton>
         </div>
       </template>

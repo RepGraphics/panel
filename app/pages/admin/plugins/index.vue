@@ -21,6 +21,25 @@ interface PluginScopeUpdateResponseData {
   scope: PluginRenderScope;
 }
 
+interface PluginStateUpdateResponseData {
+  pluginId: string;
+  enabled: boolean;
+  restartRequired: boolean;
+  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
+  restartAutomated: boolean;
+  message: string;
+}
+
+interface PluginUninstallResponseData {
+  pluginId: string;
+  pluginName: string;
+  removed: boolean;
+  restartRequired: boolean;
+  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
+  restartAutomated: boolean;
+  message: string;
+}
+
 definePageMeta({
   auth: true,
   adminTitle: 'Plugins',
@@ -100,6 +119,13 @@ const installStatusMessage = ref<string | null>(null);
 const installStatusWarning = ref(false);
 const archiveInputRef = ref<HTMLInputElement | null>(null);
 const archiveFile = ref<File | null>(null);
+const installSectionOpen = ref(false);
+const pluginDetailsOpen = ref<Record<string, boolean>>({});
+const pluginStateBusy = ref<Record<string, boolean>>({});
+const pluginUninstallBusy = ref<Record<string, boolean>>({});
+const uninstallModalOpen = ref(false);
+const uninstallTargetPluginId = ref<string | null>(null);
+const uninstallTargetPluginName = ref('');
 
 const selectedArchiveLabel = computed(() => {
   if (!archiveFile.value) {
@@ -209,13 +235,17 @@ watch(
   [summary, pluginScopeSummary],
   () => {
     const nextModels: Record<string, PluginRenderScope> = {};
+    const nextDetailsOpen: Record<string, boolean> = {};
     for (const plugin of summary.value.plugins) {
       const existing = pluginScopeModels.value[plugin.id];
       nextModels[plugin.id] = existing
         ? normalizePluginScopeForSave(existing)
         : clonePluginScope(pluginScopeSummary.value.scopes[plugin.id]);
+
+      nextDetailsOpen[plugin.id] = pluginDetailsOpen.value[plugin.id] ?? false;
     }
     pluginScopeModels.value = nextModels;
+    pluginDetailsOpen.value = nextDetailsOpen;
   },
   { immediate: true },
 );
@@ -224,8 +254,134 @@ async function refreshPluginData(): Promise<void> {
   await Promise.all([refresh(), refreshPluginScopes(), refreshNuxtData('plugin-contributions')]);
 }
 
+function isPluginStateBusy(pluginId: string): boolean {
+  return Boolean(pluginStateBusy.value[pluginId]);
+}
+
+function isPluginUninstallBusy(pluginId: string): boolean {
+  return Boolean(pluginUninstallBusy.value[pluginId]);
+}
+
 function isPluginScopeSaving(pluginId: string): boolean {
   return Boolean(pluginScopeSaving.value[pluginId]);
+}
+
+function isPluginDetailsOpen(pluginId: string): boolean {
+  return Boolean(pluginDetailsOpen.value[pluginId]);
+}
+
+async function togglePluginEnabled(plugin: PluginRuntimeSummary['plugins'][number]): Promise<void> {
+  if (isPluginStateBusy(plugin.id) || isPluginUninstallBusy(plugin.id)) {
+    return;
+  }
+
+  const targetEnabled = !plugin.enabled;
+  pluginStateBusy.value = {
+    ...pluginStateBusy.value,
+    [plugin.id]: true,
+  };
+
+  try {
+    const response = await requestFetch<{ data: PluginStateUpdateResponseData }>(
+      `/api/admin/plugins/${encodeURIComponent(plugin.id)}/state`,
+      {
+        method: 'PATCH',
+        body: {
+          enabled: targetEnabled,
+          autoRestart: true,
+        },
+      },
+    );
+
+    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
+    installStatusMessage.value = response.data.message;
+    installStatusWarning.value = requiresManualRestart;
+
+    toast.add({
+      color: requiresManualRestart ? 'warning' : 'success',
+      title: targetEnabled ? `Enabled ${plugin.name}` : `Disabled ${plugin.name}`,
+      description: response.data.message,
+    });
+
+    await refreshPluginData();
+  } catch (errorValue) {
+    const message = normalizeInstallErrorMessage(errorValue);
+    toast.add({
+      color: 'error',
+      title: `Failed to ${targetEnabled ? 'enable' : 'disable'} plugin`,
+      description: message,
+    });
+  } finally {
+    pluginStateBusy.value = {
+      ...pluginStateBusy.value,
+      [plugin.id]: false,
+    };
+  }
+}
+
+function openUninstallModal(plugin: PluginRuntimeSummary['plugins'][number]): void {
+  uninstallTargetPluginId.value = plugin.id;
+  uninstallTargetPluginName.value = plugin.name;
+  uninstallModalOpen.value = true;
+}
+
+function closeUninstallModal(): void {
+  uninstallModalOpen.value = false;
+  uninstallTargetPluginId.value = null;
+  uninstallTargetPluginName.value = '';
+}
+
+async function confirmPluginUninstall(): Promise<void> {
+  const pluginId = uninstallTargetPluginId.value;
+  if (!pluginId) {
+    return;
+  }
+
+  if (isPluginUninstallBusy(pluginId)) {
+    return;
+  }
+
+  pluginUninstallBusy.value = {
+    ...pluginUninstallBusy.value,
+    [pluginId]: true,
+  };
+
+  try {
+    const response = await requestFetch<{ data: PluginUninstallResponseData }>(
+      `/api/admin/plugins/${encodeURIComponent(pluginId)}`,
+      {
+        method: 'DELETE',
+        body: {
+          autoRestart: true,
+        },
+      },
+    );
+
+    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
+    installStatusMessage.value = response.data.message;
+    installStatusWarning.value = requiresManualRestart;
+
+    toast.add({
+      color: requiresManualRestart ? 'warning' : 'success',
+      title: `Uninstalled ${response.data.pluginName}`,
+      description: response.data.message,
+    });
+
+    closeUninstallModal();
+    await refreshPluginData();
+  } catch (errorValue) {
+    const message = normalizeInstallErrorMessage(errorValue);
+    toast.add({
+      color: 'error',
+      title: 'Plugin uninstall failed',
+      description: message,
+    });
+  } finally {
+    pluginUninstallBusy.value = {
+      ...pluginUninstallBusy.value,
+      [pluginId]: false,
+    };
+  }
 }
 
 async function savePluginScope(pluginId: string): Promise<void> {
@@ -401,16 +557,10 @@ async function installFromArchive(): Promise<void> {
   <UPage>
     <UPageBody>
       <UContainer class="space-y-6">
-        <section
-          class="relative overflow-hidden rounded-2xl border border-default bg-gradient-to-br from-primary/10 via-muted/30 to-background p-5 sm:p-6"
-        >
-          <div
-            class="absolute -right-16 -top-16 size-44 rounded-full bg-primary/20 blur-3xl"
-            aria-hidden="true"
-          />
-          <div class="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <UCard class="border-default/80">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div class="max-w-2xl space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">
+              <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Plugins
               </p>
               <h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Plugin Management</h2>
@@ -420,7 +570,7 @@ async function installFromArchive(): Promise<void> {
             </div>
             <UButton
               color="neutral"
-              variant="soft"
+              variant="ghost"
               icon="i-lucide-refresh-cw"
               :loading="pending || pluginScopePending"
               @click="refreshPluginData"
@@ -428,155 +578,172 @@ async function installFromArchive(): Promise<void> {
               Refresh data
             </UButton>
           </div>
-        </section>
+        </UCard>
 
-        <UCard :ui="{ body: 'space-y-6' }" class="border-default/80 shadow-sm">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 class="text-base font-semibold">Install Plugins</h3>
-              <p class="text-sm text-muted-foreground">
-                Install from a local path on the host or upload an archive.
-              </p>
-            </div>
-            <UBadge color="primary" variant="soft" size="sm">Plugin installer</UBadge>
-          </div>
-
-          <div class="grid gap-4 xl:grid-cols-2">
-            <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                <UIcon name="i-lucide-folder-open" class="size-4 text-primary" />
-                Install from server path
+        <UCard class="border-default/80 shadow-sm" :ui="{ body: 'p-0' }">
+          <UCollapsible v-model:open="installSectionOpen" :unmount-on-hide="false">
+            <template #default>
+              <div class="flex w-full items-center justify-between gap-3 p-4 sm:p-5 cursor-pointer">
+                <div>
+                  <h3 class="text-base font-semibold">Install Plugins</h3>
+                  <p class="text-sm text-muted-foreground">
+                    Install from a local path on the host or upload an archive.
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <UBadge color="primary" variant="soft" size="sm">Plugin installer</UBadge>
+                  <UIcon
+                    name="i-lucide-chevron-down"
+                    class="size-4 text-muted-foreground transition-transform duration-200"
+                    :class="{ 'rotate-180': installSectionOpen }"
+                  />
+                </div>
               </div>
+            </template>
 
-              <UFormField label="Source path" name="installSourcePath">
-                <UInput
-                  v-model="installSourcePath"
-                  placeholder="C:/plugins/my-plugin or /opt/plugins/my-plugin"
-                  icon="i-lucide-folder-open"
+            <template #content>
+              <div class="border-t border-default space-y-6 p-4 sm:p-5">
+                <div class="grid gap-4 xl:grid-cols-2">
+                  <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                      <UIcon name="i-lucide-folder-open" class="size-4 text-primary" />
+                      Install from server path
+                    </div>
+
+                    <UFormField label="Source path" name="installSourcePath">
+                      <UInput
+                        v-model="installSourcePath"
+                        placeholder="C:/plugins/my-plugin or /opt/plugins/my-plugin"
+                        icon="i-lucide-folder-open"
+                      />
+                    </UFormField>
+
+                    <UFormField
+                      label="Manifest path (optional)"
+                      name="installManifestPath"
+                      help="Use this when plugin.json is not at the source root."
+                    >
+                      <UInput
+                        v-model="installManifestPath"
+                        placeholder="packages/plugin-a"
+                        icon="i-lucide-file-code"
+                      />
+                    </UFormField>
+
+                    <UButton
+                      color="primary"
+                      icon="i-lucide-download"
+                      :loading="installBusyPath"
+                      :disabled="installBusyArchive"
+                      class="w-full justify-center"
+                      @click="installFromPath"
+                    >
+                      Install from path
+                    </UButton>
+                  </div>
+
+                  <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                      <UIcon name="i-lucide-upload" class="size-4 text-primary" />
+                      Install from archive
+                    </div>
+
+                    <label
+                      class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-default px-4 py-6 text-center transition hover:border-primary/50 hover:bg-muted/40"
+                    >
+                      <input
+                        ref="archiveInputRef"
+                        type="file"
+                        accept=".zip,.tar,.tar.gz,.tgz"
+                        class="hidden"
+                        @change="onArchiveSelected"
+                      />
+                      <UIcon name="i-lucide-file-archive" class="size-5 text-primary" />
+                      <p class="text-sm font-medium">
+                        {{ selectedArchiveLabel || 'Choose plugin archive' }}
+                      </p>
+                      <p class="text-xs text-muted-foreground">
+                        Accepted: .zip, .tar, .tar.gz, .tgz
+                      </p>
+                    </label>
+
+                    <UFormField
+                      label="Manifest path in archive (optional)"
+                      name="installArchiveManifestPath"
+                      help="Leave empty when plugin.json is at archive root."
+                    >
+                      <UInput
+                        v-model="installArchiveManifestPath"
+                        placeholder="packages/plugin-a"
+                        icon="i-lucide-file-archive"
+                      />
+                    </UFormField>
+
+                    <UButton
+                      color="primary"
+                      icon="i-lucide-upload"
+                      :loading="installBusyArchive"
+                      :disabled="installBusyPath"
+                      class="w-full justify-center"
+                      @click="installFromArchive"
+                    >
+                      Upload and install
+                    </UButton>
+                  </div>
+                </div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
+                    <UCheckbox
+                      v-model="installForce"
+                      :disabled="installBusyPath || installBusyArchive"
+                      label="Overwrite existing plugin with the same id"
+                    />
+                    <p class="mt-1 pl-6 text-xs text-muted-foreground">
+                      Replaces the currently installed version.
+                    </p>
+                  </div>
+                  <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
+                    <UCheckbox
+                      v-model="installAutoRestart"
+                      :disabled="installBusyPath || installBusyArchive"
+                      label="Automatically apply layer changes after install"
+                    />
+                    <p class="mt-1 pl-6 text-xs text-muted-foreground">
+                      Triggers reload or restart when runtime changes require it.
+                    </p>
+                  </div>
+                </div>
+
+                <UAlert
+                  v-if="installStatusMessage"
+                  :color="installStatusWarning ? 'warning' : 'success'"
+                  :icon="installStatusWarning ? 'i-lucide-triangle-alert' : 'i-lucide-check-circle'"
+                  title="Install status"
+                  :description="installStatusMessage"
+                  variant="soft"
                 />
-              </UFormField>
-
-              <UFormField
-                label="Manifest path (optional)"
-                name="installManifestPath"
-                help="Use this when plugin.json is not at the source root."
-              >
-                <UInput
-                  v-model="installManifestPath"
-                  placeholder="packages/plugin-a"
-                  icon="i-lucide-file-code"
-                />
-              </UFormField>
-
-              <UButton
-                color="primary"
-                icon="i-lucide-download"
-                :loading="installBusyPath"
-                :disabled="installBusyArchive"
-                class="w-full justify-center"
-                @click="installFromPath"
-              >
-                Install from path
-              </UButton>
-            </div>
-
-            <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                <UIcon name="i-lucide-upload" class="size-4 text-primary" />
-                Install from archive
               </div>
-
-              <label
-                class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-default px-4 py-6 text-center transition hover:border-primary/50 hover:bg-muted/40"
-              >
-                <input
-                  ref="archiveInputRef"
-                  type="file"
-                  accept=".zip,.tar,.tar.gz,.tgz"
-                  class="hidden"
-                  @change="onArchiveSelected"
-                />
-                <UIcon name="i-lucide-file-archive" class="size-5 text-primary" />
-                <p class="text-sm font-medium">
-                  {{ selectedArchiveLabel || 'Choose plugin archive' }}
-                </p>
-                <p class="text-xs text-muted-foreground">Accepted: .zip, .tar, .tar.gz, .tgz</p>
-              </label>
-
-              <UFormField
-                label="Manifest path in archive (optional)"
-                name="installArchiveManifestPath"
-                help="Leave empty when plugin.json is at archive root."
-              >
-                <UInput
-                  v-model="installArchiveManifestPath"
-                  placeholder="packages/plugin-a"
-                  icon="i-lucide-file-archive"
-                />
-              </UFormField>
-
-              <UButton
-                color="primary"
-                icon="i-lucide-upload"
-                :loading="installBusyArchive"
-                :disabled="installBusyPath"
-                class="w-full justify-center"
-                @click="installFromArchive"
-              >
-                Upload and install
-              </UButton>
-            </div>
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
-              <UCheckbox
-                v-model="installForce"
-                :disabled="installBusyPath || installBusyArchive"
-                label="Overwrite existing plugin with the same id"
-              />
-              <p class="mt-1 pl-6 text-xs text-muted-foreground">
-                Replaces the currently installed version.
-              </p>
-            </div>
-            <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
-              <UCheckbox
-                v-model="installAutoRestart"
-                :disabled="installBusyPath || installBusyArchive"
-                label="Automatically apply layer changes after install"
-              />
-              <p class="mt-1 pl-6 text-xs text-muted-foreground">
-                Triggers reload or restart when runtime changes require it.
-              </p>
-            </div>
-          </div>
-
-          <UAlert
-            v-if="installStatusMessage"
-            :color="installStatusWarning ? 'warning' : 'success'"
-            :icon="installStatusWarning ? 'i-lucide-triangle-alert' : 'i-lucide-check-circle'"
-            title="Install status"
-            :description="installStatusMessage"
-            variant="soft"
-          />
+            </template>
+          </UCollapsible>
         </UCard>
 
         <div class="grid gap-4 md:grid-cols-3">
-          <UCard class="border-default/80 bg-gradient-to-br from-primary/5 to-background">
+          <UCard class="border-default/80 bg-muted/10">
             <div class="flex items-center justify-between">
               <p class="text-xs uppercase tracking-wide text-muted-foreground">Discovered</p>
               <UIcon name="i-lucide-puzzle" class="size-4 text-primary" />
             </div>
             <p class="mt-3 text-2xl font-semibold">{{ pluginCount }}</p>
           </UCard>
-          <UCard class="border-default/80 bg-gradient-to-br from-success/10 to-background">
+          <UCard class="border-default/80 bg-muted/10">
             <div class="flex items-center justify-between">
               <p class="text-xs uppercase tracking-wide text-muted-foreground">Loaded</p>
               <UIcon name="i-lucide-check-circle-2" class="size-4 text-success" />
             </div>
             <p class="mt-3 text-2xl font-semibold text-success">{{ loadedCount }}</p>
           </UCard>
-          <UCard class="border-default/80 bg-gradient-to-br from-error/10 to-background">
+          <UCard class="border-default/80 bg-muted/10">
             <div class="flex items-center justify-between">
               <p class="text-xs uppercase tracking-wide text-muted-foreground">Failed</p>
               <UIcon name="i-lucide-alert-triangle" class="size-4 text-error" />
@@ -626,167 +793,274 @@ async function installFromArchive(): Promise<void> {
           <UCard
             v-for="plugin in summary.plugins"
             :key="plugin.id"
-            :ui="{ body: 'space-y-4' }"
             class="border-default/80 shadow-sm"
+            :ui="{ body: 'p-0' }"
           >
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="space-y-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <UIcon name="i-lucide-puzzle" class="size-4 text-primary" />
-                  <h2 class="text-base font-semibold">{{ plugin.name }}</h2>
-                  <UBadge size="sm" variant="soft" color="neutral">{{ plugin.version }}</UBadge>
+            <UCollapsible v-model:open="pluginDetailsOpen[plugin.id]" :unmount-on-hide="false">
+              <template #default>
+                <div class="flex w-full items-start justify-between gap-3 p-4 cursor-pointer">
+                  <div class="space-y-2 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <UIcon name="i-lucide-puzzle" class="size-4 text-primary" />
+                      <h2 class="text-base font-semibold">{{ plugin.name }}</h2>
+                      <UBadge size="sm" variant="soft" color="neutral">{{ plugin.version }}</UBadge>
+                      <UBadge color="neutral" variant="subtle" size="sm">
+                        Hooks: {{ plugin.hooks.length }}
+                      </UBadge>
+                      <UBadge
+                        v-if="plugin.errors.length > 0"
+                        color="error"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        Errors: {{ plugin.errors.length }}
+                      </UBadge>
+                    </div>
+                    <p class="text-xs font-mono text-muted-foreground">{{ plugin.id }}</p>
+                    <p v-if="plugin.description" class="text-sm text-muted-foreground truncate">
+                      {{ plugin.description }}
+                    </p>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0" @click.stop>
+                    <UBadge
+                      size="sm"
+                      :color="plugin.enabled ? 'primary' : 'neutral'"
+                      variant="subtle"
+                    >
+                      {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
+                    </UBadge>
+                    <UBadge
+                      size="sm"
+                      :color="plugin.loaded ? 'success' : plugin.enabled ? 'error' : 'neutral'"
+                      variant="subtle"
+                    >
+                      {{ plugin.loaded ? 'Loaded' : plugin.enabled ? 'Failed' : 'Skipped' }}
+                    </UBadge>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="soft"
+                      :icon="plugin.enabled ? 'i-lucide-pause-circle' : 'i-lucide-play-circle'"
+                      :loading="isPluginStateBusy(plugin.id)"
+                      :disabled="
+                        isPluginUninstallBusy(plugin.id) ||
+                        isPluginScopeSaving(plugin.id) ||
+                        pending ||
+                        pluginScopePending
+                      "
+                      @click.stop="togglePluginEnabled(plugin)"
+                    >
+                      {{ plugin.enabled ? 'Disable' : 'Enable' }}
+                    </UButton>
+                    <UButton
+                      size="xs"
+                      color="error"
+                      variant="ghost"
+                      icon="i-lucide-trash-2"
+                      :loading="isPluginUninstallBusy(plugin.id)"
+                      :disabled="isPluginStateBusy(plugin.id) || pending || pluginScopePending"
+                      @click.stop="openUninstallModal(plugin)"
+                    >
+                      Uninstall
+                    </UButton>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      :icon="
+                        isPluginDetailsOpen(plugin.id)
+                          ? 'i-lucide-chevron-up'
+                          : 'i-lucide-chevron-down'
+                      "
+                      :aria-label="
+                        isPluginDetailsOpen(plugin.id)
+                          ? 'Collapse plugin details'
+                          : 'Expand plugin details'
+                      "
+                      @click.stop="pluginDetailsOpen[plugin.id] = !pluginDetailsOpen[plugin.id]"
+                    />
+                  </div>
                 </div>
-                <p class="text-xs font-mono text-muted-foreground">{{ plugin.id }}</p>
-              </div>
+              </template>
 
-              <div class="flex items-center gap-2">
-                <UBadge size="sm" :color="plugin.enabled ? 'primary' : 'neutral'" variant="subtle">
-                  {{ plugin.enabled ? 'Enabled' : 'Disabled' }}
-                </UBadge>
-                <UBadge
-                  size="sm"
-                  :color="plugin.loaded ? 'success' : plugin.enabled ? 'error' : 'neutral'"
-                  variant="subtle"
-                >
-                  {{ plugin.loaded ? 'Loaded' : plugin.enabled ? 'Failed' : 'Skipped' }}
-                </UBadge>
-              </div>
-            </div>
+              <template #content>
+                <div class="border-t border-default space-y-4 p-4">
+                  <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div
+                      class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
+                    >
+                      <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Manifest
+                      </p>
+                      <p class="break-all">{{ plugin.manifestPath }}</p>
+                    </div>
+                    <div
+                      class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
+                    >
+                      <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Source
+                      </p>
+                      <p class="break-all">{{ plugin.sourceDir }}</p>
+                    </div>
+                    <div
+                      v-if="plugin.serverEntryPath"
+                      class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
+                    >
+                      <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Server Entry
+                      </p>
+                      <p class="break-all">{{ plugin.serverEntryPath }}</p>
+                    </div>
+                    <div
+                      v-if="plugin.moduleEntryPath"
+                      class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
+                    >
+                      <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Nuxt Module
+                      </p>
+                      <p class="break-all">{{ plugin.moduleEntryPath }}</p>
+                    </div>
+                    <div
+                      v-if="plugin.nuxtLayerPath"
+                      class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
+                    >
+                      <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        Nuxt Layer
+                      </p>
+                      <p class="break-all">{{ plugin.nuxtLayerPath }}</p>
+                    </div>
+                  </div>
 
-            <p v-if="plugin.description" class="text-sm text-muted-foreground">
-              {{ plugin.description }}
-            </p>
+                  <div class="space-y-3 rounded-xl border border-default/80 bg-muted/20 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p class="text-xs uppercase tracking-wide text-muted-foreground">
+                          Extension Scope
+                        </p>
+                        <p class="text-xs text-muted-foreground">
+                          Choose whether this plugin renders for all eggs or only selected eggs.
+                        </p>
+                      </div>
 
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <div class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono">
-                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Manifest
-                </p>
-                <p class="break-all">{{ plugin.manifestPath }}</p>
-              </div>
-              <div class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono">
-                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">Source</p>
-                <p class="break-all">{{ plugin.sourceDir }}</p>
-              </div>
-              <div
-                v-if="plugin.serverEntryPath"
-                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
-              >
-                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Server Entry
-                </p>
-                <p class="break-all">{{ plugin.serverEntryPath }}</p>
-              </div>
-              <div
-                v-if="plugin.moduleEntryPath"
-                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
-              >
-                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Nuxt Module
-                </p>
-                <p class="break-all">{{ plugin.moduleEntryPath }}</p>
-              </div>
-              <div
-                v-if="plugin.nuxtLayerPath"
-                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
-              >
-                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Nuxt Layer
-                </p>
-                <p class="break-all">{{ plugin.nuxtLayerPath }}</p>
-              </div>
-            </div>
+                      <UButton
+                        size="xs"
+                        color="primary"
+                        variant="soft"
+                        icon="i-lucide-save"
+                        :loading="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                        @click="savePluginScope(plugin.id)"
+                      >
+                        Save scope
+                      </UButton>
+                    </div>
 
-            <div class="space-y-3 rounded-xl border border-default/80 bg-muted/20 p-4">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                    Extension Scope
-                  </p>
-                  <p class="text-xs text-muted-foreground">
-                    Choose whether this plugin renders for all eggs or only selected eggs.
-                  </p>
+                    <UFormField
+                      v-if="pluginScopeModels[plugin.id]"
+                      label="Scope mode"
+                      name="scopeMode"
+                    >
+                      <USelect
+                        v-model="pluginScopeModels[plugin.id].mode"
+                        :items="scopeModeItems"
+                        value-key="value"
+                        aria-label="Plugin scope mode"
+                        :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                      />
+                    </UFormField>
+
+                    <UFormField
+                      v-if="
+                        pluginScopeModels[plugin.id] && pluginScopeModels[plugin.id].mode === 'eggs'
+                      "
+                      label="Egg visibility"
+                      name="scopeEggs"
+                    >
+                      <USelect
+                        v-model="pluginScopeModels[plugin.id].eggIds"
+                        :items="eggScopeOptions"
+                        multiple
+                        value-key="value"
+                        placeholder="Select eggs that should render this extension"
+                        aria-label="Plugin egg scope selection"
+                        :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                      />
+                    </UFormField>
+
+                    <UAlert
+                      v-if="
+                        pluginScopeModels[plugin.id] &&
+                        pluginScopeModels[plugin.id].mode === 'eggs' &&
+                        pluginScopeModels[plugin.id].eggIds.length === 0
+                      "
+                      color="warning"
+                      variant="soft"
+                      icon="i-lucide-triangle-alert"
+                      title="No eggs selected"
+                      description="Select at least one egg or switch back to global mode."
+                    />
+                  </div>
+
+                  <div class="flex flex-wrap gap-2 text-xs">
+                    <UBadge color="neutral" variant="subtle">
+                      Admin Nav: {{ plugin.contributions.adminNavigation.length }}
+                    </UBadge>
+                    <UBadge color="neutral" variant="subtle">
+                      Dashboard Nav: {{ plugin.contributions.dashboardNavigation.length }}
+                    </UBadge>
+                    <UBadge color="neutral" variant="subtle">
+                      Server Nav: {{ plugin.contributions.serverNavigation.length }}
+                    </UBadge>
+                    <UBadge color="neutral" variant="subtle">
+                      UI Slots: {{ plugin.contributions.uiSlots.length }}
+                    </UBadge>
+                  </div>
+
+                  <UAlert
+                    v-if="plugin.errors.length > 0"
+                    color="error"
+                    variant="soft"
+                    icon="i-lucide-triangle-alert"
+                    title="Plugin errors"
+                    :description="plugin.errors.join('\n')"
+                  />
                 </div>
-
-                <UButton
-                  size="xs"
-                  color="primary"
-                  variant="soft"
-                  icon="i-lucide-save"
-                  :loading="isPluginScopeSaving(plugin.id) || pluginScopePending"
-                  @click="savePluginScope(plugin.id)"
-                >
-                  Save scope
-                </UButton>
-              </div>
-
-              <UFormField v-if="pluginScopeModels[plugin.id]" label="Scope mode" name="scopeMode">
-                <USelect
-                  v-model="pluginScopeModels[plugin.id].mode"
-                  :items="scopeModeItems"
-                  value-key="value"
-                  aria-label="Plugin scope mode"
-                  :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
-                />
-              </UFormField>
-
-              <UFormField
-                v-if="pluginScopeModels[plugin.id] && pluginScopeModels[plugin.id].mode === 'eggs'"
-                label="Egg visibility"
-                name="scopeEggs"
-              >
-                <USelect
-                  v-model="pluginScopeModels[plugin.id].eggIds"
-                  :items="eggScopeOptions"
-                  multiple
-                  value-key="value"
-                  placeholder="Select eggs that should render this extension"
-                  aria-label="Plugin egg scope selection"
-                  :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
-                />
-              </UFormField>
-
-              <UAlert
-                v-if="
-                  pluginScopeModels[plugin.id] &&
-                  pluginScopeModels[plugin.id].mode === 'eggs' &&
-                  pluginScopeModels[plugin.id].eggIds.length === 0
-                "
-                color="warning"
-                variant="soft"
-                icon="i-lucide-triangle-alert"
-                title="No eggs selected"
-                description="Select at least one egg or switch back to global mode."
-              />
-            </div>
-
-            <div class="flex flex-wrap gap-2 text-xs">
-              <UBadge color="neutral" variant="subtle"> Hooks: {{ plugin.hooks.length }} </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                Admin Nav: {{ plugin.contributions.adminNavigation.length }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                Dashboard Nav: {{ plugin.contributions.dashboardNavigation.length }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                Server Nav: {{ plugin.contributions.serverNavigation.length }}
-              </UBadge>
-              <UBadge color="neutral" variant="subtle">
-                UI Slots: {{ plugin.contributions.uiSlots.length }}
-              </UBadge>
-            </div>
-
-            <UAlert
-              v-if="plugin.errors.length > 0"
-              color="error"
-              variant="soft"
-              icon="i-lucide-triangle-alert"
-              title="Plugin errors"
-              :description="plugin.errors.join('\n')"
-            />
+              </template>
+            </UCollapsible>
           </UCard>
         </div>
       </UContainer>
     </UPageBody>
+
+    <UModal
+      v-model:open="uninstallModalOpen"
+      :title="
+        uninstallTargetPluginName ? `Uninstall ${uninstallTargetPluginName}?` : 'Uninstall plugin?'
+      "
+      description="This permanently removes the plugin files from disk."
+    >
+      <template #body>
+        <p class="text-sm text-muted-foreground">
+          This action cannot be undone. Plugin scopes and runtime registrations will also be
+          removed.
+        </p>
+      </template>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton variant="ghost" color="neutral" @click="closeUninstallModal">Cancel</UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-trash-2"
+            :loading="
+              uninstallTargetPluginId ? isPluginUninstallBusy(uninstallTargetPluginId) : false
+            "
+            @click="confirmPluginUninstall"
+          >
+            Uninstall plugin
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </UPage>
 </template>
