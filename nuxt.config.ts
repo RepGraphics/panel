@@ -1,6 +1,9 @@
 /// <reference types="@vite-pwa/nuxt" />
+import { resolvePluginNuxtLayers, resolvePluginNuxtModules } from './shared/plugins/discovery';
 
 const isDev = process.env.NODE_ENV !== 'production';
+const pluginNuxtLayers = resolvePluginNuxtLayers();
+const pluginNuxtModules = resolvePluginNuxtModules();
 
 const redisStorageConfig = {
   host: process.env.REDIS_HOST || (isDev ? 'localhost' : 'redis'),
@@ -82,6 +85,7 @@ export default defineNuxtConfig({
   devtools: {
     enabled: true,
   },
+  extends: pluginNuxtLayers,
   css: ['~/assets/css/main.css'],
   modules: [
     '@nuxt/ui',
@@ -97,8 +101,14 @@ export default defineNuxtConfig({
     '@nuxtjs/i18n',
     '@nuxt/a11y',
     '@nuxt/hints',
+    ...pluginNuxtModules,
   ],
   vite: {
+    server: {
+      watch: {
+        ignored: ['**/.data/**'],
+      },
+    },
     ssr: {
       noExternal: ['drizzle-orm'],
     },
@@ -252,6 +262,12 @@ export default defineNuxtConfig({
       },
     },
     '/api/admin/eggs/import': {
+      security: {
+        requestSizeLimiter: false,
+        xssValidator: false,
+      },
+    },
+    '/api/admin/plugins/install': {
       security: {
         requestSizeLimiter: false,
         xssValidator: false,
@@ -474,6 +490,7 @@ export default defineNuxtConfig({
           credentials: true,
           preflight: { statusCode: 204 },
         },
+        xssValidator: false,
         requestSizeLimiter: {
           maxRequestSizeInBytes: maxRequestSize,
           maxUploadFileRequestInBytes: maxUploadSize,

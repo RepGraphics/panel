@@ -16,17 +16,19 @@ export default defineEventHandler(async (event) => {
     ADMIN_ACL_PERMISSIONS.WRITE,
   );
 
-  const serverId = await requireRouteParam(event, 'id', 'Server ID required');
+  const routeIdentifier = await requireRouteParam(event, 'id', 'Server ID required');
   const body = await readValidatedBodyWithLimit(event, serverBuildSchema, BODY_SIZE_LIMITS.SMALL);
   const db = useDrizzle();
 
   const { findServerByIdentifier, invalidateServerCaches } =
     await import('#server/utils/serversStore');
-  const server = await findServerByIdentifier(serverId);
+  const server = await findServerByIdentifier(routeIdentifier);
 
   if (!server) {
     throw createError({ status: 404, message: 'Server not found' });
   }
+
+  const serverId = server.id;
 
   const {
     cpu,

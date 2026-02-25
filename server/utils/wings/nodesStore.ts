@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import type { StoredWingsNode, WingsNodeConfiguration } from '#shared/types/wings';
 import { useDrizzle, tables, eq } from '#server/utils/drizzle';
 import {
@@ -31,6 +32,182 @@ function toNumber(value: unknown, fallback = 0): number {
   }
   const parsed = Number(value);
   return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/$/, '');
+}
+
+function resolveWingsRemoteUrl(panelUrl: string): string {
+  const override = process.env.WINGS_REMOTE_URL?.trim();
+  if (override && override.length > 0) {
+    return trimTrailingSlash(override);
+  }
+
+  const normalized = trimTrailingSlash(panelUrl);
+  const useDockerDesktopHost = toBoolean(process.env.WINGS_DOCKER_DESKTOP);
+  if (!useDockerDesktopHost) {
+    return normalized;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const localhostHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+    if (localhostHosts.has(url.hostname)) {
+      url.hostname = 'host.docker.internal';
+      return trimTrailingSlash(url.toString());
+    }
+  } catch {
+    return normalized;
+  }
+
+  return normalized;
+}
+
+function normalizeOrigin(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed === '*') {
+    return trimmed;
+  }
+
+  try {
+    return trimTrailingSlash(new URL(trimmed).origin);
+  } catch {
+    try {
+      return trimTrailingSlash(new URL(`http://${trimmed}`).origin);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolvePanelConnectionDetails(panelUrl: string): { protocol: 'http' | 'https'; port: string } {
+  try {
+    const parsed = new URL(panelUrl);
+    const protocol = parsed.protocol === 'https:' ? 'https' : 'http';
+    const port = parsed.port || (protocol === 'https' ? '443' : '80');
+    return { protocol, port };
+  } catch {
+    return { protocol: 'http', port: '3000' };
+  }
+}
+
+function resolveLocalInterfaceOrigins(panelUrl: string): string[] {
+  const { protocol, port } = resolvePanelConnectionDetails(panelUrl);
+  const origins = new Set<string>();
+
+  origins.add(`${protocol}://localhost:${port}`);
+  origins.add(`${protocol}://127.0.0.1:${port}`);
+  origins.add(`${protocol}://0.0.0.0:${port}`);
+  origins.add(`${protocol}://host.docker.internal:${port}`);
+
+  const interfaces = networkInterfaces();
+  for (const entries of Object.values(interfaces)) {
+    if (!entries) continue;
+
+    for (const entry of entries) {
+      if (!entry || entry.internal) {
+        continue;
+      }
+
+      if (entry.family !== 'IPv4' && entry.family !== 'IPv6') {
+        continue;
+      }
+
+      if (entry.family === 'IPv6') {
+        origins.add(`${protocol}://[${entry.address}]:${port}`);
+        continue;
+      }
+
+      origins.add(`${protocol}://${entry.address}:${port}`);
+    }
+  }
+
+  return Array.from(origins);
+}
+
+function resolveWingsAllowedOrigins(panelUrl: string, remoteUrl: string): string[] {
+  const origins = new Set<string>();
+  const localAliases = ['localhost', '127.0.0.1', '0.0.0.0', 'host.docker.internal'];
+
+  const addOrigin = (value?: string | null) => {
+    if (!value) {
+      return;
+    }
+
+    const normalized = normalizeOrigin(value);
+    if (normalized) {
+      origins.add(normalized);
+    }
+  };
+
+  addOrigin(panelUrl);
+  addOrigin(remoteUrl);
+  addOrigin(process.env.NUXT_PUBLIC_APP_URL);
+  addOrigin(process.env.APP_URL);
+  addOrigin(process.env.BETTER_AUTH_URL);
+  for (const origin of resolveLocalInterfaceOrigins(panelUrl)) {
+    addOrigin(origin);
+  }
+
+  const envAllowedOrigins = process.env.WINGS_ALLOWED_ORIGINS
+    ?.split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (envAllowedOrigins) {
+    for (const entry of envAllowedOrigins) {
+      addOrigin(entry);
+    }
+  }
+
+  const currentOrigins = Array.from(origins);
+  for (const origin of currentOrigins) {
+    if (origin === '*') {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      if (localAliases.includes(parsed.hostname.toLowerCase())) {
+        for (const alias of localAliases) {
+          const clone = new URL(origin);
+          clone.hostname = alias;
+          addOrigin(clone.toString());
+        }
+      }
+    } catch {
+      // Ignore malformed origins and continue building the list.
+    }
+  }
+
+  return Array.from(origins);
+}
+
+function resolveDockerNetworkConfig() {
+  const networkInterface = process.env.WINGS_DOCKER_NETWORK_INTERFACE?.trim() || '172.31.0.1';
+  const subnet = process.env.WINGS_DOCKER_NETWORK_SUBNET?.trim() || '172.31.0.0/16';
+  const gateway = process.env.WINGS_DOCKER_NETWORK_GATEWAY?.trim() || networkInterface;
+  const name = process.env.WINGS_DOCKER_NETWORK_NAME?.trim() || 'pterodactyl_nw';
+  const mode = process.env.WINGS_DOCKER_NETWORK_MODE?.trim() || name;
+  const driver = process.env.WINGS_DOCKER_NETWORK_DRIVER?.trim() || 'bridge';
+
+  return {
+    interface: networkInterface,
+    name,
+    network_mode: mode,
+    driver,
+    interfaces: {
+      v4: {
+        subnet,
+        gateway,
+      },
+    },
+  };
 }
 
 function formatCombinedToken(identifier: string, secret: string): string {
@@ -279,7 +456,9 @@ export async function getWingsNodeConfigurationById(
     );
   }
 
-  const normalizedPanelUrl = panelUrl.replace(/\/$/, '');
+  const dockerNetwork = resolveDockerNetworkConfig();
+  const remoteUrl = resolveWingsRemoteUrl(panelUrl);
+  const allowedOrigins = resolveWingsAllowedOrigins(panelUrl, remoteUrl || panelUrl);
 
   return {
     debug: false,
@@ -302,8 +481,12 @@ export async function getWingsNodeConfigurationById(
         bind_port: toNumber(row.daemonSftp, 2022),
       },
     },
+    docker: {
+      network: dockerNetwork,
+    },
     allowed_mounts: [],
-    remote: normalizedPanelUrl || panelUrl,
+    allowed_origins: allowedOrigins,
+    remote: remoteUrl || panelUrl,
   };
 }
 

@@ -136,7 +136,26 @@ export interface WingsNodeConfiguration {
       bind_port: number;
     };
   };
+  docker?: {
+    network?: {
+      interface?: string;
+      name?: string;
+      network_mode?: string;
+      driver?: string;
+      interfaces?: {
+        v4?: {
+          subnet?: string;
+          gateway?: string;
+        };
+        v6?: {
+          subnet?: string;
+          gateway?: string;
+        };
+      };
+    };
+  };
   allowed_mounts: string[];
+  allowed_origins: string[];
   remote: string;
 }
 

@@ -133,6 +133,14 @@ const configYaml = computed(() => {
       ? allowedMounts.map((mount: string) => `  - ${mount}`)
       : ['  []'];
 
+  const dockerNetwork = value.docker?.network;
+  const dockerNetworkInterface = dockerNetwork?.interface ?? '172.31.0.1';
+  const dockerNetworkName = dockerNetwork?.name ?? 'pterodactyl_nw';
+  const dockerNetworkMode = dockerNetwork?.network_mode ?? dockerNetworkName;
+  const dockerNetworkDriver = dockerNetwork?.driver ?? 'bridge';
+  const dockerSubnet = dockerNetwork?.interfaces?.v4?.subnet ?? '172.31.0.0/16';
+  const dockerGateway = dockerNetwork?.interfaces?.v4?.gateway ?? dockerNetworkInterface;
+
   return [
     `debug: ${value.debug}`,
     `uuid: ${value.uuid}`,
@@ -150,6 +158,16 @@ const configYaml = computed(() => {
     `  data: ${value.system.data}`,
     '  sftp:',
     `    bind_port: ${value.system.sftp.bind_port}`,
+    'docker:',
+    '  network:',
+    `    interface: ${dockerNetworkInterface}`,
+    `    name: ${dockerNetworkName}`,
+    `    network_mode: ${dockerNetworkMode}`,
+    `    driver: ${dockerNetworkDriver}`,
+    '    interfaces:',
+    '      v4:',
+    `        subnet: ${dockerSubnet}`,
+    `        gateway: ${dockerGateway}`,
     'allowed_mounts:',
     ...allowedMountLines,
     `remote: ${value.remote ?? ''}`,

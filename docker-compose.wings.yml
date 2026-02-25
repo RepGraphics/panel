@@ -1,0 +1,34 @@
+services:
+  wings:
+    image: ghcr.io/pterodactyl/wings:latest
+    container_name: ${WINGS_CONTAINER_NAME:-xyra-wings}
+    restart: unless-stopped
+    networks:
+      - wings0
+    ports:
+      - '${WINGS_HTTP_PORT:-8080}:${WINGS_HTTP_PORT:-8080}'
+      - '${WINGS_SFTP_PORT:-2022}:${WINGS_SFTP_PORT:-2022}'
+    tty: true
+    environment:
+      TZ: ${WINGS_TZ:-UTC}
+      WINGS_UID: ${WINGS_UID:-0}
+      WINGS_GID: ${WINGS_GID:-0}
+      WINGS_USERNAME: ${WINGS_USERNAME:-pterodactyl}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - '/var/lib/docker/containers:/var/lib/docker/containers:ro'
+      - '${WINGS_CONFIG_PATH:-./.data/wings/etc}:/etc/pterodactyl'
+      # Keep the same absolute path on the daemon host and inside Wings.
+      # This is required when Wings uses the host docker.sock for server containers.
+      - '${WINGS_DATA_PATH:-/var/lib/pterodactyl}:${WINGS_DATA_PATH:-/var/lib/pterodactyl}'
+      - '${WINGS_LOG_PATH:-./.data/wings/log}:/var/log/pterodactyl'
+      - '${WINGS_TMP_PATH:-./.data/wings/tmp}:/tmp/pterodactyl'
+      - '${WINGS_RUNTIME_PATH:-/run/wings}:${WINGS_RUNTIME_PATH:-/run/wings}'
+      - '/etc/ssl/certs:/etc/ssl/certs:ro'
+
+networks:
+  wings0:
+    name: ${WINGS_NETWORK_NAME:-wings0}
+    driver: bridge

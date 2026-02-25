@@ -4,7 +4,9 @@ import { storeToRefs } from 'pinia';
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui';
 import type { SessionUser } from '#shared/types/auth';
 import type { SecuritySettings, AdminNavItem } from '#shared/types/admin';
+import type { PluginNavigationContribution } from '#shared/types/plugins';
 import { useAuthStore } from '~/stores/auth';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const { t } = useI18n();
 
@@ -189,6 +191,12 @@ const { data: securitySettings } = await useFetch<SecuritySettings>(
     default: () => createDefaultSecuritySettings(),
   },
 );
+const { data: pluginContributions } = await usePluginContributions();
+
+const pluginAdminNavigation = computed<PluginNavigationContribution[]>(
+  () => pluginContributions.value?.adminNavigation ?? [],
+);
+const pluginsAdminGroupLabel = 'Plugins / Extensions';
 
 const sessionUser = computed<SessionUser | null>(() => storeUser.value ?? null);
 
@@ -250,7 +258,36 @@ const adminSubtitle = computed(() => {
   return t('admin.navigation.infrastructureOverview');
 });
 
-const navItems = computed(() => {
+function sortAdminNavItems(items: AdminNavItem[]): AdminNavItem[] {
+  return items
+    .slice()
+    .sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
+    .map((item) => ({
+      ...item,
+      children:
+        Array.isArray(item.children) && item.children.length > 0
+          ? sortAdminNavItems(item.children)
+          : undefined,
+    }));
+}
+
+function flattenAdminNavItems(items: AdminNavItem[]): AdminNavItem[] {
+  const flattened: AdminNavItem[] = [];
+
+  for (const item of items) {
+    if (item.to) {
+      flattened.push(item);
+    }
+
+    if (Array.isArray(item.children) && item.children.length > 0) {
+      flattened.push(...flattenAdminNavItems(item.children));
+    }
+  }
+
+  return flattened;
+}
+
+const navItems = computed<AdminNavItem[]>(() => {
   const canAccess = (permission?: string | string[]) => {
     if (!permission) {
       return true;
@@ -265,9 +302,50 @@ const navItems = computed(() => {
     return values.includes(permission);
   };
 
-  return ADMIN_NAV_ITEMS.value
-    .filter((item) => storeIsSuperUser.value || canAccess(item.permission))
-    .sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY));
+  const filterNavItems = (items: AdminNavItem[]): AdminNavItem[] =>
+    items
+      .map((item) => {
+        const children = Array.isArray(item.children) ? filterNavItems(item.children) : [];
+        const allowed = storeIsSuperUser.value || canAccess(item.permission);
+
+        if (!allowed && children.length === 0) {
+          return null;
+        }
+
+        if (allowed && !item.to && children.length === 0) {
+          return null;
+        }
+
+        return {
+          ...item,
+          to: allowed ? item.to : undefined,
+          children: children.length > 0 ? children : undefined,
+        };
+      })
+      .filter((entry): entry is AdminNavItem => Boolean(entry));
+
+  const pluginNavigationChildren = sortAdminNavItems([
+    {
+      id: 'admin-plugins-settings',
+      label: 'Plugin Settings / Install',
+      to: '/admin/plugins',
+      permission: 'admin.settings.read',
+      order: 0,
+    },
+    ...pluginAdminNavigation.value,
+  ]);
+
+  const allNavigationItems = sortAdminNavItems(
+    ADMIN_NAV_ITEMS.value.concat({
+      id: 'admin-plugins-extensions',
+      label: pluginsAdminGroupLabel,
+      icon: 'i-lucide-puzzle',
+      order: 35,
+      children: pluginNavigationChildren,
+    }),
+  );
+
+  return filterNavItems(allNavigationItems);
 });
 
 const navigateToSecuritySettings = () => {
@@ -330,7 +408,7 @@ const sidebarToggleProps = computed(() => ({
 }));
 
 const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
-  const navigationItems: CommandPaletteItem[] = navItems.value.map((item) => ({
+  const navigationItems: CommandPaletteItem[] = flattenAdminNavItems(navItems.value).map((item) => ({
     id: item.id,
     label: item.label,
     suffix: item.to,
@@ -404,12 +482,19 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
 </script>
 
 <template>
+  <PluginOutlet
+    name="admin.wrapper.before"
+    :contributions="pluginContributions"
+    :context="{ route: route.path, title: adminTitle, subtitle: adminSubtitle }"
+  />
   <UDashboardGroup
     class="admin-layout min-h-screen bg-muted/15"
     storage="local"
     storage-key="admin-dashboard"
   >
     <UDashboardSidebar
+      role="navigation"
+      :aria-label="t('common.navigation')"
       collapsible
       :toggle="sidebarToggleProps"
       :ui="{ footer: 'border-t border-default' }"
@@ -507,6 +592,11 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
     <UDashboardPanel :ui="{ body: 'flex flex-1 flex-col p-0' }">
       <template #body>
         <header role="banner">
+          <PluginOutlet
+            name="admin.layout.before-navbar"
+            :contributions="pluginContributions"
+            :context="{ route: route.path, title: adminTitle, subtitle: adminSubtitle }"
+          />
           <UDashboardNavbar
             :ui="{
               left: 'flex flex-col gap-0.5 text-left leading-tight sm:flex-row sm:items-baseline sm:gap-2',
@@ -523,6 +613,11 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
               </div>
             </template>
           </UDashboardNavbar>
+          <PluginOutlet
+            name="admin.layout.after-navbar"
+            :contributions="pluginContributions"
+            :context="{ route: route.path, title: adminTitle, subtitle: adminSubtitle }"
+          />
         </header>
 
         <main class="flex-1 overflow-y-auto">
@@ -544,10 +639,27 @@ const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]
               </template>
             </UAlert>
 
+            <PluginOutlet
+              name="admin.layout.before-content"
+              :contributions="pluginContributions"
+              :context="{ route: route.path, title: adminTitle }"
+            />
+
             <slot />
+
+            <PluginOutlet
+              name="admin.layout.after-content"
+              :contributions="pluginContributions"
+              :context="{ route: route.path, title: adminTitle }"
+            />
           </div>
         </main>
       </template>
     </UDashboardPanel>
   </UDashboardGroup>
+  <PluginOutlet
+    name="admin.wrapper.after"
+    :contributions="pluginContributions"
+    :context="{ route: route.path, title: adminTitle, subtitle: adminSubtitle }"
+  />
 </template>

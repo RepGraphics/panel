@@ -24,6 +24,24 @@ interface WebSocketUnavailable {
   };
 }
 
+const LOCAL_DAEMON_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal']);
+
+function normalizeHostname(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+}
+
+function isLocalDaemonHost(hostname: string): boolean {
+  return LOCAL_DAEMON_HOSTS.has(normalizeHostname(hostname));
+}
+
+function formatSocketHost(hostname: string, port: string | number): string {
+  const normalizedHost = normalizeHostname(hostname);
+  if (normalizedHost.includes(':')) {
+    return `[${normalizedHost}]:${port}`;
+  }
+  return `${normalizedHost}:${port}`;
+}
+
 function isMissingWingsServer(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
@@ -102,7 +120,17 @@ export default defineEventHandler(async (event): Promise<WebSocketToken | WebSoc
     const parsedNodeUrl = new URL(normalizedBaseUrl);
     const socketProtocol = parsedNodeUrl.protocol === 'https:' ? 'wss' : 'ws';
     baseUrl = parsedNodeUrl.origin;
-    socketUrl = `${socketProtocol}://${parsedNodeUrl.host}/api/servers/${server.uuid}/ws`;
+    const socketPort = parsedNodeUrl.port || String(node.daemonListen);
+    let socketHost = parsedNodeUrl.host;
+
+    // Local Docker Desktop node hostnames are often not reachable from browser clients.
+    // When detected, use the incoming request hostname and keep the daemon port.
+    if (isLocalDaemonHost(parsedNodeUrl.hostname)) {
+      const requestUrl = getRequestURL(event);
+      socketHost = formatSocketHost(requestUrl.hostname, socketPort);
+    }
+
+    socketUrl = `${socketProtocol}://${socketHost}/api/servers/${server.uuid}/ws`;
   } catch {
     // Keep legacy fallback URL handling for malformed stored node URLs.
   }

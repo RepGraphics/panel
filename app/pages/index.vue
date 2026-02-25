@@ -1,5 +1,10 @@
 <template>
   <div class="space-y-8">
+    <PluginOutlet
+      name="client.dashboard.before-content"
+      :contributions="pluginContributions"
+      :context="{ route: route.path, title: welcomeTitle }"
+    />
     <UAlert v-if="announcement" color="warning" variant="subtle" icon="i-lucide-info">
       <template #description>
         <span class="whitespace-pre-wrap">{{ announcement }}</span>
@@ -48,11 +53,17 @@
         </div>
       </section>
     </div>
+    <PluginOutlet
+      name="client.dashboard.after-content"
+      :contributions="pluginContributions"
+      :context="{ route: route.path, title: welcomeTitle }"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 import type {
   ClientDashboardMetric,
@@ -68,6 +79,7 @@ definePageMeta({
 });
 
 const { t } = useI18n();
+const route = useRoute();
 const authStore = useAuthStore();
 const isAdminUser = computed(() => authStore.isAdmin || authStore.user?.role === 'admin');
 
@@ -112,6 +124,8 @@ const [meFetch, dashboardFetch, sessionsFetch, securityFetch] = await Promise.al
     },
   ),
 ]);
+
+const { data: pluginContributions } = await usePluginContributions();
 
 const { data: meData, error: meError } = meFetch;
 
@@ -295,7 +309,6 @@ watch(
   welcomeTitle,
   (newTitle) => {
     if (import.meta.client) {
-      const route = useRoute();
       route.meta.title = newTitle;
       route.meta.subtitle = t('dashboard.description');
     }

@@ -2,6 +2,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import type { NavigationMenuItem } from '@nuxt/ui';
+import type { AdminNavItem } from '#shared/types/admin';
+import type { PluginNavigationContribution } from '#shared/types/plugins';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 const { t } = useI18n();
 const route = useRoute();
 const localePath = useLocalePath();
@@ -104,43 +107,131 @@ async function handleSignOut() {
   }
 }
 
-const navigationItems = computed<NavigationMenuItem[]>(() => {
-  const items: NavigationMenuItem[] = [
-    {
-      label: t('dashboard.title'),
-      to: localePath('index'),
-    },
-    {
-      label: t('server.list.title'),
-      to: localePath('/server'),
-    },
-    {
-      label: t('account.profile.title'),
-      to: localePath('/account/profile'),
-    },
-    {
-      label: t('account.security.title'),
-      to: localePath('/account/security'),
-    },
-    {
-      label: t('account.apiKeys.title'),
-      to: localePath('/account/api-keys'),
-    },
-    {
-      label: t('account.sshKeys.title'),
-      to: localePath('/account/ssh-keys'),
-    },
-    {
-      label: t('account.sessions.title'),
-      to: localePath('/account/sessions'),
-    },
-    {
-      label: t('account.activity.title'),
-      to: localePath('/account/activity'),
-    },
-  ];
+const { data: pluginContributions } = await usePluginContributions();
 
-  return items;
+const CLIENT_NAV_ITEMS = computed<AdminNavItem[]>(() => [
+  {
+    id: 'client-dashboard',
+    label: t('dashboard.title'),
+    to: '/',
+    order: 0,
+  },
+  {
+    id: 'client-servers',
+    label: t('server.list.title'),
+    to: '/server',
+    order: 10,
+  },
+  {
+    id: 'client-account-profile',
+    label: t('account.profile.title'),
+    to: '/account/profile',
+    order: 20,
+  },
+  {
+    id: 'client-account-security',
+    label: t('account.security.title'),
+    to: '/account/security',
+    order: 25,
+  },
+  {
+    id: 'client-account-api-keys',
+    label: t('account.apiKeys.title'),
+    to: '/account/api-keys',
+    order: 30,
+  },
+  {
+    id: 'client-account-ssh-keys',
+    label: t('account.sshKeys.title'),
+    to: '/account/ssh-keys',
+    order: 35,
+  },
+  {
+    id: 'client-account-sessions',
+    label: t('account.sessions.title'),
+    to: '/account/sessions',
+    order: 40,
+  },
+  {
+    id: 'client-account-activity',
+    label: t('account.activity.title'),
+    to: '/account/activity',
+    order: 45,
+  },
+]);
+
+const pluginDashboardNavigation = computed<PluginNavigationContribution[]>(
+  () => pluginContributions.value?.dashboardNavigation ?? [],
+);
+
+const pluginsDashboardGroupLabel = 'Plugins / Extensions';
+
+function sortDashboardNav(items: AdminNavItem[]): AdminNavItem[] {
+  return items
+    .slice()
+    .sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
+    .map((item) => ({
+      ...item,
+      children: item.children ? sortDashboardNav(item.children) : undefined,
+    }));
+}
+
+function resolveDashboardPath(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed.replace(/^\/+/, '')}`;
+  return localePath(normalized);
+}
+
+function mapDashboardNavItem(item: AdminNavItem): NavigationMenuItem | null {
+  const to = resolveDashboardPath(item.to);
+  const children = Array.isArray(item.children)
+    ? item.children
+        .map((child) => mapDashboardNavItem(child))
+        .filter((entry): entry is NavigationMenuItem => Boolean(entry))
+    : [];
+
+  if (!to && children.length === 0) {
+    return null;
+  }
+
+  return {
+    label: item.label,
+    icon: item.icon,
+    to,
+    children: children.length > 0 ? children : undefined,
+  };
+}
+
+const navigationItems = computed<NavigationMenuItem[]>(() => {
+  const coreItems = sortDashboardNav(CLIENT_NAV_ITEMS.value)
+    .map((entry) => mapDashboardNavItem(entry))
+    .filter((entry): entry is NavigationMenuItem => Boolean(entry));
+
+  const pluginItems = sortDashboardNav(pluginDashboardNavigation.value)
+    .map((entry) => mapDashboardNavItem(entry))
+    .filter((entry): entry is NavigationMenuItem => Boolean(entry));
+
+  if (pluginItems.length === 0) {
+    return coreItems;
+  }
+
+  return coreItems.concat({
+    label: pluginsDashboardGroupLabel,
+    icon: 'i-lucide-puzzle',
+    children: pluginItems,
+  });
 });
 
 const isAdminUser = computed(() => {
@@ -194,12 +285,19 @@ async function handleLocaleChange(newLocale: string | undefined) {
 </script>
 
 <template>
+  <PluginOutlet
+    name="client.wrapper.before"
+    :contributions="pluginContributions"
+    :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+  />
   <UDashboardGroup
     class="default-layout min-h-screen bg-muted/30"
     storage="local"
     storage-key="client-dashboard"
   >
     <UDashboardSidebar
+      role="navigation"
+      :aria-label="t('common.navigation')"
       collapsible
       :toggle="sidebarToggleProps"
       :ui="{ footer: 'border-t border-default' }"
@@ -259,6 +357,11 @@ async function handleLocaleChange(newLocale: string | undefined) {
     <UDashboardPanel :key="'dashboard-panel'" :ui="{ body: 'flex flex-1 flex-col p-0' }">
       <template #body>
         <header role="banner">
+          <PluginOutlet
+            name="client.layout.before-navbar"
+            :contributions="pluginContributions"
+            :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+          />
           <UDashboardNavbar
             :ui="{
               left: 'flex flex-col gap-0.5 text-left leading-tight sm:flex-row sm:items-baseline sm:gap-2',
@@ -305,6 +408,11 @@ async function handleLocaleChange(newLocale: string | undefined) {
               </div>
             </template>
           </UDashboardNavbar>
+          <PluginOutlet
+            name="client.layout.after-navbar"
+            :contributions="pluginContributions"
+            :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+          />
         </header>
 
         <main class="flex-1 overflow-y-auto">
@@ -347,10 +455,25 @@ async function handleLocaleChange(newLocale: string | undefined) {
                 </UButton>
               </template>
             </UAlert>
+            <PluginOutlet
+              name="client.layout.before-content"
+              :contributions="pluginContributions"
+              :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+            />
             <slot />
+            <PluginOutlet
+              name="client.layout.after-content"
+              :contributions="pluginContributions"
+              :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+            />
           </div>
         </main>
       </template>
     </UDashboardPanel>
   </UDashboardGroup>
+  <PluginOutlet
+    name="client.wrapper.after"
+    :contributions="pluginContributions"
+    :context="{ route: route.path, title: pageTitle, subtitle: pageSubtitle }"
+  />
 </template>

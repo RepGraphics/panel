@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { authClient } from '~/utils/auth-client';
 import * as locales from '@nuxt/ui/locale';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 await authClient.useSession(useFetch);
 
 const { locale } = useI18n();
+const route = useRoute();
+const { data: pluginContributions } = await usePluginContributions();
 
 const currentLocale = computed(() => {
   const localeCode = locale.value as string;
@@ -31,8 +34,18 @@ useHead(() => ({
   <UApp :locale="currentLocale">
     <NuxtPwaAssets />
     <NuxtLoadingIndicator color="#16a34a" error-color="#ef4444" :height="3" />
+    <PluginOutlet
+      name="app.wrapper.before"
+      :contributions="pluginContributions"
+      :context="{ route: route.path }"
+    />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <PluginOutlet
+      name="app.wrapper.after"
+      :contributions="pluginContributions"
+      :context="{ route: route.path }"
+    />
   </UApp>
 </template>

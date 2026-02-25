@@ -1455,6 +1455,8 @@
       "diskUsage": "Disk usage",
       "lastSeen": "Last seen",
       "systemSnapshot": "System snapshot",
+      "unableToContactWingsNode": "Unable to contact Wings node",
+      "noSystemDataReturned": "No system data returned by Wings.",
       "recentServers": "Recent servers",
       "noServersForNodeYet": "No servers on this node yet.",
       "showingNodes": "Showing {count} nodes",

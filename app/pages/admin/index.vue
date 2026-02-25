@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import type { DashboardResponse } from '#shared/types/admin';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 definePageMeta({
   adminTitle: 'Dashboard',
@@ -8,7 +9,9 @@ definePageMeta({
 });
 
 const { t } = useI18n();
+const route = useRoute();
 const requestFetch = useRequestFetch();
+const { data: pluginContributions } = await usePluginContributions();
 
 function getDefaultDashboard(): DashboardResponse {
   return {
@@ -111,6 +114,11 @@ onMounted(() => {
   <UPage>
     <UPageBody>
       <UContainer>
+        <PluginOutlet
+          name="admin.dashboard.before-content"
+          :contributions="pluginContributions"
+          :context="{ route: route.path }"
+        />
         <section class="space-y-6">
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <template v-if="showCriticalSkeleton">
@@ -298,6 +306,11 @@ onMounted(() => {
             </UCard>
           </div>
         </section>
+        <PluginOutlet
+          name="admin.dashboard.after-content"
+          :contributions="pluginContributions"
+          :context="{ route: route.path }"
+        />
       </UContainer>
     </UPageBody>
   </UPage>

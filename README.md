@@ -25,6 +25,8 @@ bash <(curl -fsSL https://xyrapanel.com/install)
 ## Links
 
 - [Documentation](https://xyrapanel.com)
+- [Plugin System](docs/plugins.md)
+- [Wings (Docker Desktop)](docs/wings-docker-desktop.md)
 - [Discord](https://xyrapanel.com/discord)
 
 ## Contributing

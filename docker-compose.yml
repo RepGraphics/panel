@@ -36,14 +36,14 @@ services:
     environment:
       POSTGRES_USER: ${DB_USER:-xyra}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-xyra}
-      POSTGRES_DB: ${DB_NAME:-xyra}
+      POSTGRES_DB: ${DB_NAME:-xyrapanel}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - backend
     restart: unless-stopped
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-xyra}']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-xyra} -d ${DB_NAME:-xyrapanel}']
       interval: 10s
       timeout: 5s
       retries: 5

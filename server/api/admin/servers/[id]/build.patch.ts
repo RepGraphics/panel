@@ -107,6 +107,15 @@ export default defineEventHandler(async (event) => {
       .where(eq(tables.servers.id, serverId));
   }
 
+  const serverUpdates: Record<string, unknown> = {};
+  if (allocationLimit !== undefined) serverUpdates.allocationLimit = allocationLimit;
+  if (databaseLimit !== undefined) serverUpdates.databaseLimit = databaseLimit;
+  if (backupLimit !== undefined) serverUpdates.backupLimit = backupLimit;
+
+  if (Object.keys(serverUpdates).length > 0) {
+    await db.update(tables.servers).set(serverUpdates).where(eq(tables.servers.id, serverId));
+  }
+
   await invalidateServerCaches({
     id: server.id,
     uuid: server.uuid,

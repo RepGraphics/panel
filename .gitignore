@@ -4,6 +4,8 @@
 .nuxt
 .nitro
 .cache
+.xyra
+.tmp
 dist
 data
 
@@ -13,6 +15,8 @@ node_modules
 
 # Env & logs
 .env
+.env.wings
+.env.wings.isolated
 logs
 *.log
 
@@ -31,3 +35,6 @@ nginx/nginx.dev.conf
 nginx/nginx.local.conf
 docker-compose.local.yml
 public/uploads/branding
+
+# Plugins
+extensions/**/

@@ -340,7 +340,7 @@ export function useServerFilesManager(options: UseServerFilesManagerOptions) {
     try {
       renameModal.loading = true;
       await requestFetch(`${clientApiBase.value}/files/rename`, {
-        method: 'POST',
+        method: 'PUT',
         body: {
           root: currentDirectory.value,
           files: [{ from: renameModal.file.path, to: destination }],
@@ -579,7 +579,7 @@ export function useServerFilesManager(options: UseServerFilesManagerOptions) {
         to: joinDirectoryPath(destination, item.name),
       }));
       await requestFetch(`${clientApiBase.value}/files/rename`, {
-        method: 'POST',
+        method: 'PUT',
         body: {
           root: '/',
           files,

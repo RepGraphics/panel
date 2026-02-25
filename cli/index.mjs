@@ -2,9 +2,10 @@
 import { defineCommand, runMain } from 'citty';
 import { consola } from 'consola';
 import { execa } from 'execa';
-import { access, readFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'pathe';
+import { dirname, isAbsolute, join, resolve } from 'pathe';
 import { colors } from 'consola/utils';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,8 @@ const logger = consola.withDefaults({
 });
 const defaultEcosystemFile = 'ecosystem.config.cjs';
 const defaultPm2App = 'xyrapanel';
+const pluginManifestFile = 'plugin.json';
+const extensionsRoot = resolve(projectRoot, 'extensions');
 const accent = colors.redBright;
 const accentSoft = colors.red;
 const divider = colors.dim('─'.repeat(58));
@@ -25,6 +28,7 @@ const coreCommandSummaries = [
   ['deploy', 'Build and reload/start via PM2'],
   ['pm2', 'Process controls (start/reload/logs)'],
   ['build', 'Nuxt build for Nitro output'],
+  ['plugins', 'Install/list/remove plugin packages'],
 ];
 
 const toolingCommandSummaries = [
@@ -85,7 +89,7 @@ const ecosystemArg = {
 };
 
 const resolvePath = (maybeRelative) =>
-  maybeRelative.startsWith('/') ? maybeRelative : resolve(projectRoot, maybeRelative);
+  isAbsolute(maybeRelative) ? maybeRelative : resolve(projectRoot, maybeRelative);
 
 async function ensureFile(path) {
   try {
@@ -94,6 +98,194 @@ async function ensureFile(path) {
     logger.error(`Cannot find ecosystem config at: ${path}`);
     process.exit(1);
   }
+}
+
+async function pathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(path) {
+  try {
+    const result = await stat(path);
+    return result.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDirectory(path) {
+  await mkdir(path, { recursive: true });
+}
+
+async function readJsonFile(path) {
+  const raw = await readFile(path, 'utf8');
+  return JSON.parse(raw);
+}
+
+function validatePluginManifest(rawManifest, sourcePath) {
+  if (!rawManifest || typeof rawManifest !== 'object' || Array.isArray(rawManifest)) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: expected a JSON object.`);
+  }
+
+  const manifest = rawManifest;
+  const id = typeof manifest.id === 'string' ? manifest.id.trim() : '';
+  const name = typeof manifest.name === 'string' ? manifest.name.trim() : '';
+  const version = typeof manifest.version === 'string' ? manifest.version.trim() : '';
+
+  if (!id || !/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
+    throw new Error(
+      `Invalid plugin id in ${sourcePath}. Expected /^[a-z0-9][a-z0-9._-]*$/ and non-empty.`,
+    );
+  }
+
+  if (!name) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "name" is required.`);
+  }
+
+  if (!version) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "version" is required.`);
+  }
+
+  return { ...manifest, id, name, version };
+}
+
+function looksLikeGitSource(source) {
+  return (
+    source.startsWith('http://') ||
+    source.startsWith('https://') ||
+    source.startsWith('ssh://') ||
+    source.startsWith('git@') ||
+    source.endsWith('.git') ||
+    source.includes('github.com/') ||
+    source.includes('gitlab.com/')
+  );
+}
+
+async function cloneSourceToTemp(source, branch = '') {
+  const prefix = join(tmpdir(), 'xyra-plugin-');
+  const targetDir = await mkdtemp(prefix);
+
+  const args = ['clone', '--depth', '1'];
+  if (branch && String(branch).trim()) {
+    args.push('--branch', String(branch).trim());
+  }
+  args.push(source, targetDir);
+
+  await runBinary('git', args);
+  return targetDir;
+}
+
+async function resolvePluginSourceDirectory(sourceRoot, manifestPath = '') {
+  const normalizedManifestPath = String(manifestPath || '').trim();
+  if (normalizedManifestPath) {
+    const candidate = isAbsolute(normalizedManifestPath)
+      ? normalizedManifestPath
+      : resolve(sourceRoot, normalizedManifestPath);
+    const maybeManifestPath = candidate.endsWith(pluginManifestFile)
+      ? candidate
+      : join(candidate, pluginManifestFile);
+
+    if (!(await pathExists(maybeManifestPath))) {
+      throw new Error(
+        `Cannot find ${pluginManifestFile} at: ${maybeManifestPath}. ` +
+          `Use --manifest to point to the plugin folder or manifest file.`,
+      );
+    }
+
+    return dirname(maybeManifestPath);
+  }
+
+  /** @type {Set<string>} */
+  const candidates = new Set();
+  const maybeAddCandidate = async (dirPath) => {
+    const candidateManifestPath = join(dirPath, pluginManifestFile);
+    if (await pathExists(candidateManifestPath)) {
+      candidates.add(resolve(dirPath));
+    }
+  };
+
+  await maybeAddCandidate(sourceRoot);
+
+  const firstLevel = await readdir(sourceRoot, { withFileTypes: true });
+  for (const first of firstLevel) {
+    if (!first.isDirectory()) continue;
+    if (['.git', 'node_modules', '.nuxt', '.output'].includes(first.name)) continue;
+
+    const firstPath = join(sourceRoot, first.name);
+    await maybeAddCandidate(firstPath);
+
+    const secondLevel = await readdir(firstPath, { withFileTypes: true });
+    for (const second of secondLevel) {
+      if (!second.isDirectory()) continue;
+      if (['.git', 'node_modules', '.nuxt', '.output'].includes(second.name)) continue;
+
+      await maybeAddCandidate(join(firstPath, second.name));
+    }
+  }
+
+  const resolvedCandidates = Array.from(candidates);
+
+  if (resolvedCandidates.length === 0) {
+    throw new Error(
+      `No ${pluginManifestFile} found in source: ${sourceRoot}. ` +
+        `Provide --manifest if the plugin lives in a nested directory.`,
+    );
+  }
+
+  if (resolvedCandidates.length > 1) {
+    throw new Error(
+      `Multiple plugin manifests found:\n` +
+        resolvedCandidates.map((candidate) => `- ${candidate}`).join('\n') +
+        `\nUse --manifest to select one.`,
+    );
+  }
+
+  return resolvedCandidates[0];
+}
+
+async function collectInstalledPlugins() {
+  if (!(await isDirectory(extensionsRoot))) {
+    return { installed: [], invalid: [] };
+  }
+
+  const entries = await readdir(extensionsRoot, { withFileTypes: true });
+  const installed = [];
+  const invalid = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const pluginDir = join(extensionsRoot, entry.name);
+    const manifestPath = join(pluginDir, pluginManifestFile);
+    if (!(await pathExists(manifestPath))) continue;
+
+    try {
+      const rawManifest = await readJsonFile(manifestPath);
+      const manifest = validatePluginManifest(rawManifest, manifestPath);
+      const enabled = manifest.enabled !== false;
+      installed.push({
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        enabled,
+        path: pluginDir,
+      });
+    } catch (error) {
+      invalid.push({
+        path: manifestPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  installed.sort((a, b) => a.id.localeCompare(b.id));
+  invalid.sort((a, b) => a.path.localeCompare(b.path));
+  return { installed, invalid };
 }
 
 async function runBinary(bin, args, options = {}) {
@@ -213,6 +405,206 @@ const dbCommand = defineCommand({
 });
 
 const pwaCommand = createPnpmCommand('pwa', 'Generate PWA assets', 'generate-pwa-assets');
+
+const pluginsListCommand = defineCommand({
+  meta: {
+    name: 'list',
+    description: 'List installed plugins from extensions/*/plugin.json',
+  },
+  run: async () => {
+    const { installed, invalid } = await collectInstalledPlugins();
+
+    if (installed.length === 0) {
+      logger.info(`No plugins found in ${extensionsRoot}`);
+    } else {
+      const idWidth = Math.max(...installed.map((plugin) => plugin.id.length), 2) + 2;
+      const versionWidth = Math.max(...installed.map((plugin) => plugin.version.length), 7) + 2;
+      const enabledWidth = 10;
+
+      const header =
+        accent('ID'.padEnd(idWidth)) +
+        accent('VERSION'.padEnd(versionWidth)) +
+        accent('ENABLED'.padEnd(enabledWidth)) +
+        accent('PATH');
+      console.log(header);
+
+      for (const plugin of installed) {
+        const enabledLabel = plugin.enabled ? 'yes' : 'no';
+        console.log(
+          plugin.id.padEnd(idWidth) +
+            plugin.version.padEnd(versionWidth) +
+            enabledLabel.padEnd(enabledWidth) +
+            plugin.path,
+        );
+      }
+    }
+
+    if (invalid.length > 0) {
+      logger.warn('Some plugin manifests could not be parsed:');
+      for (const entry of invalid) {
+        logger.warn(`- ${entry.path}: ${entry.error}`);
+      }
+    }
+  },
+});
+
+const pluginsInstallCommand = defineCommand({
+  meta: {
+    name: 'install',
+    description: 'Install a plugin from a local folder or git repository',
+  },
+  args: {
+    source: {
+      type: 'positional',
+      required: true,
+      description: 'Local path or git URL',
+    },
+    branch: {
+      type: 'string',
+      default: '',
+      description: 'Git branch/tag to clone from when source is a repository',
+    },
+    manifest: {
+      type: 'string',
+      default: '',
+      description: 'Path to plugin folder or plugin.json within the source',
+    },
+    force: {
+      type: 'boolean',
+      default: false,
+      description: 'Overwrite existing plugin directory if it already exists',
+    },
+    'keep-temp': {
+      type: 'boolean',
+      default: false,
+      description: 'Keep temporary cloned source on disk (debugging only)',
+    },
+  },
+  run: async ({ args }) => {
+    const sourceInput = String(args.source || '').trim();
+    if (!sourceInput) {
+      logger.error('A source is required. Example: xyra plugins install https://github.com/acme/plugin');
+      process.exit(1);
+    }
+
+    let sourceRoot = '';
+    let tempCloneRoot = '';
+    let cloned = false;
+
+    try {
+      const localCandidate = isAbsolute(sourceInput)
+        ? sourceInput
+        : resolve(process.cwd(), sourceInput);
+
+      if (await isDirectory(localCandidate)) {
+        sourceRoot = localCandidate;
+      } else if (looksLikeGitSource(sourceInput)) {
+        cloned = true;
+        tempCloneRoot = await cloneSourceToTemp(sourceInput, String(args.branch || ''));
+        sourceRoot = tempCloneRoot;
+      } else {
+        logger.error(`Source not found as directory: ${localCandidate}`);
+        logger.error('If this is a repository, pass a full git URL.');
+        process.exit(1);
+      }
+
+      const pluginSourceDir = await resolvePluginSourceDirectory(sourceRoot, String(args.manifest || ''));
+      const manifestPath = join(pluginSourceDir, pluginManifestFile);
+      const manifest = validatePluginManifest(await readJsonFile(manifestPath), manifestPath);
+
+      await ensureDirectory(extensionsRoot);
+      const destinationDir = join(extensionsRoot, manifest.id);
+
+      const sourceResolved = resolve(pluginSourceDir);
+      const destinationResolved = resolve(destinationDir);
+
+      if (sourceResolved === destinationResolved) {
+        logger.success(
+          `Plugin "${manifest.name}" (${manifest.id}@${manifest.version}) is already installed at ${destinationDir}`,
+        );
+        return;
+      }
+
+      if (await pathExists(destinationDir)) {
+        if (!args.force) {
+          const destinationManifestPath = join(destinationDir, pluginManifestFile);
+          const destinationHasManifest = await pathExists(destinationManifestPath);
+
+          if (destinationHasManifest) {
+            logger.error(
+              `Plugin directory already exists: ${destinationDir}. ` +
+                `Use --force to overwrite.`,
+            );
+            process.exit(1);
+          }
+
+          logger.warn(
+            `Destination exists without ${pluginManifestFile}; replacing stale directory: ${destinationDir}`,
+          );
+          await rm(destinationDir, { recursive: true, force: true });
+        } else {
+          logger.warn(`Removing existing plugin directory: ${destinationDir}`);
+          await rm(destinationDir, { recursive: true, force: true });
+        }
+      }
+
+      logger.start(`Installing plugin "${manifest.name}" (${manifest.id}@${manifest.version})`);
+      await cp(pluginSourceDir, destinationDir, { recursive: true });
+      logger.success(`Installed to ${destinationDir}`);
+      logger.info('Restart your panel dev/build process so Nuxt layer changes are applied.');
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    } finally {
+      if (cloned && tempCloneRoot && !args['keep-temp']) {
+        await rm(tempCloneRoot, { recursive: true, force: true });
+      }
+    }
+  },
+});
+
+const pluginsRemoveCommand = defineCommand({
+  meta: {
+    name: 'remove',
+    description: 'Remove an installed plugin by id',
+  },
+  args: {
+    id: {
+      type: 'positional',
+      required: true,
+      description: 'Plugin id (directory name under extensions)',
+    },
+  },
+  run: async ({ args }) => {
+    const id = String(args.id || '').trim();
+    if (!id) {
+      logger.error('Plugin id is required. Example: xyra plugins remove acme-tools');
+      process.exit(1);
+    }
+
+    const targetDir = join(extensionsRoot, id);
+    if (!(await pathExists(targetDir))) {
+      logger.warn(`Plugin is not installed: ${id}`);
+      return;
+    }
+
+    await rm(targetDir, { recursive: true, force: true });
+    logger.success(`Removed plugin "${id}"`);
+    logger.info('Restart your panel dev/build process so Nuxt layer changes are applied.');
+  },
+});
+
+const pluginsCommand = defineCommand({
+  meta: {
+    name: 'plugins',
+    description: 'Manage Xyra plugins',
+  },
+  subCommands: {
+    list: pluginsListCommand,
+    install: pluginsInstallCommand,
+    remove: pluginsRemoveCommand,
+  },
+});
 
 const deployCommand = defineCommand({
   meta: {
@@ -456,6 +848,7 @@ const rootCommand = defineCommand({
     test: testCommand,
     db: dbCommand,
     pwa: pwaCommand,
+    plugins: pluginsCommand,
   },
 });
 
