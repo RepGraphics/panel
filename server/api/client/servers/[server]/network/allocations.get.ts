@@ -1,5 +1,5 @@
 import { getServerWithAccess } from '#server/utils/server-helpers';
-import { listServerAllocations } from '#server/utils/serversStore';
+import { getServerLimits, listServerAllocations } from '#server/utils/serversStore';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { requireAccountUser } from '#server/utils/security';
 
@@ -23,6 +23,8 @@ export default defineEventHandler(async (event) => {
     allowAdmin: true,
   });
 
+  const limits = await getServerLimits(server.id);
+  const allocationLimit = server.allocationLimit ?? limits?.allocationLimit ?? null;
   const allocations = await listServerAllocations(server.id);
   const normalizeAllocation = (allocation: (typeof allocations)[number]) => ({
     id: allocation.id,
@@ -41,7 +43,7 @@ export default defineEventHandler(async (event) => {
     data: {
       primary: primaryAllocation,
       allocations: additionalAllocations,
-      allocation_limit: server.allocationLimit ?? null,
+      allocation_limit: allocationLimit,
     },
   };
 });

@@ -42,15 +42,17 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const server = serverRows[0];
 
-  if (server) {
-    await db
-      .update(tables.servers)
-      .set({
-        status: successful ? null : 'restore_failed',
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(tables.servers.id, server.id));
+  if (!server || server.nodeId !== nodeId) {
+    throw createError({ status: 403, statusText: 'Forbidden' });
   }
+
+  await db
+    .update(tables.servers)
+    .set({
+      status: successful ? null : 'restore_failed',
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(tables.servers.id, server.id));
 
   await recordAuditEventFromRequest(event, {
     actor: 'wings',

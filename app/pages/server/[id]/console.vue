@@ -12,6 +12,7 @@ definePageMeta({
 });
 
 const { t } = useI18n();
+const toast = useToast();
 const serverId = computed(() => route.params.id as string);
 
 const { data: serverResponse } = await useFetch(`/api/client/servers/${serverId.value}`, {
@@ -31,6 +32,11 @@ const authStore = useAuthStore();
 const { user: sessionUser, isAdmin } = storeToRefs(authStore);
 const currentUserId = computed(() => sessionUser.value?.id ?? null);
 const serverPermissions = computed(() => server.value?.permissions ?? []);
+const adminServerPath = computed(() => {
+  const id = server.value?.id?.trim();
+  return id ? `/admin/servers/${id}` : null;
+});
+const canOpenAdminPanelServer = computed(() => Boolean(isAdmin.value && adminServerPath.value));
 
 const { copy, copied } = useClipboard();
 const serverAddress = computed(() => {
@@ -76,6 +82,28 @@ const commandInput = ref('');
 const commandHistory = ref<string[]>([]);
 const historyIndex = ref(-1);
 
+interface MinecraftEulaStatusResponse {
+  data: {
+    supported: boolean;
+    likelyMinecraft: boolean;
+    fileExists: boolean;
+    accepted: boolean | null;
+    requiresAcceptance: boolean;
+    filePath: string;
+  };
+}
+
+const eulaModalOpen = ref(false);
+const eulaCheckInFlight = ref(false);
+const eulaUpdateInFlight = ref(false);
+const eulaLikelyMinecraft = ref(false);
+const eulaRequiresAcceptance = ref(false);
+const eulaAccepted = ref<boolean | null>(null);
+const eulaLastCheckAt = ref<number | null>(null);
+const eulaPendingStart = ref(false);
+
+const EULA_HINT_REGEX = /you need to agree to the eula|eula\.txt|aka\.ms\/minecraft/i;
+
 if (import.meta.client) {
   try {
     const stored = localStorage.getItem(`server-${serverId.value}:command_history`);
@@ -113,6 +141,96 @@ function addCommandToHistory(command: string) {
     commandHistory.value = commandHistory.value.slice(0, 32);
   }
   saveHistory();
+}
+
+function stripAnsi(value: string): string {
+  return value.replaceAll('\u001b', '');
+}
+
+async function checkMinecraftEula(force = false): Promise<boolean> {
+  if (!serverId.value || eulaCheckInFlight.value) {
+    return eulaRequiresAcceptance.value;
+  }
+
+  const now = Date.now();
+  if (!force && eulaLastCheckAt.value && now - eulaLastCheckAt.value < 3000) {
+    return eulaRequiresAcceptance.value;
+  }
+
+  eulaCheckInFlight.value = true;
+
+  try {
+    const response = await $fetch<MinecraftEulaStatusResponse>(
+      `/api/client/servers/${serverId.value}/minecraft/eula`,
+    );
+    const payload = response.data;
+
+    eulaLikelyMinecraft.value = payload.likelyMinecraft || payload.fileExists;
+    eulaAccepted.value = payload.accepted;
+    eulaRequiresAcceptance.value = Boolean(payload.requiresAcceptance);
+
+    if (eulaRequiresAcceptance.value && !eulaModalOpen.value) {
+      eulaModalOpen.value = true;
+    }
+
+    return eulaRequiresAcceptance.value;
+  } catch (error) {
+    console.warn('[Console] Failed to check Minecraft EULA status:', error);
+    return eulaRequiresAcceptance.value;
+  } finally {
+    eulaCheckInFlight.value = false;
+    eulaLastCheckAt.value = Date.now();
+  }
+}
+
+async function setMinecraftEulaAccepted(accepted: boolean) {
+  if (eulaUpdateInFlight.value) {
+    return;
+  }
+
+  eulaUpdateInFlight.value = true;
+  try {
+    await $fetch(`/api/client/servers/${serverId.value}/minecraft/eula`, {
+      method: 'POST',
+      body: { accepted },
+    });
+
+    eulaAccepted.value = accepted;
+    eulaRequiresAcceptance.value = !accepted;
+    eulaModalOpen.value = false;
+
+    if (accepted) {
+      toast.add({
+        title: 'Minecraft EULA accepted',
+        description: 'eula.txt has been updated to eula=true.',
+        color: 'success',
+      });
+
+      if (eulaPendingStart.value) {
+        eulaPendingStart.value = false;
+        sendPowerAction('start');
+      }
+    } else {
+      eulaPendingStart.value = false;
+      toast.add({
+        title: 'Minecraft EULA declined',
+        description: 'eula.txt remains set to eula=false.',
+        color: 'warning',
+      });
+    }
+
+    if (accepted) {
+      await checkMinecraftEula(true);
+    }
+  } catch (error) {
+    toast.add({
+      title: 'Failed to update Minecraft EULA',
+      description: error instanceof Error ? error.message : 'Unable to update eula.txt.',
+      color: 'error',
+    });
+  } finally {
+    eulaUpdateInFlight.value = false;
+  }
 }
 
 function submitCommand(event?: Event) {
@@ -174,6 +292,8 @@ onMounted(() => {
   uptimeInterval = setInterval(() => {
     currentTime.value = Date.now();
   }, 1000);
+
+  void checkMinecraftEula(true);
 });
 
 onUnmounted(() => {
@@ -182,6 +302,35 @@ onUnmounted(() => {
     uptimeInterval = null;
   }
 });
+
+watch(
+  () => logs.value.length,
+  () => {
+    const recentLines = logs.value.slice(-8);
+    const hasEulaHint = recentLines.some((line) => EULA_HINT_REGEX.test(stripAnsi(line)));
+    if (hasEulaHint) {
+      void checkMinecraftEula(true);
+    }
+  },
+);
+
+watch(
+  () => serverState.value,
+  (state, previous) => {
+    if (state === 'offline' || (previous === 'starting' && state !== 'running')) {
+      void checkMinecraftEula(true);
+    }
+  },
+);
+
+watch(
+  () => lifecycleStatus.value,
+  (status, previous) => {
+    if (previous === 'installing' && status === 'normal') {
+      void checkMinecraftEula(true);
+    }
+  },
+);
 
 const formattedUptime = computed(() => {
   if (!stats.value || !stats.value.uptime || !lastStatsTime.value) return '00:00:00';
@@ -243,14 +392,23 @@ function handleCommand(command: string) {
   sendCommand(command);
 }
 
-function handlePowerAction(action: PowerAction) {
+async function handlePowerAction(action: PowerAction) {
   if (!connected.value) return;
+
+  if (action === 'start') {
+    const requiresAcceptance = await checkMinecraftEula(true);
+    if (requiresAcceptance) {
+      eulaPendingStart.value = true;
+      eulaModalOpen.value = true;
+      return;
+    }
+  }
+
   sendPowerAction(action);
 }
 
 function handleSearch() {
   if (!import.meta.client) return;
-  const { t } = useI18n();
   const term =
     typeof globalThis !== 'undefined' && 'prompt' in globalThis
       ? (globalThis as { prompt?: (message: string) => string | null }).prompt?.(
@@ -313,6 +471,16 @@ function handleSearch() {
                 @click="() => handlePowerAction('kill')"
               >
                 {{ t('server.console.kill') }}
+              </UButton>
+              <UButton
+                v-if="canOpenAdminPanelServer && adminServerPath"
+                icon="i-lucide-square-arrow-out-up-right"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                :to="adminServerPath"
+              >
+                Open in Admin Panel
               </UButton>
             </div>
 
@@ -526,6 +694,66 @@ function handleSearch() {
         </div>
       </UContainer>
     </UPageBody>
+
+    <UModal
+      v-model:open="eulaModalOpen"
+      title="Minecraft EULA acceptance required"
+      description="This server cannot start until the Minecraft EULA is accepted."
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UAlert color="warning" icon="i-lucide-alert-triangle">
+            <template #title>Minecraft EULA required</template>
+            <template #description>
+              <p class="text-sm">
+                The server reported that the Minecraft EULA must be accepted before startup can
+                continue.
+              </p>
+            </template>
+          </UAlert>
+
+          <p class="text-sm text-muted-foreground">
+            <template v-if="eulaLikelyMinecraft">
+              If you accept, the panel will set <code>eula=true</code> in <code>eula.txt</code>.
+            </template>
+            <template v-else>
+              A server EULA file was detected and needs confirmation before startup can continue.
+            </template>
+          </p>
+
+          <a
+            href="https://aka.ms/MinecraftEULA"
+            target="_blank"
+            rel="noreferrer noopener"
+            class="text-sm text-primary hover:underline"
+          >
+            Read the official Minecraft EULA
+          </a>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton
+            variant="ghost"
+            color="warning"
+            :loading="eulaUpdateInFlight"
+            :disabled="eulaUpdateInFlight"
+            @click="setMinecraftEulaAccepted(false)"
+          >
+            Decline
+          </UButton>
+          <UButton
+            color="success"
+            :loading="eulaUpdateInFlight"
+            :disabled="eulaUpdateInFlight"
+            @click="setMinecraftEulaAccepted(true)"
+          >
+            Accept EULA
+          </UButton>
+        </div>
+      </template>
+    </UModal>
 
     <template #right>
       <UPageAside class="hidden lg:block lg:min-w-88">

@@ -196,7 +196,7 @@ const { data: pluginContributions } = await usePluginContributions();
 const pluginAdminNavigation = computed<PluginNavigationContribution[]>(
   () => pluginContributions.value?.adminNavigation ?? [],
 );
-const pluginsAdminGroupLabel = 'Plugins / Extensions';
+const pluginsAdminGroupLabel = 'Plugins';
 
 const sessionUser = computed<SessionUser | null>(() => storeUser.value ?? null);
 
@@ -327,7 +327,7 @@ const navItems = computed<AdminNavItem[]>(() => {
   const pluginNavigationChildren = sortAdminNavItems([
     {
       id: 'admin-plugins-settings',
-      label: 'Plugin Settings / Install',
+      label: 'Plugin Management',
       to: '/admin/plugins',
       permission: 'admin.settings.read',
       order: 0,
@@ -408,19 +408,21 @@ const sidebarToggleProps = computed(() => ({
 }));
 
 const dashboardSearchGroups = computed<CommandPaletteGroup<CommandPaletteItem>[]>(() => {
-  const navigationItems: CommandPaletteItem[] = flattenAdminNavItems(navItems.value).map((item) => ({
-    id: item.id,
-    label: item.label,
-    suffix: item.to,
-    to: item.to,
-    onSelect: (evt) => {
-      evt?.preventDefault?.();
-      if (item.to) {
-        router.push(item.to);
-      }
-      dashboardSearchOpen.value = false;
-    },
-  }));
+  const navigationItems: CommandPaletteItem[] = flattenAdminNavItems(navItems.value).map(
+    (item) => ({
+      id: item.id,
+      label: item.label,
+      suffix: item.to,
+      to: item.to,
+      onSelect: (evt) => {
+        evt?.preventDefault?.();
+        if (item.to) {
+          router.push(item.to);
+        }
+        dashboardSearchOpen.value = false;
+      },
+    }),
+  );
 
   const clientItems: CommandPaletteItem[] = CLIENT_NAV_ITEMS.value
     .slice()

@@ -11,6 +11,11 @@ const PLUGIN_MANIFEST_FILE = 'plugin.json';
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const MAX_MANIFEST_SCAN_DEPTH = 6;
 const MANIFEST_SCAN_IGNORE = new Set(['.git', '.hg', '.svn', 'node_modules', '.nuxt', '.output']);
+const ARCHIVE_LIST_MAX_BUFFER_BYTES = 20 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRY_COUNT = 10_000;
+const MAX_ARCHIVE_ENTRY_PATH_LENGTH = 1024;
+const KNOWN_ARCHIVE_ENTRY_TYPES = new Set(['-', 'd', 'b', 'c', 'h', 'l', 'p', 's', 'x', 'g']);
+const SUPPORTED_ARCHIVE_ENTRY_TYPES = new Set(['-', 'd', 'x', 'g']);
 
 interface NormalizedPluginManifest extends PluginManifest {
   id: string;
@@ -258,6 +263,13 @@ function validateArchiveEntries(entries: string[]): void {
     throw new PluginInstallError(400, 'Uploaded archive is empty.');
   }
 
+  if (entries.length > MAX_ARCHIVE_ENTRY_COUNT) {
+    throw new PluginInstallError(
+      413,
+      `Archive has too many entries (${entries.length}). Limit is ${MAX_ARCHIVE_ENTRY_COUNT}.`,
+    );
+  }
+
   for (const rawEntry of entries) {
     const entry = rawEntry.trim();
     if (!entry) {
@@ -265,6 +277,17 @@ function validateArchiveEntries(entries: string[]): void {
     }
 
     const normalizedEntry = entry.replace(/\\/g, '/');
+    if (normalizedEntry.length > MAX_ARCHIVE_ENTRY_PATH_LENGTH) {
+      throw new PluginInstallError(
+        400,
+        `Archive entry path is too long. Maximum length is ${MAX_ARCHIVE_ENTRY_PATH_LENGTH}.`,
+      );
+    }
+
+    if (normalizedEntry.includes('\0')) {
+      throw new PluginInstallError(400, 'Archive contains invalid null-byte paths.');
+    }
+
     if (normalizedEntry.startsWith('/') || /^[a-zA-Z]:\//.test(normalizedEntry)) {
       throw new PluginInstallError(400, 'Archive contains absolute paths and cannot be installed.');
     }
@@ -276,11 +299,32 @@ function validateArchiveEntries(entries: string[]): void {
   }
 }
 
+function validateArchiveEntryTypes(verboseListOutput: string): void {
+  const lines = verboseListOutput
+    .split(/\r?\n/)
+    .map((line) => line.trimStart())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const entryType = line[0];
+    if (!entryType || !KNOWN_ARCHIVE_ENTRY_TYPES.has(entryType)) {
+      continue;
+    }
+
+    if (!SUPPORTED_ARCHIVE_ENTRY_TYPES.has(entryType)) {
+      throw new PluginInstallError(
+        400,
+        'Archive contains unsupported entry types (symlinks/devices/fifos) and cannot be installed.',
+      );
+    }
+  }
+}
+
 async function extractArchive(archivePath: string, targetDir: string): Promise<void> {
   let listOutput = '';
   try {
     const result = await execFileAsync('tar', ['-tf', archivePath], {
-      maxBuffer: 10 * 1024 * 1024,
+      maxBuffer: ARCHIVE_LIST_MAX_BUFFER_BYTES,
     });
     listOutput = result.stdout ?? '';
   } catch (error) {
@@ -295,6 +339,21 @@ async function extractArchive(archivePath: string, targetDir: string): Promise<v
     .map((entry) => entry.trim())
     .filter(Boolean);
   validateArchiveEntries(entries);
+
+  let verboseListOutput = '';
+  try {
+    const result = await execFileAsync('tar', ['-tvf', archivePath], {
+      maxBuffer: ARCHIVE_LIST_MAX_BUFFER_BYTES,
+    });
+    verboseListOutput = result.stdout ?? '';
+  } catch (error) {
+    throw new PluginInstallError(
+      422,
+      `Invalid or unsupported plugin archive: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  validateArchiveEntryTypes(verboseListOutput);
 
   await mkdir(targetDir, { recursive: true });
 

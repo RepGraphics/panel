@@ -5,6 +5,7 @@ import { getServerWithAccess } from '#server/utils/server-helpers';
 import type {
   PluginClientContributions,
   PluginNavigationContribution,
+  PluginRenderScope,
 } from '#shared/types/plugins';
 
 function hasRequiredPermission(
@@ -92,14 +93,20 @@ export default defineEventHandler(async (event): Promise<{ data: PluginClientCon
     serverEggId = server.eggId ?? null;
   }
 
-  const scopedPluginIds = Array.from(
-    new Set(
-      contributions.serverNavigation
-        .map((entry) => entry.pluginId)
-        .concat(contributions.uiSlots.map((entry) => entry.pluginId)),
-    ),
-  );
-  const pluginScopes = await getPluginScopes(scopedPluginIds);
+  let pluginScopes: Record<string, PluginRenderScope> = {};
+  if (serverIdentifier) {
+    const scopedPluginIds = Array.from(
+      new Set(
+        contributions.serverNavigation
+          .map((entry) => entry.pluginId)
+          .concat(contributions.uiSlots.map((entry) => entry.pluginId)),
+      ),
+    );
+
+    if (scopedPluginIds.length > 0) {
+      pluginScopes = await getPluginScopes(scopedPluginIds);
+    }
+  }
 
   const isContributionEnabled = (pluginId: string): boolean => {
     if (!serverIdentifier) {
@@ -125,9 +132,10 @@ export default defineEventHandler(async (event): Promise<{ data: PluginClientCon
     isAdmin,
   ).filter((entry) => isContributionEnabled(entry.pluginId));
 
-  const filteredSlots = contributions.uiSlots.filter((slot) =>
-    hasRequiredPermission(slot.permission, permissions, isAdmin) &&
-    isContributionEnabled(slot.pluginId),
+  const filteredSlots = contributions.uiSlots.filter(
+    (slot) =>
+      hasRequiredPermission(slot.permission, permissions, isAdmin) &&
+      isContributionEnabled(slot.pluginId),
   );
 
   return {

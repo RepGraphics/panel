@@ -6,22 +6,37 @@ import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/secu
 import { recordAuditEvent } from '#server/utils/audit';
 import { APIError } from 'better-auth/api';
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth';
+import { getNodeIdFromAuth } from '#server/utils/wings/auth';
 import { remoteSftpAuthSchema } from '#shared/schema/wings';
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const MAX_ATTEMPTS = 5;
 const RATE_LIMIT_WINDOW = 60000;
+const MAX_RATE_LIMIT_BUCKETS = 10000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object';
 }
 
-function checkRateLimit(ip: string): boolean {
+function pruneRateLimitBuckets(now: number): void {
+  if (rateLimitMap.size < MAX_RATE_LIMIT_BUCKETS) {
+    return;
+  }
+
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetAt) {
+      rateLimitMap.delete(key);
+    }
+  }
+}
+
+function checkRateLimit(bucket: string): boolean {
   const now = Date.now();
-  const record = rateLimitMap.get(ip);
+  pruneRateLimitBuckets(now);
+  const record = rateLimitMap.get(bucket);
 
   if (!record || now > record.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    rateLimitMap.set(bucket, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
     return true;
   }
 
@@ -35,14 +50,16 @@ function checkRateLimit(ip: string): boolean {
 
 export default defineEventHandler(async (event: H3Event) => {
   const db = useDrizzle();
+  const nodeId = await getNodeIdFromAuth(event);
   const body = await readValidatedBodyWithLimit(
     event,
     remoteSftpAuthSchema,
     BODY_SIZE_LIMITS.SMALL,
   );
   const clientIp = getRequestIP(event) || body.ip || 'unknown';
+  const rateLimitBucket = `${nodeId}:${clientIp}`;
 
-  if (!checkRateLimit(clientIp)) {
+  if (!checkRateLimit(rateLimitBucket)) {
     throw createError({
       status: 429,
       statusText: 'Too Many Requests',
@@ -73,6 +90,14 @@ export default defineEventHandler(async (event: H3Event) => {
   const server = serverResult[0];
 
   if (!server) {
+    throw createError({
+      status: 401,
+      statusText: 'Unauthorized',
+      message: 'Invalid SFTP credentials',
+    });
+  }
+
+  if (server.nodeId !== nodeId) {
     throw createError({
       status: 401,
       statusText: 'Unauthorized',
@@ -207,6 +232,7 @@ export default defineEventHandler(async (event: H3Event) => {
     targetId: server.uuid,
     metadata: {
       ip: clientIp,
+      nodeId,
       username,
       successful: true,
     },

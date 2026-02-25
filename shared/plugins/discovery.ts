@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   type Dirent,
@@ -193,6 +194,26 @@ function resolveManifestEntryPath(
     errors.push({
       manifestPath,
       message: `Field "${fieldName}" points to a missing file or directory: ${normalizedEntry}`,
+    });
+    return undefined;
+  }
+
+  try {
+    const resolvedSourceDir = realpathSync(sourceDir);
+    const resolvedEntryPath = realpathSync(resolvedPath);
+    if (!isPathInside(resolvedSourceDir, resolvedEntryPath)) {
+      errors.push({
+        manifestPath,
+        message: `Field "${fieldName}" cannot escape the plugin directory.`,
+      });
+      return undefined;
+    }
+  } catch (error) {
+    errors.push({
+      manifestPath,
+      message: `Failed to resolve "${fieldName}": ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
     return undefined;
   }

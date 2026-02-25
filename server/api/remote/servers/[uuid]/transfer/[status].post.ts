@@ -54,6 +54,14 @@ export default defineEventHandler(async (event: H3Event) => {
     });
   }
 
+  if (nodeId !== transfer.oldNode && nodeId !== transfer.newNode) {
+    throw createError({
+      status: 403,
+      statusText: 'Forbidden',
+      message: 'Transfer does not belong to this node.',
+    });
+  }
+
   const now = new Date();
   const oldAdditionalAllocations = parseAllocationList(transfer.oldAdditionalAllocations);
   const newAdditionalAllocations = parseAllocationList(transfer.newAdditionalAllocations);

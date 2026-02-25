@@ -124,14 +124,15 @@ export default defineEventHandler(async (event: H3Event) => {
             environment.SERVER_PORT = String(primaryAllocation.port);
           }
 
-          const allocationMappings: Record<string, { ip: string; port: number }> = {};
+          const allocationMappings: Record<string, number[]> = {};
           for (const alloc of allocations) {
-            if (!alloc.isPrimary) {
-              allocationMappings[`${alloc.ip}:${alloc.port}`] = {
-                ip: alloc.ip,
-                port: alloc.port,
-              };
+            const ipKey = alloc.ip?.trim();
+            if (!ipKey) {
+              continue;
             }
+
+            const ports = (allocationMappings[ipKey] ??= []);
+            ports.push(alloc.port);
           }
 
           const settings = {

@@ -1,6 +1,6 @@
 import { getServerWithAccess } from '#server/utils/server-helpers';
 import { useDrizzle, tables, eq, and, isNull } from '#server/utils/drizzle';
-import { invalidateServerCaches } from '#server/utils/serversStore';
+import { getServerLimits, invalidateServerCaches } from '#server/utils/serversStore';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { requireAccountUser } from '#server/utils/security';
 import { recordServerActivity } from '#server/utils/server-activity';
@@ -25,7 +25,10 @@ export default defineEventHandler(async (event) => {
     allowAdmin: true,
   });
 
-  if (!server.allocationLimit) {
+  const limits = await getServerLimits(server.id);
+  const allocationLimit = server.allocationLimit ?? limits?.allocationLimit ?? null;
+
+  if (!allocationLimit) {
     throw createError({
       status: 400,
       message: 'Server does not have an allocation limit set',
@@ -38,7 +41,7 @@ export default defineEventHandler(async (event) => {
     .from(tables.serverAllocations)
     .where(eq(tables.serverAllocations.serverId, server.id));
 
-  if (currentAllocations.length >= server.allocationLimit) {
+  if (currentAllocations.length >= allocationLimit) {
     throw createError({
       status: 400,
       message: 'Server has reached its allocation limit',

@@ -1,8 +1,32 @@
+import type { H3Event } from 'h3';
 import { remoteUploadFiles } from '#server/utils/wings/registry';
 import { requireAccountUser } from '#server/utils/security';
 import { getServerWithAccess } from '#server/utils/server-helpers';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { recordServerActivity } from '#server/utils/server-activity';
+
+const MAX_UPLOAD_FILE_COUNT = 25;
+const MAX_UPLOAD_TOTAL_BYTES = 100 * 1024 * 1024;
+
+function assertMultipartSizeWithinLimit(event: H3Event): void {
+  const contentLength = getRequestHeader(event, 'content-length');
+  if (!contentLength) {
+    return;
+  }
+
+  const parsedLength = Number.parseInt(contentLength, 10);
+  if (Number.isNaN(parsedLength)) {
+    return;
+  }
+
+  if (parsedLength > MAX_UPLOAD_TOTAL_BYTES) {
+    throw createError({
+      status: 413,
+      statusText: 'Payload Too Large',
+      message: `Upload payload exceeds ${Math.floor(MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024))}MB.`,
+    });
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const identifier = getRouterParam(event, 'id');
@@ -22,6 +46,7 @@ export default defineEventHandler(async (event) => {
     requiredPermissions: ['server.files.upload'],
   });
 
+  assertMultipartSizeWithinLimit(event);
   const formData = await readMultipartFormData(event);
 
   if (!formData) {
@@ -32,9 +57,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const directory = formData.find(
-    (field) => field.name === 'directory' && typeof field.data === 'string',
-  )?.data as string | undefined;
+  const directoryField = formData.find((field) => field.name === 'directory' && field.data);
+  const directory = directoryField?.data?.toString().trim();
   const files = formData.filter((field) => field.name === 'files' && field.type === 'file');
 
   if (!directory) {
@@ -50,6 +74,23 @@ export default defineEventHandler(async (event) => {
       status: 422,
       statusText: 'Unprocessable Entity',
       message: 'At least one file is required for upload',
+    });
+  }
+
+  if (files.length > MAX_UPLOAD_FILE_COUNT) {
+    throw createError({
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      message: `A maximum of ${MAX_UPLOAD_FILE_COUNT} files can be uploaded in one request.`,
+    });
+  }
+
+  const totalUploadBytes = files.reduce((total, file) => total + (file.data?.length ?? 0), 0);
+  if (totalUploadBytes > MAX_UPLOAD_TOTAL_BYTES) {
+    throw createError({
+      status: 413,
+      statusText: 'Payload Too Large',
+      message: `Upload payload exceeds ${Math.floor(MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024))}MB.`,
     });
   }
 

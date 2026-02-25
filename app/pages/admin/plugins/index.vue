@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { PluginRenderScope, PluginRuntimeSummary, PluginScopeSummary } from '#shared/types/plugins';
+import type {
+  PluginRenderScope,
+  PluginRuntimeSummary,
+  PluginScopeSummary,
+} from '#shared/types/plugins';
 
 interface PluginInstallResponseData {
   id: string;
@@ -7,11 +11,7 @@ interface PluginInstallResponseData {
   version: string;
   replaced: boolean;
   restartRequired: boolean;
-  restartMode:
-    | 'not-required'
-    | 'dev-reload-triggered'
-    | 'process-restart-scheduled'
-    | 'manual';
+  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
   restartAutomated: boolean;
   message: string;
 }
@@ -313,8 +313,7 @@ async function installFromPath(): Promise<void> {
       },
     );
 
-    const requiresManualRestart =
-      response.data.restartRequired && !response.data.restartAutomated;
+    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
     installStatusMessage.value = response.data.message;
     installStatusWarning.value = requiresManualRestart;
 
@@ -371,8 +370,7 @@ async function installFromArchive(): Promise<void> {
       },
     );
 
-    const requiresManualRestart =
-      response.data.restartRequired && !response.data.restartAutomated;
+    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
     installStatusMessage.value = response.data.message;
     installStatusWarning.value = requiresManualRestart;
 
@@ -403,58 +401,126 @@ async function installFromArchive(): Promise<void> {
   <UPage>
     <UPageBody>
       <UContainer class="space-y-6">
-        <UCard :ui="{ body: 'space-y-5' }">
-          <div>
-            <h2 class="text-base font-semibold">Install Plugin</h2>
-            <p class="text-sm text-muted-foreground">
-              Install from a server path or upload an archive directly from this page.
-            </p>
+        <section
+          class="relative overflow-hidden rounded-2xl border border-default bg-gradient-to-br from-primary/10 via-muted/30 to-background p-5 sm:p-6"
+        >
+          <div
+            class="absolute -right-16 -top-16 size-44 rounded-full bg-primary/20 blur-3xl"
+            aria-hidden="true"
+          />
+          <div class="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div class="max-w-2xl space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary/80">
+                Plugins
+              </p>
+              <h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Plugin Management</h2>
+              <p class="text-sm text-muted-foreground">
+                Install extensions, review load status, and control where each plugin renders.
+              </p>
+            </div>
+            <UButton
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-refresh-cw"
+              :loading="pending || pluginScopePending"
+              @click="refreshPluginData"
+            >
+              Refresh data
+            </UButton>
+          </div>
+        </section>
+
+        <UCard :ui="{ body: 'space-y-6' }" class="border-default/80 shadow-sm">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-base font-semibold">Install Plugins</h3>
+              <p class="text-sm text-muted-foreground">
+                Install from a local path on the host or upload an archive.
+              </p>
+            </div>
+            <UBadge color="primary" variant="soft" size="sm">Plugin installer</UBadge>
           </div>
 
-          <div class="grid gap-5 xl:grid-cols-2">
-            <div class="space-y-3">
-              <p class="text-xs uppercase tracking-wide text-muted-foreground">From server path</p>
-              <UInput
-                v-model="installSourcePath"
-                placeholder="C:/plugins/my-plugin or /opt/plugins/my-plugin"
-                icon="i-lucide-folder-open"
-              />
-              <UInput
-                v-model="installManifestPath"
-                placeholder="Optional manifestPath (example: packages/plugin-a)"
-                icon="i-lucide-file-code"
-              />
+          <div class="grid gap-4 xl:grid-cols-2">
+            <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <UIcon name="i-lucide-folder-open" class="size-4 text-primary" />
+                Install from server path
+              </div>
+
+              <UFormField label="Source path" name="installSourcePath">
+                <UInput
+                  v-model="installSourcePath"
+                  placeholder="C:/plugins/my-plugin or /opt/plugins/my-plugin"
+                  icon="i-lucide-folder-open"
+                />
+              </UFormField>
+
+              <UFormField
+                label="Manifest path (optional)"
+                name="installManifestPath"
+                help="Use this when plugin.json is not at the source root."
+              >
+                <UInput
+                  v-model="installManifestPath"
+                  placeholder="packages/plugin-a"
+                  icon="i-lucide-file-code"
+                />
+              </UFormField>
+
               <UButton
                 color="primary"
                 icon="i-lucide-download"
                 :loading="installBusyPath"
+                :disabled="installBusyArchive"
+                class="w-full justify-center"
                 @click="installFromPath"
               >
                 Install from path
               </UButton>
             </div>
 
-            <div class="space-y-3">
-              <p class="text-xs uppercase tracking-wide text-muted-foreground">From archive upload</p>
-              <input
-                ref="archiveInputRef"
-                type="file"
-                accept=".zip,.tar,.tar.gz,.tgz"
-                class="block w-full cursor-pointer rounded-md border border-default bg-default px-3 py-2 text-sm text-muted-foreground"
-                @change="onArchiveSelected"
-              />
-              <p v-if="selectedArchiveLabel" class="text-xs text-muted-foreground">
-                Selected: {{ selectedArchiveLabel }}
-              </p>
-              <UInput
-                v-model="installArchiveManifestPath"
-                placeholder="Optional manifestPath inside archive"
-                icon="i-lucide-file-archive"
-              />
+            <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <UIcon name="i-lucide-upload" class="size-4 text-primary" />
+                Install from archive
+              </div>
+
+              <label
+                class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-default px-4 py-6 text-center transition hover:border-primary/50 hover:bg-muted/40"
+              >
+                <input
+                  ref="archiveInputRef"
+                  type="file"
+                  accept=".zip,.tar,.tar.gz,.tgz"
+                  class="hidden"
+                  @change="onArchiveSelected"
+                />
+                <UIcon name="i-lucide-file-archive" class="size-5 text-primary" />
+                <p class="text-sm font-medium">
+                  {{ selectedArchiveLabel || 'Choose plugin archive' }}
+                </p>
+                <p class="text-xs text-muted-foreground">Accepted: .zip, .tar, .tar.gz, .tgz</p>
+              </label>
+
+              <UFormField
+                label="Manifest path in archive (optional)"
+                name="installArchiveManifestPath"
+                help="Leave empty when plugin.json is at archive root."
+              >
+                <UInput
+                  v-model="installArchiveManifestPath"
+                  placeholder="packages/plugin-a"
+                  icon="i-lucide-file-archive"
+                />
+              </UFormField>
+
               <UButton
                 color="primary"
                 icon="i-lucide-upload"
                 :loading="installBusyArchive"
+                :disabled="installBusyPath"
+                class="w-full justify-center"
                 @click="installFromArchive"
               >
                 Upload and install
@@ -462,22 +528,28 @@ async function installFromArchive(): Promise<void> {
             </div>
           </div>
 
-          <label class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              v-model="installForce"
-              type="checkbox"
-              class="size-4 rounded border-default text-primary focus:ring-primary"
-            />
-            Overwrite existing plugin with the same id
-          </label>
-          <label class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <input
-              v-model="installAutoRestart"
-              type="checkbox"
-              class="size-4 rounded border-default text-primary focus:ring-primary"
-            />
-            Automatically apply layer changes after install
-          </label>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
+              <UCheckbox
+                v-model="installForce"
+                :disabled="installBusyPath || installBusyArchive"
+                label="Overwrite existing plugin with the same id"
+              />
+              <p class="mt-1 pl-6 text-xs text-muted-foreground">
+                Replaces the currently installed version.
+              </p>
+            </div>
+            <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
+              <UCheckbox
+                v-model="installAutoRestart"
+                :disabled="installBusyPath || installBusyArchive"
+                label="Automatically apply layer changes after install"
+              />
+              <p class="mt-1 pl-6 text-xs text-muted-foreground">
+                Triggers reload or restart when runtime changes require it.
+              </p>
+            </div>
+          </div>
 
           <UAlert
             v-if="installStatusMessage"
@@ -485,21 +557,31 @@ async function installFromArchive(): Promise<void> {
             :icon="installStatusWarning ? 'i-lucide-triangle-alert' : 'i-lucide-check-circle'"
             title="Install status"
             :description="installStatusMessage"
+            variant="soft"
           />
         </UCard>
 
         <div class="grid gap-4 md:grid-cols-3">
-          <UCard>
-            <p class="text-xs uppercase tracking-wide text-muted-foreground">Discovered</p>
-            <p class="mt-2 text-2xl font-semibold">{{ pluginCount }}</p>
+          <UCard class="border-default/80 bg-gradient-to-br from-primary/5 to-background">
+            <div class="flex items-center justify-between">
+              <p class="text-xs uppercase tracking-wide text-muted-foreground">Discovered</p>
+              <UIcon name="i-lucide-puzzle" class="size-4 text-primary" />
+            </div>
+            <p class="mt-3 text-2xl font-semibold">{{ pluginCount }}</p>
           </UCard>
-          <UCard>
-            <p class="text-xs uppercase tracking-wide text-muted-foreground">Loaded</p>
-            <p class="mt-2 text-2xl font-semibold text-success">{{ loadedCount }}</p>
+          <UCard class="border-default/80 bg-gradient-to-br from-success/10 to-background">
+            <div class="flex items-center justify-between">
+              <p class="text-xs uppercase tracking-wide text-muted-foreground">Loaded</p>
+              <UIcon name="i-lucide-check-circle-2" class="size-4 text-success" />
+            </div>
+            <p class="mt-3 text-2xl font-semibold text-success">{{ loadedCount }}</p>
           </UCard>
-          <UCard>
-            <p class="text-xs uppercase tracking-wide text-muted-foreground">Failed</p>
-            <p class="mt-2 text-2xl font-semibold" :class="failedCount > 0 ? 'text-error' : ''">
+          <UCard class="border-default/80 bg-gradient-to-br from-error/10 to-background">
+            <div class="flex items-center justify-between">
+              <p class="text-xs uppercase tracking-wide text-muted-foreground">Failed</p>
+              <UIcon name="i-lucide-alert-triangle" class="size-4 text-error" />
+            </div>
+            <p class="mt-3 text-2xl font-semibold" :class="failedCount > 0 ? 'text-error' : ''">
               {{ failedCount }}
             </p>
           </UCard>
@@ -511,16 +593,11 @@ async function installFromArchive(): Promise<void> {
           icon="i-lucide-alert-triangle"
           title="Plugin discovery warnings"
           :description="`${summary.discoveryErrors.length} issue(s) were found while scanning manifests.`"
+          variant="soft"
         />
 
-        <UCard v-if="pending && summary.plugins.length === 0">
-          <div class="space-y-3">
-            <USkeleton
-              v-for="i in 4"
-              :key="`plugin-skeleton-${i}`"
-              class="h-20 w-full rounded-lg"
-            />
-          </div>
+        <UCard v-if="pending && summary.plugins.length === 0" :ui="{ body: 'space-y-3' }">
+          <USkeleton v-for="i in 4" :key="`plugin-skeleton-${i}`" class="h-20 w-full rounded-lg" />
         </UCard>
 
         <UAlert
@@ -531,21 +608,18 @@ async function installFromArchive(): Promise<void> {
           :description="(error as Error).message"
         >
           <template #actions>
-            <UButton
-              color="error"
-              variant="soft"
-              icon="i-lucide-refresh-cw"
-              @click="() => refresh()"
-            >
+            <UButton color="error" variant="soft" icon="i-lucide-refresh-cw" @click="refresh">
               Retry
             </UButton>
           </template>
         </UAlert>
 
         <UCard v-else-if="summary.plugins.length === 0" :ui="{ body: 'space-y-3' }">
-          <p class="text-sm text-muted-foreground">
-            No plugins detected. Add plugin manifests under <code>extensions/*/plugin.json</code>.
-          </p>
+          <UEmpty
+            icon="i-lucide-puzzle"
+            title="No Plugins Found"
+            description="No plugins detected. Add plugin manifests under extensions/*/plugin.json."
+          />
         </UCard>
 
         <div v-else class="space-y-4">
@@ -553,15 +627,16 @@ async function installFromArchive(): Promise<void> {
             v-for="plugin in summary.plugins"
             :key="plugin.id"
             :ui="{ body: 'space-y-4' }"
-            class="border-default/80"
+            class="border-default/80 shadow-sm"
           >
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <UIcon name="i-lucide-puzzle" class="size-4 text-primary" />
                   <h2 class="text-base font-semibold">{{ plugin.name }}</h2>
                   <UBadge size="sm" variant="soft" color="neutral">{{ plugin.version }}</UBadge>
                 </div>
-                <p class="text-xs text-muted-foreground font-mono">{{ plugin.id }}</p>
+                <p class="text-xs font-mono text-muted-foreground">{{ plugin.id }}</p>
               </div>
 
               <div class="flex items-center gap-2">
@@ -582,40 +657,48 @@ async function installFromArchive(): Promise<void> {
               {{ plugin.description }}
             </p>
 
-            <div class="grid gap-3 md:grid-cols-2">
-              <div class="rounded-md border border-default p-3 text-xs font-mono">
-                <p class="text-muted-foreground mb-1">Manifest</p>
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono">
+                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Manifest
+                </p>
                 <p class="break-all">{{ plugin.manifestPath }}</p>
               </div>
-              <div class="rounded-md border border-default p-3 text-xs font-mono">
-                <p class="text-muted-foreground mb-1">Source</p>
+              <div class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono">
+                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">Source</p>
                 <p class="break-all">{{ plugin.sourceDir }}</p>
               </div>
               <div
                 v-if="plugin.serverEntryPath"
-                class="rounded-md border border-default p-3 text-xs font-mono"
+                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
               >
-                <p class="text-muted-foreground mb-1">Server Entry</p>
+                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Server Entry
+                </p>
                 <p class="break-all">{{ plugin.serverEntryPath }}</p>
               </div>
               <div
                 v-if="plugin.moduleEntryPath"
-                class="rounded-md border border-default p-3 text-xs font-mono"
+                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
               >
-                <p class="text-muted-foreground mb-1">Nuxt Module</p>
+                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Nuxt Module
+                </p>
                 <p class="break-all">{{ plugin.moduleEntryPath }}</p>
               </div>
               <div
                 v-if="plugin.nuxtLayerPath"
-                class="rounded-md border border-default p-3 text-xs font-mono"
+                class="rounded-lg border border-default/80 bg-muted/10 p-3 text-xs font-mono"
               >
-                <p class="text-muted-foreground mb-1">Nuxt Layer</p>
+                <p class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Nuxt Layer
+                </p>
                 <p class="break-all">{{ plugin.nuxtLayerPath }}</p>
               </div>
             </div>
 
-            <div class="rounded-md border border-default p-3 space-y-3">
-              <div class="flex items-center justify-between gap-3">
+            <div class="space-y-3 rounded-xl border border-default/80 bg-muted/20 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p class="text-xs uppercase tracking-wide text-muted-foreground">
                     Extension Scope
@@ -637,27 +720,31 @@ async function installFromArchive(): Promise<void> {
                 </UButton>
               </div>
 
-              <USelect
-                v-if="pluginScopeModels[plugin.id]"
-                v-model="pluginScopeModels[plugin.id].mode"
-                :items="scopeModeItems"
-                value-key="value"
-                aria-label="Plugin scope mode"
-                :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
-              />
+              <UFormField v-if="pluginScopeModels[plugin.id]" label="Scope mode" name="scopeMode">
+                <USelect
+                  v-model="pluginScopeModels[plugin.id].mode"
+                  :items="scopeModeItems"
+                  value-key="value"
+                  aria-label="Plugin scope mode"
+                  :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                />
+              </UFormField>
 
-              <USelect
-                v-if="
-                  pluginScopeModels[plugin.id] && pluginScopeModels[plugin.id].mode === 'eggs'
-                "
-                v-model="pluginScopeModels[plugin.id].eggIds"
-                :items="eggScopeOptions"
-                multiple
-                value-key="value"
-                placeholder="Select eggs that should render this extension"
-                aria-label="Plugin egg scope selection"
-                :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
-              />
+              <UFormField
+                v-if="pluginScopeModels[plugin.id] && pluginScopeModels[plugin.id].mode === 'eggs'"
+                label="Egg visibility"
+                name="scopeEggs"
+              >
+                <USelect
+                  v-model="pluginScopeModels[plugin.id].eggIds"
+                  :items="eggScopeOptions"
+                  multiple
+                  value-key="value"
+                  placeholder="Select eggs that should render this extension"
+                  aria-label="Plugin egg scope selection"
+                  :disabled="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                />
+              </UFormField>
 
               <UAlert
                 v-if="

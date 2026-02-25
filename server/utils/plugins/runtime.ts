@@ -324,6 +324,11 @@ export async function emitPluginHook<TPayload = unknown>(
   }
 }
 
+export function hasPluginHook(hookName: string): boolean {
+  const handlers = runtimeState.hookHandlers.get(hookName);
+  return Boolean(handlers && handlers.length > 0);
+}
+
 export function getPluginRuntimeSummary(): PluginRuntimeSummary {
   ensureDiscoveryState();
 
@@ -355,7 +360,9 @@ export function getPluginClientContributions(): PluginClientContributions {
     }
 
     adminNavigation.push(...cloneNavItems(state.manifest.id, contributions.adminNavigation));
-    dashboardNavigation.push(...cloneNavItems(state.manifest.id, contributions.dashboardNavigation));
+    dashboardNavigation.push(
+      ...cloneNavItems(state.manifest.id, contributions.dashboardNavigation),
+    );
     serverNavigation.push(...cloneNavItems(state.manifest.id, contributions.serverNavigation));
     uiSlots.push(...cloneSlotContributions(state.manifest.id, contributions.uiSlots));
   }

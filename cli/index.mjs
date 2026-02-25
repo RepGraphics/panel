@@ -127,6 +127,50 @@ async function readJsonFile(path) {
   return JSON.parse(raw);
 }
 
+function parseDotEnv(content) {
+  const env = {};
+  for (const rawLine of content.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separator = line.indexOf('=');
+    if (separator <= 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separator).trim();
+    if (!key) {
+      continue;
+    }
+
+    let value = line.slice(separator + 1).trim();
+    const quoted =
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"));
+    if (quoted) {
+      value = value.slice(1, -1);
+    }
+
+    env[key] = value;
+  }
+
+  return env;
+}
+
+async function readProjectDotEnv() {
+  const envPath = resolve(projectRoot, '.env');
+  try {
+    const raw = await readFile(envPath, 'utf8');
+    return parseDotEnv(raw);
+  } catch {
+    return {};
+  }
+}
+
+const projectDotEnv = await readProjectDotEnv();
+
 function validatePluginManifest(rawManifest, sourcePath) {
   if (!rawManifest || typeof rawManifest !== 'object' || Array.isArray(rawManifest)) {
     throw new Error(`Invalid plugin manifest at ${sourcePath}: expected a JSON object.`);
@@ -289,6 +333,7 @@ async function collectInstalledPlugins() {
 }
 
 async function runBinary(bin, args, options = {}) {
+  const { logError = true, ...execaOptions } = options;
   const command = `${bin} ${args.join(' ')}`;
   logger.start(command);
   try {
@@ -296,8 +341,99 @@ async function runBinary(bin, args, options = {}) {
       stdio: 'inherit',
       preferLocal: true,
       cwd: projectRoot,
-      ...options,
+      ...execaOptions,
     });
+  } catch (error) {
+    if (logError) {
+      logger.error(error);
+    }
+    throw error;
+  }
+}
+
+function isMissingBinaryError(error, binary) {
+  const text = `${error?.shortMessage ?? ''}\n${error?.stderr ?? ''}\n${error?.message ?? ''}`.toLowerCase();
+  const normalizedBinary = binary.toLowerCase();
+
+  return (
+    error?.code === 'ENOENT' ||
+    text.includes(`'${normalizedBinary}' is not recognized`) ||
+    text.includes(`"${normalizedBinary}" is not recognized`) ||
+    text.includes(`${normalizedBinary}: command not found`) ||
+    text.includes(`command "${normalizedBinary}" not found`) ||
+    text.includes(`spawn ${normalizedBinary} enoent`) ||
+    text.includes('could not determine executable to run')
+  );
+}
+
+async function runBinaryWithMirroredOutput(bin, args, options = {}) {
+  const { stdio = 'inherit', ...execaOptions } = options;
+
+  if (stdio !== 'inherit') {
+    return await execa(bin, args, {
+      cwd: projectRoot,
+      preferLocal: true,
+      stdio,
+      ...execaOptions,
+    });
+  }
+
+  const subprocess = execa(bin, args, {
+    cwd: projectRoot,
+    preferLocal: true,
+    stdio: 'pipe',
+    ...execaOptions,
+  });
+
+  subprocess.stdout?.pipe(process.stdout);
+  subprocess.stderr?.pipe(process.stderr);
+
+  return await subprocess;
+}
+
+async function canRunPm2Binary(bin, argsPrefix = []) {
+  try {
+    await execa(bin, [...argsPrefix, '--version'], {
+      cwd: projectRoot,
+      preferLocal: true,
+      stdio: 'pipe',
+    });
+    return true;
+  } catch (error) {
+    if (isMissingBinaryError(error, 'pm2')) {
+      return false;
+    }
+
+    logger.error(error);
+    throw error;
+  }
+}
+
+async function runPm2Binary(args, options = {}) {
+  const command = `pm2 ${args.join(' ')}`;
+  logger.start(command);
+
+  const execaOptions = {
+    ...options,
+    env: {
+      ...projectDotEnv,
+      ...process.env,
+      ...(options.env || {}),
+    },
+  };
+
+  if (await canRunPm2Binary('pm2')) {
+    return await runBinaryWithMirroredOutput('pm2', args, execaOptions);
+  }
+
+  logger.warn('PM2 is not on PATH, trying `pnpm exec pm2`...');
+  if (await canRunPm2Binary('pnpm', ['exec', 'pm2'])) {
+    return await runBinaryWithMirroredOutput('pnpm', ['exec', 'pm2', ...args], execaOptions);
+  }
+
+  logger.warn('PM2 is not installed locally, trying `pnpm dlx pm2`...');
+  try {
+    return await runBinaryWithMirroredOutput('pnpm', ['dlx', 'pm2', ...args], execaOptions);
   } catch (error) {
     logger.error(error);
     throw error;
@@ -310,7 +446,7 @@ function createPm2Command(name, description, args, buildArgs) {
     args,
     run: async (ctx) => {
       const cliArgs = await buildArgs(ctx.args);
-      await runBinary('pm2', cliArgs);
+      await runPm2Binary(cliArgs);
     },
   });
 }
@@ -632,12 +768,12 @@ const deployCommand = defineCommand({
     const processName = String(args.name ?? '');
     logger.start(`Reloading PM2 process: ${processName}`);
     try {
-      await runBinary('pm2', ['reload', processName, '--env', args.env, '--update-env']);
+      await runPm2Binary(['reload', processName, '--env', args.env, '--update-env']);
       logger.success('Reloaded existing PM2 process');
     } catch (error) {
       logger.warn('Reload failed, attempting clean start');
       logger.debug(error);
-      await runBinary('pm2', [
+      await runPm2Binary([
         'start',
         ecosystemPath,
         '--env',
@@ -665,15 +801,23 @@ const pm2StartCommand = createPm2Command(
 const pm2ReloadCommand = createPm2Command(
   'reload',
   'Reload the running PM2 process',
-  { env: envArg, name: nameArg },
-  (args) => ['reload', args.name, '--env', args.env, '--update-env'],
+  { env: envArg, name: nameArg, ecosystem: ecosystemArg },
+  async (args) => {
+    const ecosystemPath = resolvePath(args.ecosystem);
+    await ensureFile(ecosystemPath);
+    return ['reload', ecosystemPath, '--only', args.name, '--env', args.env, '--update-env'];
+  },
 );
 
 const pm2RestartCommand = createPm2Command(
   'restart',
   'Restart the PM2 process',
-  { env: envArg, name: nameArg },
-  (args) => ['restart', args.name, '--env', args.env, '--update-env'],
+  { env: envArg, name: nameArg, ecosystem: ecosystemArg },
+  async (args) => {
+    const ecosystemPath = resolvePath(args.ecosystem);
+    await ensureFile(ecosystemPath);
+    return ['restart', ecosystemPath, '--only', args.name, '--env', args.env, '--update-env'];
+  },
 );
 
 const pm2StopCommand = createPm2Command(
@@ -764,7 +908,7 @@ const pm2PasteLogsCommand = defineCommand({
     const processName = String(args.name || defaultPm2App);
     const pm2Args = ['logs', processName, '--lines', String(args.lines), '--nostream'];
     logger.start(`Collecting PM2 logs for ${processName}`);
-    const { stdout } = await execa('pm2', pm2Args, { cwd: projectRoot });
+    const { stdout } = await runPm2Binary(pm2Args, { stdio: 'pipe' });
 
     const filtered = (() => {
       if (args.stream === 'out') return stdout.replace(/\n\[.*?\]\s*err.*?(?=\n\[|$)/gms, '');

@@ -24,7 +24,9 @@ services:
       # This is required when Wings uses the host docker.sock for server containers.
       - '${WINGS_DATA_PATH:-/var/lib/pterodactyl}:${WINGS_DATA_PATH:-/var/lib/pterodactyl}'
       - '${WINGS_LOG_PATH:-./.data/wings/log}:/var/log/pterodactyl'
-      - '${WINGS_TMP_PATH:-./.data/wings/tmp}:/tmp/pterodactyl'
+      # Must be identical absolute paths on daemon host and inside Wings.
+      # Wings bind-mounts ${tmp_directory}/<server-uuid> into installer containers.
+      - '${WINGS_TMP_PATH:-/tmp/pterodactyl}:${WINGS_TMP_PATH:-/tmp/pterodactyl}'
       - '${WINGS_RUNTIME_PATH:-/run/wings}:${WINGS_RUNTIME_PATH:-/run/wings}'
       - '/etc/ssl/certs:/etc/ssl/certs:ro'
 

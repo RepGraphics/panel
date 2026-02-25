@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { getWingsClientForServer } from '#server/utils/wings-client';
 import { recordServerActivity } from '#server/utils/server-activity';
@@ -5,6 +6,29 @@ import { requireNodeRow, findWingsNode } from '#server/utils/wings/nodesStore';
 import { generateWingsJWT } from '#server/utils/wings/jwt';
 import { getServerWithAccess } from '#server/utils/server-helpers';
 import { requireAccountUser } from '#server/utils/security';
+
+const MAX_UPLOAD_FILE_COUNT = 25;
+const MAX_UPLOAD_TOTAL_BYTES = 100 * 1024 * 1024;
+
+function assertMultipartSizeWithinLimit(event: H3Event): void {
+  const contentLength = getRequestHeader(event, 'content-length');
+  if (!contentLength) {
+    return;
+  }
+
+  const parsedLength = Number.parseInt(contentLength, 10);
+  if (Number.isNaN(parsedLength)) {
+    return;
+  }
+
+  if (parsedLength > MAX_UPLOAD_TOTAL_BYTES) {
+    throw createError({
+      status: 413,
+      statusText: 'Payload Too Large',
+      message: `Upload payload exceeds ${Math.floor(MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024))}MB.`,
+    });
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const accountContext = await requireAccountUser(event);
@@ -27,6 +51,7 @@ export default defineEventHandler(async (event) => {
   try {
     const { server: wingsServer } = await getWingsClientForServer(server.uuid);
 
+    assertMultipartSizeWithinLimit(event);
     const formData = await readMultipartFormData(event);
     if (!formData || formData.length === 0) {
       throw new Error('No files provided');
@@ -37,6 +62,26 @@ export default defineEventHandler(async (event) => {
 
     if (fileFields.length === 0) {
       throw new Error('No files to upload');
+    }
+
+    if (fileFields.length > MAX_UPLOAD_FILE_COUNT) {
+      throw createError({
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        message: `A maximum of ${MAX_UPLOAD_FILE_COUNT} files can be uploaded in one request.`,
+      });
+    }
+
+    const totalUploadBytes = fileFields.reduce(
+      (total, field) => total + (field.data?.length ?? 0),
+      0,
+    );
+    if (totalUploadBytes > MAX_UPLOAD_TOTAL_BYTES) {
+      throw createError({
+        status: 413,
+        statusText: 'Payload Too Large',
+        message: `Upload payload exceeds ${Math.floor(MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024))}MB.`,
+      });
     }
 
     const nodeRow = requireNodeRow(wingsServer.nodeId as string);
@@ -92,6 +137,10 @@ export default defineEventHandler(async (event) => {
       message: 'Files uploaded successfully',
     };
   } catch (error) {
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      throw error;
+    }
+
     throw createError({
       status: 500,
       message: error instanceof Error ? error.message : 'Failed to upload files',

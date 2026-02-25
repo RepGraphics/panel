@@ -89,7 +89,7 @@ const PUBLIC_API_PATTERNS = [
   /^\/api\/auth(?:\/|$)/,
   /^\/api\/account\/register(?:\/|$)/,
   /^\/api\/branding(?:\/|$)/,
-  /^\/api\/application(?:\/|$)/,
+  /^\/api\/application\/nodes\/[^/]+\/configuration(?:\/|$)/,
   /^\/api\/_nuxt_icon(?:\/|$)/,
   /^\/api\/_nuxt(?:\/|$)/,
   /^\/api\/maintenance-status(?:\/|$)/,
@@ -236,7 +236,10 @@ export default defineEventHandler(async (event) => {
           },
         };
 
-        return;
+        // API keys are valid for daemon/public API routes but cannot be used for admin API access.
+        if (!path.startsWith('/api/admin')) {
+          return;
+        }
       } catch (error) {
         if (error && typeof error === 'object' && 'status' in error) {
           throw error;
@@ -271,7 +274,10 @@ export default defineEventHandler(async (event) => {
     return redirectToLogin(event, requestUrl);
   }
 
-  if (path.startsWith('/admin') && user.role !== 'admin') {
+  const isAdminPage = path.startsWith('/admin');
+  const isAdminApi = path.startsWith('/api/admin');
+
+  if ((isAdminPage || isAdminApi) && user.role !== 'admin') {
     if (isApiRequest) {
       throw createError({
         status: 403,

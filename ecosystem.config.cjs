@@ -1,8 +1,13 @@
+const { resolve } = require('node:path');
+
+const logsDir = process.env.PM2_LOG_DIR || resolve(__dirname, '.pm2', 'logs');
+
 module.exports = {
   apps: [
     {
       name: 'xyrapanel',
       script: '.output/server/index.mjs',
+      cwd: __dirname,
       exec_mode: 'cluster',
       instances: 'max',
       autorestart: true,
@@ -28,8 +33,14 @@ module.exports = {
       merge_logs: true,
       time: true, // Prefix logs with timestamp (good for forensics)
 
-      out_file: '/opt/xyrapanel/.pm2/logs/xyrapanel-out.log',
-      error_file: '/opt/xyrapanel/.pm2/logs/xyrapanel-error.log',
+      out_file: resolve(logsDir, 'xyrapanel-out.log'),
+      error_file: resolve(logsDir, 'xyrapanel-error.log'),
+      env: {
+        NODE_ENV: 'development',
+      },
+      env_production: {
+        NODE_ENV: 'production',
+      },
     },
   ],
 };

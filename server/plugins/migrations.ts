@@ -65,12 +65,19 @@ async function baselineIfNeeded(pool: Pool, migrationsFolder: string) {
 export default defineNitroPlugin(async () => {
   if (process.env.NODE_ENV !== 'production') return;
 
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
+  let pluginDir: string | null = null;
+  try {
+    if (typeof import.meta.url === 'string' && import.meta.url.startsWith('file://')) {
+      pluginDir = dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    pluginDir = null;
+  }
 
   const candidates = [
-    resolve(__dirname, '../database/migrations'),
-    resolve(__dirname, '../../server/database/migrations'),
+    ...(pluginDir
+      ? [resolve(pluginDir, '../database/migrations'), resolve(pluginDir, '../../server/database/migrations')]
+      : []),
     resolve(process.cwd(), 'server/database/migrations'),
     resolve(process.cwd(), 'migrations'),
     '/app/migrations',

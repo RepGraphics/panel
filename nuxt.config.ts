@@ -347,6 +347,9 @@ export default defineNuxtConfig({
     },
     workbox: {
       globPatterns: ['**/*.{js,css,png,svg,ico,woff,woff2}'],
+      // Monaco editor bundles are very large and numerous; precaching them
+      // significantly slows builds and can make Nitro appear stuck.
+      globIgnores: [],
       navigateFallback: null,
       navigateFallbackDenylist: [/.*/],
       cleanupOutdatedCaches: true,
@@ -633,7 +636,9 @@ export default defineNuxtConfig({
     sitemap: [],
   },
   experimental: {
-    buildCache: true,
+    // Build cache currently causes missing manifest errors on some Windows setups.
+    // Keep it opt-in until upstream cache-path handling is stable.
+    buildCache: process.env.NUXT_BUILD_CACHE === 'true',
   },
   nitro: {
     preset: 'node-server',

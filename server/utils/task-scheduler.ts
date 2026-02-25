@@ -17,6 +17,7 @@ export class TaskScheduler {
   private db = useDrizzle();
   private runningTasks = new Map<string, boolean>();
   private isProcessingQueue = false;
+  private schedulerInterval: NodeJS.Timeout | null = null;
 
   private parseCronField(field: string): number | null {
     if (!field || field === '*' || field.startsWith('*/')) return null;
@@ -491,16 +492,28 @@ export class TaskScheduler {
   }
 
   startScheduler(): void {
+    if (this.schedulerInterval) {
+      return;
+    }
+
     console.log('Starting task scheduler...');
 
-    setInterval(() => {
+    this.schedulerInterval = setInterval(() => {
       this.processScheduledTasks().catch((error) => {
         console.error('Scheduled task processing failed:', error);
       });
     }, 60000);
+
+    // Do not keep Node alive solely because of the schedule ticker.
+    this.schedulerInterval.unref();
   }
 
   stopScheduler(): void {
+    if (this.schedulerInterval) {
+      clearInterval(this.schedulerInterval);
+      this.schedulerInterval = null;
+    }
+
     console.log('Stopping task scheduler...');
     this.runningTasks.clear();
   }

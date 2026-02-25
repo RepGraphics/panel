@@ -19,12 +19,14 @@
   },
   "type": "module",
   "scripts": {
-    "build": "nuxt build",
+    "build": "node ./scripts/run-build.mjs",
+    "build:nuxt": "node --no-deprecation ./node_modules/nuxt/bin/nuxt.mjs build",
+    "build:clean": "node ./scripts/clean-build.mjs && pnpm run build",
     "dev": "node ./scripts/run-dev.mjs",
     "dev:lan": "node ./scripts/run-dev.mjs --lan",
-    "generate": "nuxt generate",
-    "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
+    "generate": "node --no-deprecation ./node_modules/nuxt/bin/nuxt.mjs generate",
+    "preview": "node --no-deprecation ./node_modules/nuxt/bin/nuxt.mjs preview",
+    "postinstall": "node --no-deprecation ./node_modules/nuxt/bin/nuxt.mjs prepare",
     "xyra": "node ./cli/index.mjs",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
@@ -115,7 +117,8 @@
   "packageManager": "pnpm@10.29.3+sha512.498e1fb4cca5aa06c1dcf2611e6fafc50972ffe7189998c409e90de74566444298ffe43e6cd2acdc775ba1aa7cc5e092a8b7054c811ba8c5770f84693d33d2dc",
   "pnpm": {
     "overrides": {
-      "vite": "npm:rolldown-vite@latest"
+      "vite": "npm:rolldown-vite@latest",
+      "@esbuild-kit/core-utils>esbuild": "0.25.12"
     }
   }
 }

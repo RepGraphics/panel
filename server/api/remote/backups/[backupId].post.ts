@@ -35,6 +35,24 @@ export default defineEventHandler(async (event: H3Event) => {
     throw createError({ status: 404, statusText: 'Backup not found' });
   }
 
+  const serverRows = await db
+    .select({
+      id: tables.servers.id,
+      uuid: tables.servers.uuid,
+      name: tables.servers.name,
+      ownerId: tables.servers.ownerId,
+      nodeId: tables.servers.nodeId,
+    })
+    .from(tables.servers)
+    .where(eq(tables.servers.id, backup.serverId))
+    .limit(1);
+
+  const server = serverRows[0];
+
+  if (!server || server.nodeId !== nodeId) {
+    throw createError({ status: 403, statusText: 'Forbidden' });
+  }
+
   const updates = {
     checksum: successful ? `${checksum_type}:${checksum}` : null,
     bytes: successful ? size : 0,
@@ -47,19 +65,6 @@ export default defineEventHandler(async (event: H3Event) => {
   await db.update(tables.serverBackups).set(updates).where(eq(tables.serverBackups.id, backup.id));
 
   await invalidateServerBackupsCache(backup.serverId);
-
-  const serverRows = await db
-    .select({
-      id: tables.servers.id,
-      uuid: tables.servers.uuid,
-      name: tables.servers.name,
-      ownerId: tables.servers.ownerId,
-    })
-    .from(tables.servers)
-    .where(eq(tables.servers.id, backup.serverId))
-    .limit(1);
-
-  const server = serverRows[0];
 
   if (successful && server?.ownerId) {
     try {

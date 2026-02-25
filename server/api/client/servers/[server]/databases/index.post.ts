@@ -2,7 +2,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { getServerWithAccess } from '#server/utils/server-helpers';
 import { useDrizzle, tables, eq } from '#server/utils/drizzle';
 import { sql } from 'drizzle-orm';
-import { invalidateServerCaches } from '#server/utils/serversStore';
+import { getServerLimits, invalidateServerCaches } from '#server/utils/serversStore';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { recordAuditEventFromRequest } from '#server/utils/audit';
 import {
@@ -37,13 +37,15 @@ export default defineEventHandler(async (event) => {
   );
 
   const db = useDrizzle();
+  const limits = await getServerLimits(server.id);
+  const databaseLimit = server.databaseLimit ?? limits?.databaseLimit ?? null;
 
   const serverDbRows = await db
     .select({ serverDbCount: sql<number>`count(*)` })
     .from(tables.serverDatabases)
     .where(eq(tables.serverDatabases.serverId, server.id));
 
-  if (server.databaseLimit && Number(serverDbRows[0]?.serverDbCount ?? 0) >= server.databaseLimit) {
+  if (databaseLimit && Number(serverDbRows[0]?.serverDbCount ?? 0) >= databaseLimit) {
     throw createError({ status: 403, message: 'Server database limit reached' });
   }
 

@@ -10,7 +10,7 @@ export default defineEventHandler(async (event: H3Event) => {
     throw createError({ status: 400, statusText: 'Missing backup ID' });
   }
 
-  await getNodeIdFromAuth(event);
+  const nodeId = await getNodeIdFromAuth(event);
 
   const [backup] = await db
     .select()
@@ -20,6 +20,16 @@ export default defineEventHandler(async (event: H3Event) => {
 
   if (!backup) {
     throw createError({ status: 404, statusText: 'Backup not found' });
+  }
+
+  const [server] = await db
+    .select({ nodeId: tables.servers.nodeId })
+    .from(tables.servers)
+    .where(eq(tables.servers.id, backup.serverId))
+    .limit(1);
+
+  if (!server || server.nodeId !== nodeId) {
+    throw createError({ status: 403, statusText: 'Forbidden' });
   }
 
   return {

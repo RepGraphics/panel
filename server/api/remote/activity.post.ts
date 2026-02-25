@@ -2,10 +2,13 @@ import { type H3Event } from 'h3';
 import { recordAuditEventFromRequest } from '#server/utils/audit';
 import { findServerByIdentifier } from '#server/utils/serversStore';
 import { readValidatedBodyWithLimit, BODY_SIZE_LIMITS } from '#server/utils/security';
+import { getNodeIdFromAuth } from '#server/utils/wings/auth';
 import type { ActivityAction } from '#shared/types/audit';
 import { remoteActivityBatchSchema } from '#shared/schema/wings';
 
 export default defineEventHandler(async (event: H3Event) => {
+  const nodeId = await getNodeIdFromAuth(event);
+
   const { data: activities } = await readValidatedBodyWithLimit(
     event,
     remoteActivityBatchSchema,
@@ -33,6 +36,13 @@ export default defineEventHandler(async (event: H3Event) => {
           serverCache.set(serverKey, serverRecord);
         }
         resolvedServer = serverCache.get(serverKey) ?? null;
+
+        if (resolvedServer && resolvedServer.nodeId !== nodeId) {
+          console.warn(
+            `[remote.activity] Ignoring activity for server ${serverKey} from unauthorized node ${nodeId}.`,
+          );
+          continue;
+        }
       }
 
       await recordAuditEventFromRequest(event, {
@@ -48,6 +58,7 @@ export default defineEventHandler(async (event: H3Event) => {
           ip: activity.ip,
           wings_timestamp: activity.timestamp,
           source: 'wings',
+          node_id: nodeId,
         },
       });
 

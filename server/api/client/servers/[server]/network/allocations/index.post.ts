@@ -1,6 +1,6 @@
 import { getServerWithAccess } from '#server/utils/server-helpers';
 import { useDrizzle, tables, eq, isNull, and } from '#server/utils/drizzle';
-import { invalidateServerCaches } from '#server/utils/serversStore';
+import { getServerLimits, invalidateServerCaches } from '#server/utils/serversStore';
 import { requireServerPermission } from '#server/utils/permission-middleware';
 import { requireAccountUser } from '#server/utils/security';
 import { recordServerActivity } from '#server/utils/server-activity';
@@ -26,12 +26,14 @@ export default defineEventHandler(async (event) => {
   });
 
   const db = useDrizzle();
+  const limits = await getServerLimits(server.id);
+  const allocationLimit = server.allocationLimit ?? limits?.allocationLimit ?? null;
   const existingAllocations = await db
     .select()
     .from(tables.serverAllocations)
     .where(eq(tables.serverAllocations.serverId, server.id));
 
-  if (server.allocationLimit && existingAllocations.length >= server.allocationLimit) {
+  if (allocationLimit && existingAllocations.length >= allocationLimit) {
     throw createError({
       status: 403,
       message: 'Allocation limit reached',

@@ -1,14 +1,18 @@
-import { emitPluginHook } from '#server/utils/plugins/runtime';
+import { emitPluginHook, hasPluginHook } from '#server/utils/plugins/runtime';
 
 export default defineEventHandler(async (event) => {
-  await emitPluginHook('request:before', {
-    event,
-  });
-
-  event.node.res.once('finish', () => {
-    void emitPluginHook('request:after', {
+  if (hasPluginHook('request:before')) {
+    await emitPluginHook('request:before', {
       event,
-      statusCode: event.node.res.statusCode,
     });
-  });
+  }
+
+  if (hasPluginHook('request:after')) {
+    event.node.res.once('finish', () => {
+      void emitPluginHook('request:after', {
+        event,
+        statusCode: event.node.res.statusCode,
+      });
+    });
+  }
 });
