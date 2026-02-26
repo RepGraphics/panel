@@ -1,6 +1,17 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile, cp } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+  cp,
+  lstat,
+  readdir,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -14,8 +25,20 @@ const MANIFEST_SCAN_IGNORE = new Set(['.git', '.hg', '.svn', 'node_modules', '.n
 const ARCHIVE_LIST_MAX_BUFFER_BYTES = 20 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRY_COUNT = 10_000;
 const MAX_ARCHIVE_ENTRY_PATH_LENGTH = 1024;
+const MAX_SOURCE_ENTRY_COUNT = 20_000;
 const KNOWN_ARCHIVE_ENTRY_TYPES = new Set(['-', 'd', 'b', 'c', 'h', 'l', 'p', 's', 'x', 'g']);
 const SUPPORTED_ARCHIVE_ENTRY_TYPES = new Set(['-', 'd', 'x', 'g']);
+const ARCHIVE_EXTRACT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+const DEFAULT_PLUGIN_INSTALL_DIR = 'extensions';
+const ZIP_SIGNATURES: ReadonlyArray<ReadonlyArray<number>> = [
+  [0x50, 0x4b, 0x03, 0x04],
+  [0x50, 0x4b, 0x05, 0x06],
+  [0x50, 0x4b, 0x07, 0x08],
+];
+const UNSUPPORTED_ENTRY_TYPES_ERROR_MESSAGE =
+  'Archive contains unsupported entry types (symlinks/devices/fifos) and cannot be installed.';
+
+type ArchiveFormat = 'tar' | 'zip';
 
 interface NormalizedPluginManifest extends PluginManifest {
   id: string;
@@ -52,6 +75,33 @@ export class PluginInstallError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasZipFileSignature(buffer: Buffer): boolean {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) {
+    return false;
+  }
+
+  return ZIP_SIGNATURES.some(
+    (signature) =>
+      buffer[0] === signature[0] &&
+      buffer[1] === signature[1] &&
+      buffer[2] === signature[2] &&
+      buffer[3] === signature[3],
+  );
+}
+
+function detectArchiveFormat(archiveData: Buffer, archiveFilename: string | undefined): ArchiveFormat {
+  const normalizedName = archiveFilename?.trim().toLowerCase() ?? '';
+  if (normalizedName.endsWith('.zip')) {
+    return 'zip';
+  }
+
+  if (hasZipFileSignature(archiveData)) {
+    return 'zip';
+  }
+
+  return 'tar';
 }
 
 function hasNuxtRuntimeEntries(manifest: NormalizedPluginManifest): boolean {
@@ -232,24 +282,7 @@ function resolveManagedInstallRoot(options: PluginInstallOptions): string {
     return resolveInputPath(explicitRoot);
   }
 
-  const configured = process.env.XYRA_PLUGIN_DIRS ?? process.env.XYRA_PLUGINS_DIR;
-  if (configured) {
-    const candidates = configured
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-
-    for (const candidate of candidates) {
-      const resolvedCandidate = resolveInputPath(candidate);
-      if (existsSync(join(resolvedCandidate, PLUGIN_MANIFEST_FILE))) {
-        continue;
-      }
-
-      return resolvedCandidate;
-    }
-  }
-
-  return resolve(process.cwd(), 'extensions');
+  return resolve(process.cwd(), DEFAULT_PLUGIN_INSTALL_DIR);
 }
 
 function sanitizeArchiveFilename(name: string | undefined): string {
@@ -312,15 +345,102 @@ function validateArchiveEntryTypes(verboseListOutput: string): void {
     }
 
     if (!SUPPORTED_ARCHIVE_ENTRY_TYPES.has(entryType)) {
-      throw new PluginInstallError(
-        400,
-        'Archive contains unsupported entry types (symlinks/devices/fifos) and cannot be installed.',
-      );
+      throw new PluginInstallError(400, UNSUPPORTED_ENTRY_TYPES_ERROR_MESSAGE);
     }
   }
 }
 
-async function extractArchive(archivePath: string, targetDir: string): Promise<void> {
+function isMissingBinaryError(error: unknown, binary: string): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    stderr?: unknown;
+    shortMessage?: unknown;
+  };
+  if (candidate.code === 'ENOENT') {
+    return true;
+  }
+
+  const normalizedBinary = binary.toLowerCase();
+  const details = [candidate.message, candidate.stderr, candidate.shortMessage]
+    .map((entry) => (typeof entry === 'string' ? entry.toLowerCase() : ''))
+    .join('\n');
+
+  return (
+    details.includes(`${normalizedBinary}: command not found`) ||
+    details.includes(`spawn ${normalizedBinary} enoent`) ||
+    details.includes(`'${normalizedBinary}' is not recognized`) ||
+    details.includes(`"${normalizedBinary}" is not recognized`)
+  );
+}
+
+async function assertDirectoryTreeSafe(
+  rootDir: string,
+  options: { label: string; maxEntries: number },
+): Promise<void> {
+  const rootStats = await lstat(rootDir).catch(() => null);
+  if (!rootStats || !rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+    throw new PluginInstallError(400, `${options.label} must be a normal directory.`);
+  }
+
+  const queue: string[] = [rootDir];
+  let visitedEntries = 0;
+
+  while (queue.length > 0) {
+    const currentDir = queue.shift();
+    if (!currentDir) {
+      continue;
+    }
+
+    let entries;
+    try {
+      entries = await readdir(currentDir, { withFileTypes: true });
+    } catch (error) {
+      throw new PluginInstallError(
+        422,
+        `Failed to read ${options.label}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    for (const entry of entries) {
+      const candidatePath = join(currentDir, entry.name);
+      const stats = await lstat(candidatePath).catch(() => null);
+      if (!stats) {
+        throw new PluginInstallError(
+          422,
+          `Failed to inspect ${options.label}: ${relative(rootDir, candidatePath) || entry.name}`,
+        );
+      }
+
+      visitedEntries += 1;
+      if (visitedEntries > options.maxEntries) {
+        throw new PluginInstallError(
+          413,
+          `${options.label} contains too many entries. Limit is ${options.maxEntries}.`,
+        );
+      }
+
+      if (stats.isSymbolicLink()) {
+        throw new PluginInstallError(400, UNSUPPORTED_ENTRY_TYPES_ERROR_MESSAGE);
+      }
+
+      if (stats.isDirectory()) {
+        queue.push(candidatePath);
+        continue;
+      }
+
+      if (!stats.isFile()) {
+        throw new PluginInstallError(400, UNSUPPORTED_ENTRY_TYPES_ERROR_MESSAGE);
+      }
+    }
+  }
+}
+
+async function extractTarArchive(archivePath: string, targetDir: string): Promise<void> {
   let listOutput = '';
   try {
     const result = await execFileAsync('tar', ['-tf', archivePath], {
@@ -359,7 +479,7 @@ async function extractArchive(archivePath: string, targetDir: string): Promise<v
 
   try {
     await execFileAsync('tar', ['-xf', archivePath, '-C', targetDir], {
-      maxBuffer: 10 * 1024 * 1024,
+      maxBuffer: ARCHIVE_EXTRACT_MAX_BUFFER_BYTES,
     });
   } catch (error) {
     throw new PluginInstallError(
@@ -367,6 +487,87 @@ async function extractArchive(archivePath: string, targetDir: string): Promise<v
       `Failed to extract plugin archive: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+async function extractZipArchiveWithUnzip(archivePath: string, targetDir: string): Promise<void> {
+  let listOutput = '';
+  try {
+    const result = await execFileAsync('unzip', ['-Z1', archivePath], {
+      maxBuffer: ARCHIVE_LIST_MAX_BUFFER_BYTES,
+    });
+    listOutput = result.stdout ?? '';
+  } catch (error) {
+    if (isMissingBinaryError(error, 'unzip')) {
+      throw new PluginInstallError(
+        500,
+        'Unable to extract .zip plugin archive because "unzip" is not installed on the panel host.',
+      );
+    }
+
+    throw new PluginInstallError(
+      422,
+      `Invalid or unsupported plugin archive: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const entries = listOutput
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  validateArchiveEntries(entries);
+
+  await mkdir(targetDir, { recursive: true });
+
+  try {
+    await execFileAsync('unzip', ['-qq', '-o', archivePath, '-d', targetDir], {
+      maxBuffer: ARCHIVE_EXTRACT_MAX_BUFFER_BYTES,
+    });
+  } catch (error) {
+    if (isMissingBinaryError(error, 'unzip')) {
+      throw new PluginInstallError(
+        500,
+        'Unable to extract .zip plugin archive because "unzip" is not installed on the panel host.',
+      );
+    }
+
+    throw new PluginInstallError(
+      422,
+      `Failed to extract plugin archive: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function extractArchive(
+  archivePath: string,
+  targetDir: string,
+  options: { format: ArchiveFormat },
+): Promise<void> {
+  if (options.format === 'zip') {
+    try {
+      await extractZipArchiveWithUnzip(archivePath, targetDir);
+    } catch (error) {
+      if (
+        error instanceof PluginInstallError &&
+        error.statusCode === 500 &&
+        error.message.includes('"unzip"')
+      ) {
+        try {
+          await extractTarArchive(archivePath, targetDir);
+        } catch {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    await extractTarArchive(archivePath, targetDir);
+  }
+
+  await assertDirectoryTreeSafe(targetDir, {
+    label: 'Archive',
+    maxEntries: MAX_ARCHIVE_ENTRY_COUNT,
+  });
 }
 
 export async function installPluginFromLocalSource(
@@ -377,6 +578,11 @@ export async function installPluginFromLocalSource(
   const manifestPath = await resolveSourceManifestPath(sourceRoot, options.manifestPath);
   const manifest = await readAndValidateManifest(manifestPath);
   const sourceDir = dirname(manifestPath);
+
+  await assertDirectoryTreeSafe(sourceDir, {
+    label: 'Plugin source',
+    maxEntries: MAX_SOURCE_ENTRY_COUNT,
+  });
 
   const installRoot = resolveManagedInstallRoot(options);
   const destinationDir = join(installRoot, manifest.id);
@@ -439,10 +645,11 @@ export async function installPluginFromArchiveBuffer(
   const tempRoot = await mkdtemp(join(tmpdir(), 'xyra-plugin-upload-'));
   const archivePath = join(tempRoot, sanitizeArchiveFilename(options.archiveFilename));
   const extractedDir = join(tempRoot, 'extracted');
+  const archiveFormat = detectArchiveFormat(archiveData, options.archiveFilename);
 
   try {
     await writeFile(archivePath, archiveData);
-    await extractArchive(archivePath, extractedDir);
+    await extractArchive(archivePath, extractedDir, { format: archiveFormat });
 
     return await installPluginFromLocalSource(extractedDir, {
       force: options.force,

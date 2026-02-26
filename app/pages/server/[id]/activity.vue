@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PaginatedServerActivityResponse, ServerActivityEvent } from '#shared/types/server';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -10,6 +11,8 @@ definePageMeta({
 });
 
 const serverId = computed(() => route.params.id as string);
+const { data: pluginContributions } = await usePluginContributions({ serverId: serverId.value });
+const pluginContext = computed(() => ({ route: route.path, serverId: serverId.value }));
 const currentPage = ref(1);
 const expandedEntries = ref<Set<string>>(new Set());
 
@@ -164,6 +167,12 @@ function getActionColor(action: string): 'primary' | 'error' | 'warning' | 'neut
               </UBadge>
             </div>
           </template>
+          <PluginOutlet
+            name="server.activity.table.before"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
 
           <template v-if="pending">
             <div class="space-y-2">
@@ -286,6 +295,12 @@ function getActionColor(action: string): 'primary' | 'error' | 'warning' | 'neut
               />
             </div>
           </template>
+          <PluginOutlet
+            name="server.activity.table.after"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
         </UCard>
       </UContainer>
     </UPageBody>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ServerFileListItem } from '#shared/types/server';
 import { useServerFilesManager } from '~/composables/useServerFilesManager';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const route = useRoute();
 
@@ -11,6 +12,8 @@ definePageMeta({
 const { t } = useI18n();
 const toast = useToast();
 const serverId = computed(() => route.params.id as string);
+const { data: pluginContributions } = await usePluginContributions({ serverId: serverId.value });
+const pluginContext = computed(() => ({ route: route.path, serverId: serverId.value }));
 const clientApiBase = computed(() => `/api/client/servers/${serverId.value}`);
 
 const selectedFile = ref<ServerFileListItem | null>(null);
@@ -516,6 +519,12 @@ const isEditorDirty = computed(() => {
                 </div>
               </div>
 
+              <PluginOutlet
+                name="server.files.create-buttons.before"
+                :server-id="serverId"
+                :contributions="pluginContributions"
+                :context="pluginContext"
+              />
               <ServerFilesActionToolbar
                 :actions="fileActions"
                 :show-loading-badge="directoryPending"
@@ -531,6 +540,12 @@ const isEditorDirty = computed(() => {
                   {{ t('server.files.loading') }}
                 </template>
               </ServerFilesActionToolbar>
+              <PluginOutlet
+                name="server.files.create-buttons.after"
+                :server-id="serverId"
+                :contributions="pluginContributions"
+                :context="pluginContext"
+              />
             </div>
 
             <div class="flex flex-col gap-6 min-h-[calc(100vh-300px)]">

@@ -25,6 +25,19 @@ export const CORE_PLUGIN_UI_SLOTS = [
   'server.layout.after-navbar',
   'server.layout.before-content',
   'server.layout.after-content',
+  'server.console.power-buttons.before',
+  'server.console.power-buttons.after',
+  'server.console.between-terminal-and-stats',
+  'server.console.after-stats',
+  'server.console.stats-card.before',
+  'server.console.stats-card.after',
+  'server.activity.table.before',
+  'server.activity.table.after',
+  'server.files.create-buttons.before',
+  'server.files.create-buttons.after',
+  'server.startup.command.before',
+  'server.settings.top',
+  'server.settings.bottom',
 ] as const;
 
 export type CorePluginUiSlotName = (typeof CORE_PLUGIN_UI_SLOTS)[number];

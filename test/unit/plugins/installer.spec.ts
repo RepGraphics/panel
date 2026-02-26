@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +18,8 @@ import {
 } from '../../../server/utils/plugins/installer';
 
 const tempDirs: string[] = [];
+const ZIP_ARCHIVE_BASE64 =
+  'UEsDBBQAAAAIAFmKWlzA0dccVwAAAHAAAAAWAAAAemlwLXBsdWdpbi9wbHVnaW4uanNvbqvmUlBQykxRslJQqsos0C3IKU3PzFPSAYnmJeamgsSjMgsUApDEy1KLijPz80BShnoGegYQ0dS8kqJKoFg1kAPSXFpR4pNYmVoEUqanX5qpBBSv5aoFAFBLAwQUAAAACABZilpcAAAAAAIAAAAAAAAAEwAAAHppcC1wbHVnaW4vdWkvLmtlZXADAFBLAQIUABQAAAAIAFmKWlzA0dccVwAAAHAAAAAWAAAAAAAAAAAAAACAAQAAAAB6aXAtcGx1Z2luL3BsdWdpbi5qc29uUEsBAhQAFAAAAAgAWYpaXAAAAAACAAAAAAAAABMAAAAAAAAAAAAAAIABiwAAAHppcC1wbHVnaW4vdWkvLmtlZXBQSwUGAAAAAAIAAgCFAAAAvgAAAAAA';
 
 function createTempRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'xyra-plugin-installer-'));
@@ -153,5 +163,47 @@ describe('server/utils/plugins/installer', () => {
     expect(result.id).toBe('archive-plugin');
     expect(existsSync(join(installRoot, 'archive-plugin', 'plugin.json'))).toBe(true);
     expect(existsSync(sourceDir)).toBe(true);
+  });
+
+  it('installs a plugin from a .zip archive buffer', async () => {
+    const root = createTempRoot();
+    const installRoot = join(root, 'extensions');
+    const archiveBuffer = Buffer.from(ZIP_ARCHIVE_BASE64, 'base64');
+
+    const result = await installPluginFromArchiveBuffer(archiveBuffer, {
+      archiveFilename: 'zip-plugin.zip',
+      installRoot,
+    });
+
+    expect(result.id).toBe('zip-plugin');
+    expect(result.restartRequired).toBe(true);
+    expect(existsSync(join(installRoot, 'zip-plugin', 'plugin.json'))).toBe(true);
+    expect(existsSync(join(installRoot, 'zip-plugin', 'ui', '.keep'))).toBe(true);
+  });
+
+  it('rejects local plugin sources that contain symlinks', async () => {
+    const root = createTempRoot();
+    const sourceDir = createPluginSource(root, 'symlink-plugin');
+    const installRoot = join(root, 'extensions');
+    const linkedPath = join(sourceDir, 'linked-file');
+    const externalFile = join(root, 'external.txt');
+    writeFileSync(externalFile, 'outside', 'utf8');
+
+    try {
+      symlinkSync(externalFile, linkedPath);
+    } catch {
+      return;
+    }
+
+    let thrown: unknown;
+    try {
+      await installPluginFromLocalSource(sourceDir, { installRoot });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(PluginInstallError);
+    expect((thrown as PluginInstallError).statusCode).toBe(400);
+    expect((thrown as PluginInstallError).message).toContain('unsupported entry types');
   });
 });

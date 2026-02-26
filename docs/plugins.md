@@ -54,7 +54,9 @@ Open `/admin/plugins` and use **Install Plugin**:
 
 Notes:
 
-- Uploaded archives are validated for unsafe traversal paths before extraction.
+- Uploaded archives are extracted to a temporary directory first, then copied into `extensions/<pluginId>/` (or `XYRA_PLUGIN_INSTALL_DIR` if configured).
+- `.zip` archives are unzipped; `.tar`, `.tar.gz`, and `.tgz` archives are untarred.
+- Source and archive installs reject symlinks/special file entries and unsafe traversal paths.
 - If a plugin includes `entry.nuxtLayer` or `entry.module`, the installer now attempts to apply changes automatically:
   - Dev mode: triggers a Nuxt dev reload.
   - Production: can schedule a process restart when a process manager is detected or when `XYRA_PLUGIN_AUTO_RESTART=true`.
@@ -321,6 +323,19 @@ Current slot outlets:
 - `server.layout.after-navbar`
 - `server.layout.before-content`
 - `server.layout.after-content`
+- `server.console.power-buttons.before`
+- `server.console.power-buttons.after`
+- `server.console.between-terminal-and-stats`
+- `server.console.after-stats`
+- `server.console.stats-card.before`
+- `server.console.stats-card.after`
+- `server.activity.table.before`
+- `server.activity.table.after`
+- `server.files.create-buttons.before`
+- `server.files.create-buttons.after`
+- `server.startup.command.before`
+- `server.settings.top`
+- `server.settings.bottom`
 
 The `component` must be resolvable by the Nuxt app (typically via the plugin Nuxt layer).
 
@@ -332,6 +347,7 @@ Plugin discovery uses:
 
 - `XYRA_PLUGIN_DIRS` (comma-separated plugin roots; each entry can be a parent directory of plugins or a direct plugin folder path, absolute or relative to panel root)
 - fallback: `XYRA_PLUGINS_DIR`
+- `XYRA_PLUGIN_INSTALL_DIR` (optional installer destination root; defaults to `extensions`)
 
 Default:
 
@@ -348,10 +364,12 @@ XYRA_PLUGIN_RESTART_DELAY_MS="1500"
 
 ## Inspection APIs
 
-- `GET /api/admin/plugins` (admin-only runtime summary)
-- `POST /api/admin/plugins/install` (admin-only install endpoint; JSON path mode or multipart archive mode)
-- `GET /api/admin/plugins/scopes` (admin-only plugin scope + available eggs)
-- `PATCH /api/admin/plugins/:id/scope` (admin-only; set plugin scope to `global` or `eggs`)
+- `GET /api/admin/plugins` (admin-only runtime summary; requires `admin.settings.read` for API keys)
+- `POST /api/admin/plugins/install` (admin-only install endpoint; JSON path mode or multipart archive mode; requires `admin.settings.write` for API keys)
+- `GET /api/admin/plugins/scopes` (admin-only plugin scope + available eggs; requires `admin.settings.read` for API keys)
+- `PATCH /api/admin/plugins/:id/scope` (admin-only; set plugin scope to `global` or `eggs`; requires `admin.settings.write` for API keys)
+- `PATCH /api/admin/plugins/:id/state` (admin-only; enable/disable a plugin; requires `admin.settings.write` for API keys)
+- `DELETE /api/admin/plugins/:id` (admin-only; uninstall plugin files and remove scope settings; requires `admin.settings.write` for API keys)
 - `GET /api/plugins/contributions` (authenticated, permission-filtered contributions; pass `serverId` to apply egg scope filtering)
 
 ## Troubleshooting

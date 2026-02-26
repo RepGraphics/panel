@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useClipboard } from '@vueuse/core';
 import type { PowerAction, PanelServerDetails } from '#shared/types/server';
 import { useAuthStore } from '~/stores/auth';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const route = useRoute();
 
@@ -14,6 +15,8 @@ definePageMeta({
 const { t } = useI18n();
 const toast = useToast();
 const serverId = computed(() => route.params.id as string);
+const { data: pluginContributions } = await usePluginContributions({ serverId: serverId.value });
+const pluginContext = computed(() => ({ route: route.path, serverId: serverId.value }));
 
 const { data: serverResponse } = await useFetch(`/api/client/servers/${serverId.value}`, {
   watch: [serverId],
@@ -436,6 +439,12 @@ function handleSearch() {
         <div class="space-y-4">
           <div class="flex flex-wrap items-center gap-4">
             <div class="flex items-center gap-2">
+              <PluginOutlet
+                name="server.console.power-buttons.before"
+                :server-id="serverId"
+                :contributions="pluginContributions"
+                :context="pluginContext"
+              />
               <UButton
                 icon="i-lucide-play"
                 color="success"
@@ -473,6 +482,12 @@ function handleSearch() {
               >
                 {{ t('server.console.kill') }}
               </UButton>
+              <PluginOutlet
+                name="server.console.power-buttons.after"
+                :server-id="serverId"
+                :contributions="pluginContributions"
+                :context="pluginContext"
+              />
               <UButton
                 v-if="canOpenAdminPanelServer && adminServerPath"
                 icon="i-lucide-square-arrow-out-up-right"
@@ -606,7 +621,20 @@ function handleSearch() {
             </div>
           </UCard>
 
+          <PluginOutlet
+            name="server.console.between-terminal-and-stats"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
           <ServerStatsChart v-if="showStats && stats" :stats="stats" :history="statsHistory" />
+          <PluginOutlet
+            v-if="showStats && stats"
+            name="server.console.after-stats"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
           <div class="lg:hidden">
             <UCard>
               <template #header>
@@ -614,6 +642,12 @@ function handleSearch() {
               </template>
 
               <div class="space-y-3 text-xs">
+                <PluginOutlet
+                  name="server.console.stats-card.before"
+                  :server-id="serverId"
+                  :contributions="pluginContributions"
+                  :context="pluginContext"
+                />
                 <div class="flex items-center justify-between">
                   <span class="text-muted-foreground">{{ t('common.status') }}</span>
                   <UBadge :color="connected ? 'success' : 'error'" size="xs">
@@ -689,6 +723,12 @@ function handleSearch() {
                     {{ formatBytes(stats.networkTxBytes) }}</span
                   >
                 </div>
+                <PluginOutlet
+                  name="server.console.stats-card.after"
+                  :server-id="serverId"
+                  :contributions="pluginContributions"
+                  :context="pluginContext"
+                />
               </div>
             </UCard>
           </div>
@@ -763,6 +803,12 @@ function handleSearch() {
           </template>
 
           <div class="space-y-3 text-xs">
+            <PluginOutlet
+              name="server.console.stats-card.before"
+              :server-id="serverId"
+              :contributions="pluginContributions"
+              :context="pluginContext"
+            />
             <div class="flex items-center justify-between">
               <span class="text-muted-foreground">{{ t('common.status') }}</span>
               <UBadge :color="connected ? 'success' : 'error'" size="xs">
@@ -833,6 +879,12 @@ function handleSearch() {
                 {{ formatBytes(stats.networkTxBytes) }}</span
               >
             </div>
+            <PluginOutlet
+              name="server.console.stats-card.after"
+              :server-id="serverId"
+              :contributions="pluginContributions"
+              :context="pluginContext"
+            />
           </div>
         </UCard>
       </UPageAside>

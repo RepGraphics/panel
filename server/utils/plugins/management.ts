@@ -1,4 +1,4 @@
-import { readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, relative, resolve } from 'node:path';
 import type { PluginManifest } from '#shared/plugins/types';
 
@@ -50,6 +50,27 @@ function serializeManifest(manifest: Record<string, unknown>): string {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
+async function resolveConfiguredPluginRealRoots(): Promise<string[]> {
+  return await Promise.all(
+    resolveConfiguredPluginDirs().map(async (entry) => realpath(entry).catch(() => resolve(entry))),
+  );
+}
+
+async function assertPathWithinManagedPluginRoots(path: string, label: string): Promise<void> {
+  const [candidateRealPath, configuredRoots] = await Promise.all([
+    realpath(path).catch(() => path),
+    resolveConfiguredPluginRealRoots(),
+  ]);
+
+  const isManaged = configuredRoots.some((rootDir) => isPathInside(rootDir, candidateRealPath));
+  if (!isManaged) {
+    throw new PluginManagementError(
+      400,
+      `${label} must be inside configured plugin directories.`,
+    );
+  }
+}
+
 export async function setPluginManifestEnabledState(
   manifestPath: string,
   enabled: boolean,
@@ -67,6 +88,16 @@ export async function setPluginManifestEnabledState(
       `Plugin manifest was not found at ${resolvedManifestPath}.`,
     );
   }
+
+  const manifestLinkStat = await lstat(resolvedManifestPath).catch(() => null);
+  if (!manifestLinkStat || manifestLinkStat.isSymbolicLink()) {
+    throw new PluginManagementError(
+      400,
+      `${PLUGIN_MANIFEST_FILE} must be a regular file inside a managed plugin directory.`,
+    );
+  }
+
+  await assertPathWithinManagedPluginRoots(resolvedManifestPath, PLUGIN_MANIFEST_FILE);
 
   let manifestValue: unknown;
   try {
@@ -115,9 +146,7 @@ export async function uninstallPluginSourceDirectory(sourceDir: string): Promise
   }
 
   const sourceRealPath = await realpath(resolvedSourceDir).catch(() => resolvedSourceDir);
-  const configuredRoots = await Promise.all(
-    resolveConfiguredPluginDirs().map(async (entry) => realpath(entry).catch(() => resolve(entry))),
-  );
+  const configuredRoots = await resolveConfiguredPluginRealRoots();
 
   const isManagedDirectory = configuredRoots.some((rootDir) =>
     isPathInside(rootDir, sourceRealPath),

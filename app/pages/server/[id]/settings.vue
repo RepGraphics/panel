@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SettingsData } from '#shared/types/server';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const route = useRoute();
 
@@ -9,6 +10,8 @@ definePageMeta({
 
 const { t } = useI18n();
 const serverId = computed(() => route.params.id as string);
+const { data: pluginContributions } = await usePluginContributions({ serverId: serverId.value });
+const pluginContext = computed(() => ({ route: route.path, serverId: serverId.value }));
 const requestFetch = useRequestFetch();
 
 const {
@@ -127,6 +130,12 @@ function formatIo(io: number | null): string {
     <UPageBody>
       <UContainer>
         <section class="space-y-6">
+          <PluginOutlet
+            name="server.settings.top"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
           <div
             v-if="error"
             class="rounded-lg border border-error/20 bg-error/5 p-4 text-sm text-error"
@@ -294,6 +303,12 @@ function formatIo(io: number | null): string {
               </UAlert>
             </UCard>
           </template>
+          <PluginOutlet
+            name="server.settings.bottom"
+            :server-id="serverId"
+            :contributions="pluginContributions"
+            :context="pluginContext"
+          />
         </section>
       </UContainer>
     </UPageBody>

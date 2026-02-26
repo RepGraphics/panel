@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ServerStartupVariable } from '#shared/types/server';
+import PluginOutlet from '~/components/plugins/PluginOutlet.vue';
 
 const route = useRoute();
 
@@ -9,6 +10,8 @@ definePageMeta({
 
 const { t } = useI18n();
 const serverId = computed(() => route.params.id as string);
+const { data: pluginContributions } = await usePluginContributions({ serverId: serverId.value });
+const pluginContext = computed(() => ({ route: route.path, serverId: serverId.value }));
 const toast = useToast();
 const requestFetch = useRequestFetch();
 
@@ -203,6 +206,12 @@ async function updateDockerImage() {
           </div>
 
           <template v-else>
+            <PluginOutlet
+              name="server.startup.command.before"
+              :server-id="serverId"
+              :contributions="pluginContributions"
+              :context="pluginContext"
+            />
             <UCard>
               <template #header>
                 <div class="flex items-center gap-2">
