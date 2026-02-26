@@ -41,6 +41,7 @@ export interface PluginRuntimeSummaryItem {
   serverEntryPath?: string;
   moduleEntryPath?: string;
   nuxtLayerPath?: string;
+  migrationsPath?: string;
   hooks: string[];
   errors: string[];
   contributions: {

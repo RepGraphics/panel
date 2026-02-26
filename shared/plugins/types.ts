@@ -47,6 +47,7 @@ export interface PluginEntryManifest {
   server?: string;
   module?: string;
   nuxtLayer?: string;
+  migrations?: string;
 }
 
 export interface PluginSlotContribution {
@@ -82,6 +83,7 @@ export interface ResolvedPluginManifest extends PluginManifest {
   serverEntryPath?: string;
   moduleEntryPath?: string;
   nuxtLayerPath?: string;
+  migrationsPath?: string;
 }
 
 export interface PluginDiscoveryError {

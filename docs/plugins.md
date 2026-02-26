@@ -73,6 +73,8 @@ extensions/
     plugin.json
     dist/
       server.mjs
+    migrations/
+      001_initial.sql
     modules/
       xyra.ts
     ui/
@@ -93,7 +95,8 @@ extensions/
   "entry": {
     "server": "./dist/server.mjs",
     "module": "./modules/xyra.ts",
-    "nuxtLayer": "./ui"
+    "nuxtLayer": "./ui",
+    "migrations": "./migrations"
   },
   "contributions": {
     "adminNavigation": [
@@ -207,6 +210,7 @@ Nuxt module entries are loaded into the panel `modules` config automatically whe
 | `entry.server`                  | `string`  | no       | Relative file path inside plugin dir.              |
 | `entry.module`                  | `string`  | no       | Relative Nuxt module file path inside plugin dir.  |
 | `entry.nuxtLayer`               | `string`  | no       | Relative directory path inside plugin dir.         |
+| `entry.migrations`              | `string`  | no       | Relative directory path containing `.sql` files.   |
 | `contributions.adminNavigation` | `array`   | no       | Extra admin nav entries.                           |
 | `contributions.dashboardNavigation` | `array`   | no       | Extra client dashboard sidebar entries.            |
 | `contributions.serverNavigation` | `array`   | no       | Extra server sidebar entries.                      |
@@ -214,11 +218,24 @@ Nuxt module entries are loaded into the panel `modules` config automatically whe
 
 Validation and safety rules:
 
-- `entry.server`, `entry.module`, and `entry.nuxtLayer` must be relative paths.
+- `entry.server`, `entry.module`, `entry.nuxtLayer`, and `entry.migrations` must be relative paths.
 - Paths cannot escape the plugin directory.
 - Missing paths are reported as discovery errors.
 - `entry.module` must resolve to a file.
 - `entry.nuxtLayer` must resolve to a directory.
+- `entry.migrations` must resolve to a directory.
+
+## Plugin Migrations
+
+Plugins can ship SQL migrations by setting `entry.migrations` to a directory.
+
+Behavior:
+
+- All `*.sql` files under the directory (including subdirectories) are sorted by relative path and applied in order.
+- Migrations are tracked in `public.xyra_plugin_migrations` by `plugin_id + migration_path + checksum`.
+- Already applied files are skipped.
+- Editing an already-applied migration file causes a checksum mismatch error; add a new migration file instead.
+- Migrations run during plugin runtime initialization/reload (startup, install, enable, or runtime reload).
 
 ## Runtime API
 

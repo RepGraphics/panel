@@ -293,7 +293,11 @@ function parsePluginManifest(
       entry.nuxtLayer = value.entry.nuxtLayer.trim();
     }
 
-    if (entry.server || entry.module || entry.nuxtLayer) {
+    if (typeof value.entry.migrations === 'string') {
+      entry.migrations = value.entry.migrations.trim();
+    }
+
+    if (entry.server || entry.module || entry.nuxtLayer || entry.migrations) {
       manifest.entry = entry;
     }
   }
@@ -531,6 +535,38 @@ function addDiscoveredPluginFromSourceDir(
           pluginId: manifest.id,
           manifestPath,
           message: `Failed to read "entry.nuxtLayer": ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+  }
+
+  if (manifest.entry?.migrations) {
+    const migrationsPath = resolveManifestEntryPath(
+      sourceDir,
+      manifest.entry.migrations,
+      'entry.migrations',
+      manifestPath,
+      errors,
+    );
+
+    if (migrationsPath) {
+      try {
+        if (statSync(migrationsPath).isDirectory()) {
+          resolvedManifest.migrationsPath = migrationsPath;
+        } else {
+          errors.push({
+            pluginId: manifest.id,
+            manifestPath,
+            message: 'Field "entry.migrations" must point to a directory.',
+          });
+        }
+      } catch (error) {
+        errors.push({
+          pluginId: manifest.id,
+          manifestPath,
+          message: `Failed to read "entry.migrations": ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         });
       }
     }

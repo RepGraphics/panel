@@ -15,6 +15,7 @@ import type {
   XyraServerPlugin,
   XyraServerPluginObject,
 } from '#server/utils/plugins/types';
+import { applyPluginSqlMigrations } from '#server/utils/plugins/migrations';
 
 interface RuntimePluginState {
   manifest: ResolvedPluginManifest;
@@ -214,6 +215,7 @@ function toSummaryItem(state: RuntimePluginState): PluginRuntimeSummaryItem {
     serverEntryPath: state.manifest.serverEntryPath,
     moduleEntryPath: state.manifest.moduleEntryPath,
     nuxtLayerPath: state.manifest.nuxtLayerPath,
+    migrationsPath: state.manifest.migrationsPath,
     hooks: Array.from(state.hooks).sort(),
     errors: [...state.errors],
     contributions: {
@@ -241,6 +243,20 @@ export async function initializePluginRuntime(nitroApp: unknown): Promise<Plugin
 
     if (!pluginState.enabled) {
       continue;
+    }
+
+    if (manifest.migrationsPath) {
+      try {
+        const migrationResult = await applyPluginSqlMigrations(manifest);
+        if (migrationResult.applied > 0) {
+          console.info(
+            `[plugins:${manifest.id}] Applied ${migrationResult.applied}/${migrationResult.total} migration(s).`,
+          );
+        }
+      } catch (error) {
+        pluginState.errors.push(`Failed to apply plugin migrations: ${normalizeErrorMessage(error)}`);
+        continue;
+      }
     }
 
     if (!manifest.serverEntryPath) {

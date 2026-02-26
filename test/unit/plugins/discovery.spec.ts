@@ -46,6 +46,7 @@ describe('shared/plugins/discovery', () => {
         server: './dist/server.mjs',
         module: './modules/xyra.ts',
         nuxtLayer: './ui',
+        migrations: './migrations',
       },
       contributions: {
         dashboardNavigation: [
@@ -68,8 +69,10 @@ describe('shared/plugins/discovery', () => {
     mkdirSync(join(pluginDir, 'dist'), { recursive: true });
     mkdirSync(join(pluginDir, 'modules'), { recursive: true });
     mkdirSync(join(pluginDir, 'ui'), { recursive: true });
+    mkdirSync(join(pluginDir, 'migrations'), { recursive: true });
     writeFileSync(join(pluginDir, 'dist', 'server.mjs'), 'export default {}', 'utf8');
     writeFileSync(join(pluginDir, 'modules', 'xyra.ts'), 'export default defineNuxtModule({})', 'utf8');
+    writeFileSync(join(pluginDir, 'migrations', '001_initial.sql'), 'SELECT 1;', 'utf8');
 
     const result = discoverPlugins({ rootDir: root });
 
@@ -79,6 +82,7 @@ describe('shared/plugins/discovery', () => {
     expect(result.plugins[0]?.serverEntryPath).toBe(join(pluginDir, 'dist', 'server.mjs'));
     expect(result.plugins[0]?.moduleEntryPath).toBe(join(pluginDir, 'modules', 'xyra.ts'));
     expect(result.plugins[0]?.nuxtLayerPath).toBe(join(pluginDir, 'ui'));
+    expect(result.plugins[0]?.migrationsPath).toBe(join(pluginDir, 'migrations'));
     expect(result.plugins[0]?.contributions?.serverNavigation).toEqual([
       {
         id: 'acme-tools-server',
@@ -146,6 +150,28 @@ describe('shared/plugins/discovery', () => {
     expect(result.plugins).toHaveLength(1);
     expect(result.plugins[0]?.serverEntryPath).toBeUndefined();
     expect(result.errors.some((entry) => entry.message.includes('cannot escape'))).toBe(true);
+  });
+
+  it('requires entry.migrations to point to a directory', () => {
+    const root = makeTempRoot();
+    const pluginDir = writePluginManifest(root, 'bad-migrations', {
+      id: 'bad-migrations',
+      name: 'Bad Migrations',
+      version: '1.0.0',
+      entry: {
+        migrations: './migrations.sql',
+      },
+    });
+
+    writeFileSync(join(pluginDir, 'migrations.sql'), 'SELECT 1;', 'utf8');
+
+    const result = discoverPlugins({ rootDir: root });
+
+    expect(result.plugins).toHaveLength(1);
+    expect(result.plugins[0]?.migrationsPath).toBeUndefined();
+    expect(
+      result.errors.some((entry) => entry.message.includes('Field "entry.migrations" must point to a directory.')),
+    ).toBe(true);
   });
 
   it('only resolves nuxt layers for enabled plugins', () => {
