@@ -487,6 +487,46 @@ async function runPm2Binary(args, options = {}) {
   }
 }
 
+function formatRuntimeValue(value) {
+  if (value === undefined || value === null) {
+    return colors.dim('(unset)');
+  }
+
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : colors.dim('(empty)');
+}
+
+function logPm2StartContext({ ecosystemPath, envName, processName }) {
+  const runtimeEnv = {
+    ...projectDotEnv,
+    ...process.env,
+  };
+
+  const keys = [
+    'PUBLIC_APP_URL',
+    'NUXT_PUBLIC_APP_URL',
+    'APP_URL',
+    'NODE_ENV',
+    'HOST',
+    'PORT',
+    'NITRO_HOST',
+    'NITRO_PORT',
+    'PM2_LOG_DIR',
+  ];
+
+  const lines = [
+    accentSoft('PM2 start context'),
+    `  process      ${colors.gray('•')} ${formatRuntimeValue(processName)}`,
+    `  env block    ${colors.gray('•')} ${formatRuntimeValue(envName)}`,
+    `  ecosystem    ${colors.gray('•')} ${formatRuntimeValue(ecosystemPath)}`,
+    ...keys.map(
+      (key) => `  ${key.padEnd(12)} ${colors.gray('•')} ${formatRuntimeValue(runtimeEnv[key])}`,
+    ),
+  ];
+
+  logger.info(`\n${lines.join('\n')}`);
+}
+
 function createPm2Command(name, description, args, buildArgs) {
   return defineCommand({
     meta: { name, description },
@@ -631,6 +671,17 @@ const pluginsListCommand = defineCommand({
   },
 });
 
+function parseListArg(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return [];
+  }
+
+  return value
+    .split(/[\n,;]+/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 const pluginsInstallCommand = defineCommand({
   meta: {
     name: 'install',
@@ -639,8 +690,13 @@ const pluginsInstallCommand = defineCommand({
   args: {
     source: {
       type: 'positional',
-      required: true,
-      description: 'Local path or git URL',
+      required: false,
+      description: 'Local path or git URL (single source)',
+    },
+    sources: {
+      type: 'string',
+      default: '',
+      description: 'Comma/newline-separated list of local paths or git URLs',
     },
     branch: {
       type: 'string',
@@ -662,6 +718,11 @@ const pluginsInstallCommand = defineCommand({
       default: false,
       description: 'Keep temporary cloned source on disk (debugging only)',
     },
+    'no-restart': {
+      type: 'boolean',
+      default: false,
+      description: 'Skip PM2 stop/start after build (install + build only)',
+    },
     json: {
       type: 'boolean',
       default: false,
@@ -670,13 +731,15 @@ const pluginsInstallCommand = defineCommand({
   },
   run: async ({ args }) => {
     const jsonOutput = Boolean(args.json);
+    const skipPm2Restart = Boolean(args['no-restart']);
+
     const log = (level, message) => {
       if (jsonOutput) {
         return;
       }
-
       logger[level](message);
     };
+
     const fail = (message) => {
       if (jsonOutput) {
         process.stderr.write(`${JSON.stringify({ error: message })}\n`);
@@ -687,120 +750,177 @@ const pluginsInstallCommand = defineCommand({
     };
 
     const sourceInput = String(args.source || '').trim();
-    if (!sourceInput) {
-      const message =
-        'A source is required. Example: xyra plugins install https://github.com/acme/plugin';
-      fail(message);
+    const sourceInputs = Array.from(
+      new Set([sourceInput, ...parseListArg(String(args.sources || ''))].filter(Boolean)),
+    );
+
+    if (sourceInputs.length === 0) {
+      fail('At least one source is required. Example: xyra plugins install https://github.com/acme/plugin');
     }
 
-    let sourceRoot = '';
-    let tempCloneRoot = '';
-    let cloned = false;
-    let replaced = false;
+    const installResults = [];
 
     try {
-      const localCandidate = isAbsolute(sourceInput)
-        ? sourceInput
-        : resolve(process.cwd(), sourceInput);
+      for (const nextSourceInput of sourceInputs) {
+        let sourceRoot = '';
+        let tempCloneRoot = '';
+        let cloned = false;
+        let replaced = false;
+        let finalInstallResult = null;
 
-      if (await isDirectory(localCandidate)) {
-        sourceRoot = localCandidate;
-      } else if (looksLikeGitSource(sourceInput)) {
-        cloned = true;
-        tempCloneRoot = await cloneSourceToTemp(sourceInput, String(args.branch || ''));
-        sourceRoot = tempCloneRoot;
-      } else {
-        const message =
-          `Source not found as directory: ${localCandidate}\n` +
-          'If this is a repository, pass a full git URL.';
-        fail(message);
+        try {
+          const localCandidate = isAbsolute(nextSourceInput)
+            ? nextSourceInput
+            : resolve(process.cwd(), nextSourceInput);
+
+          if (await isDirectory(localCandidate)) {
+            sourceRoot = localCandidate;
+          } else if (looksLikeGitSource(nextSourceInput)) {
+            cloned = true;
+            tempCloneRoot = await cloneSourceToTemp(nextSourceInput, String(args.branch || ''));
+            sourceRoot = tempCloneRoot;
+          } else {
+            throw new Error(
+              `Source not found as directory: ${localCandidate}\nIf this is a repository, pass a full git URL.`,
+            );
+          }
+
+          const pluginSourceDir = await resolvePluginSourceDirectory(
+            sourceRoot,
+            String(args.manifest || ''),
+          );
+          const manifestPath = join(pluginSourceDir, pluginManifestFile);
+          const manifest = validatePluginManifest(await readJsonFile(manifestPath), manifestPath);
+          const restartRequired = Boolean(
+            (typeof manifest.entry?.nuxtLayer === 'string' && manifest.entry.nuxtLayer.trim()) ||
+              (typeof manifest.entry?.module === 'string' && manifest.entry.module.trim()),
+          );
+
+          await ensureDirectory(extensionsRoot);
+          const destinationDir = join(extensionsRoot, manifest.id);
+
+          const sourceResolved = resolve(pluginSourceDir);
+          const destinationResolved = resolve(destinationDir);
+
+          const installResult = {
+            id: manifest.id,
+            name: manifest.name,
+            version: manifest.version,
+            manifestPath,
+            sourceDir: pluginSourceDir,
+            destinationDir,
+            replaced: false,
+            restartRequired,
+          };
+
+          if (sourceResolved === destinationResolved) {
+            await setInstalledPluginManifestEnabled(manifestPath);
+            finalInstallResult = installResult;
+          } else {
+            if (await pathExists(destinationDir)) {
+              if (!args.force) {
+                const destinationManifestPath = join(destinationDir, pluginManifestFile);
+                const destinationHasManifest = await pathExists(destinationManifestPath);
+
+                if (destinationHasManifest) {
+                  throw new Error(
+                    `Plugin directory already exists: ${destinationDir}. Use --force to overwrite.`,
+                  );
+                }
+
+                log(
+                  'warn',
+                  `Destination exists without ${pluginManifestFile}; replacing stale directory: ${destinationDir}`,
+                );
+                await rm(destinationDir, { recursive: true, force: true });
+                replaced = true;
+              } else {
+                log('warn', `Removing existing plugin directory: ${destinationDir}`);
+                await rm(destinationDir, { recursive: true, force: true });
+                replaced = true;
+              }
+            }
+
+            log('start', `Installing plugin "${manifest.name}" (${manifest.id}@${manifest.version})`);
+            await cp(pluginSourceDir, destinationDir, { recursive: true });
+            await setInstalledPluginManifestEnabled(join(destinationDir, pluginManifestFile));
+
+            finalInstallResult = {
+              ...installResult,
+              replaced,
+            };
+          }
+
+          if (!finalInstallResult) {
+            throw new Error('Plugin install did not produce a result payload.');
+          }
+
+          installResults.push(finalInstallResult);
+
+          if (!jsonOutput) {
+            if (sourceResolved === destinationResolved) {
+              logger.success(
+                `Plugin "${manifest.name}" (${manifest.id}@${manifest.version}) is already installed at ${destinationDir}`,
+              );
+            } else {
+              logger.success(`Installed to ${destinationDir}`);
+            }
+          }
+        } finally {
+          if (cloned && tempCloneRoot && !args['keep-temp']) {
+            await rm(tempCloneRoot, { recursive: true, force: true });
+          }
+        }
       }
 
-      const pluginSourceDir = await resolvePluginSourceDirectory(sourceRoot, String(args.manifest || ''));
-      const manifestPath = join(pluginSourceDir, pluginManifestFile);
-      const manifest = validatePluginManifest(await readJsonFile(manifestPath), manifestPath);
-      const restartRequired = Boolean(
-        (typeof manifest.entry?.nuxtLayer === 'string' && manifest.entry.nuxtLayer.trim()) ||
-          (typeof manifest.entry?.module === 'string' && manifest.entry.module.trim()),
-      );
-
-      await ensureDirectory(extensionsRoot);
-      const destinationDir = join(extensionsRoot, manifest.id);
-
-      const sourceResolved = resolve(pluginSourceDir);
-      const destinationResolved = resolve(destinationDir);
-
-      const installResult = {
-        id: manifest.id,
-        name: manifest.name,
-        version: manifest.version,
-        manifestPath,
-        sourceDir: pluginSourceDir,
-        destinationDir,
-        replaced: false,
-        restartRequired,
-      };
-
-      if (sourceResolved === destinationResolved) {
-        await setInstalledPluginManifestEnabled(manifestPath);
-
-        if (jsonOutput) {
-          process.stdout.write(`${JSON.stringify(installResult)}\n`);
+      if (jsonOutput) {
+        if (installResults.length === 1) {
+          process.stdout.write(`${JSON.stringify(installResults[0])}\n`);
         } else {
-          logger.success(
-            `Plugin "${manifest.name}" (${manifest.id}@${manifest.version}) is already installed at ${destinationDir}`,
-          );
+          process.stdout.write(`${JSON.stringify({ results: installResults })}\n`);
         }
         return;
       }
 
-      if (await pathExists(destinationDir)) {
-        if (!args.force) {
-          const destinationManifestPath = join(destinationDir, pluginManifestFile);
-          const destinationHasManifest = await pathExists(destinationManifestPath);
+      logger.start('Running pnpm run build...');
+      await runBinary('pnpm', ['run', 'build'], { logError: false });
 
-          if (destinationHasManifest) {
-            const message =
-              `Plugin directory already exists: ${destinationDir}. ` +
-              `Use --force to overwrite.`;
-            fail(message);
-          }
-
-          log(
-            'warn',
-            `Destination exists without ${pluginManifestFile}; replacing stale directory: ${destinationDir}`,
-          );
-          await rm(destinationDir, { recursive: true, force: true });
-          replaced = true;
-        } else {
-          log('warn', `Removing existing plugin directory: ${destinationDir}`);
-          await rm(destinationDir, { recursive: true, force: true });
-          replaced = true;
-        }
+      if (skipPm2Restart) {
+        logger.success('Build finished. PM2 restart skipped (--no-restart).');
+        logger.success(
+          `Plugin install flow complete: ${installResults.length} plugin(s) installed and built.`,
+        );
+        return;
       }
 
-      log('start', `Installing plugin "${manifest.name}" (${manifest.id}@${manifest.version})`);
-      await cp(pluginSourceDir, destinationDir, { recursive: true });
-      await setInstalledPluginManifestEnabled(join(destinationDir, pluginManifestFile));
+      logger.success('Build finished. Restarting PM2 process...');
 
-      const finalInstallResult = {
-        ...installResult,
-        replaced,
-      };
+      const processName = defaultPm2App;
+      const ecosystemPath = resolvePath(defaultEcosystemFile);
+      await ensureFile(ecosystemPath);
 
-      if (jsonOutput) {
-        process.stdout.write(`${JSON.stringify(finalInstallResult)}\n`);
-      } else {
-        logger.success(`Installed to ${destinationDir}`);
-        logger.info('Run `pnpm run build` to apply plugin Nuxt layer/module changes.');
+      try {
+        await runPm2Binary(['stop', processName]);
+      } catch (error) {
+        logger.warn(`PM2 stop skipped: ${error instanceof Error ? error.message : String(error)}`);
       }
+
+      await runPm2Binary([
+        'start',
+        ecosystemPath,
+        '--env',
+        'production',
+        '--only',
+        processName,
+        '--update-env',
+      ]);
+
+      logger.success(
+        `Plugin install flow complete: ${installResults.length} plugin(s) installed, built, and PM2 restarted.`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       fail(message);
-    } finally {
-      if (cloned && tempCloneRoot && !args['keep-temp']) {
-        await rm(tempCloneRoot, { recursive: true, force: true });
-      }
     }
   },
 });
@@ -813,25 +933,44 @@ const pluginsRemoveCommand = defineCommand({
   args: {
     id: {
       type: 'positional',
-      required: true,
-      description: 'Plugin id (directory name under extensions)',
+      required: false,
+      description: 'Plugin id (single id)',
+    },
+    ids: {
+      type: 'string',
+      default: '',
+      description: 'Comma/newline-separated list of plugin ids',
     },
   },
   run: async ({ args }) => {
-    const id = String(args.id || '').trim();
-    if (!id) {
+    const ids = Array.from(
+      new Set([String(args.id || '').trim(), ...parseListArg(String(args.ids || ''))].filter(Boolean)),
+    );
+
+    if (ids.length === 0) {
       logger.error('Plugin id is required. Example: xyra plugins remove acme-tools');
       process.exit(1);
     }
 
-    const targetDir = join(extensionsRoot, id);
-    if (!(await pathExists(targetDir))) {
-      logger.warn(`Plugin is not installed: ${id}`);
+    let removedCount = 0;
+
+    for (const id of ids) {
+      const targetDir = join(extensionsRoot, id);
+      if (!(await pathExists(targetDir))) {
+        logger.warn(`Plugin is not installed: ${id}`);
+        continue;
+      }
+
+      await rm(targetDir, { recursive: true, force: true });
+      removedCount += 1;
+      logger.success(`Removed plugin "${id}"`);
+    }
+
+    if (removedCount === 0) {
+      logger.info('No plugins were removed.');
       return;
     }
 
-    await rm(targetDir, { recursive: true, force: true });
-    logger.success(`Removed plugin "${id}"`);
     logger.info('Run `pnpm run build` to apply plugin Nuxt layer/module changes.');
   },
 });
@@ -900,6 +1039,11 @@ const pm2StartCommand = createPm2Command(
   async (args) => {
     const ecosystemPath = resolvePath(args.ecosystem);
     await ensureFile(ecosystemPath);
+    logPm2StartContext({
+      ecosystemPath,
+      envName: args.env,
+      processName: args.name,
+    });
     return ['start', ecosystemPath, '--env', args.env, '--only', args.name, '--update-env'];
   },
 );
@@ -959,8 +1103,8 @@ const pm2LogsCommand = createPm2Command(
   {
     name: nameArg,
     lines: {
-      type: 'number',
-      default: 50,
+      type: 'string',
+      default: '50',
       description: 'How many lines to show before tailing',
     },
     timestamp: {
@@ -970,7 +1114,15 @@ const pm2LogsCommand = createPm2Command(
     },
   },
   (args) => {
-    const logArgs = ['logs', args.name, '--lines', String(args.lines)];
+    const processName = String(args.name || defaultPm2App);
+    const parsedLines =
+      typeof args.lines === 'number'
+        ? args.lines
+        : typeof args.lines === 'string'
+          ? Number.parseInt(args.lines, 10)
+          : Number.NaN;
+    const lines = Number.isFinite(parsedLines) && parsedLines > 0 ? Math.trunc(parsedLines) : 50;
+    const logArgs = ['logs', processName, '--lines', String(lines)];
     if (args.timestamp) {
       logArgs.push('--timestamp');
     }

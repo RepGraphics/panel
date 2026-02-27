@@ -2,10 +2,18 @@
 import { resolvePluginNuxtLayers, resolvePluginNuxtModules } from './shared/plugins/discovery';
 
 const isDev = process.env.NODE_ENV !== 'production';
+const isWindows = process.platform === 'win32';
+const redisEnabled = (() => {
+  const raw = process.env.REDIS_ENABLED?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return !isWindows;
+})();
 const pluginNuxtLayers = resolvePluginNuxtLayers();
 const pluginNuxtModules = resolvePluginNuxtModules();
 
 const redisStorageConfig = {
+  enabled: redisEnabled,
   host: process.env.REDIS_HOST || (isDev ? 'localhost' : 'redis'),
   port: process.env.REDIS_PORT ? Number.parseInt(process.env.REDIS_PORT) : 6379,
   username: process.env.REDIS_USERNAME,
@@ -720,10 +728,15 @@ export default defineNuxtConfig({
       '0 3 * * 0': ['maintenance:prune-transfers'],
     },
     storage: {
-      cache: {
-        driver: 'redis',
-        ...redisStorageConfig,
-      },
+      cache: redisEnabled
+        ? {
+            driver: 'redis',
+            ...redisStorageConfig,
+          }
+        : {
+            driver: 'fs',
+            base: './.data/cache',
+          },
     },
     devStorage: {
       cache: {

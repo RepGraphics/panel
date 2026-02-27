@@ -22,6 +22,16 @@ XyraPanel is an open-source game server management panel built on Nuxt, TypeScri
 bash <(curl -fsSL https://xyrapanel.com/install)
 ```
 
+## Environment
+
+For PostgreSQL connection pooling, you can tune these environment variables:
+
+- `DATABASE_POOL_MAX` (default: `5`)
+- `DATABASE_POOL_IDLE_TIMEOUT_MS` (default: `30000`)
+- `DATABASE_POOL_CONNECTION_TIMEOUT_MS` (default: `2000`)
+
+For PM2 cluster deployments (`instances: max`), start with a lower pool size per process (for example `DATABASE_POOL_MAX=2` to `5`) to avoid exceeding your PostgreSQL `max_connections` limit.
+
 ## Links
 
 - [Documentation](https://xyrapanel.com)

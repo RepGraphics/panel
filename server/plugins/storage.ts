@@ -3,7 +3,7 @@ import redisDriver from 'unstorage/drivers/redis';
 export default defineNitroPlugin(() => {
   const config = useRuntimeConfig().redis;
 
-  if (!config?.host) return;
+  if (!config?.enabled || !config?.host) return;
 
   useStorage().mount(
     'redis',

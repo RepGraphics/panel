@@ -13,6 +13,32 @@ if (!databaseUrl) {
 let pgPool: Pool | null = null;
 let db: NodePgDatabase<typeof schema> | null = null;
 
+function parsePositiveIntegerEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function parseNonNegativeIntegerEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
 function getPgPool() {
   if (pgPool) {
     return pgPool;
@@ -22,12 +48,15 @@ function getPgPool() {
     throw new Error('DATABASE_URL environment variable is required for PostgreSQL connection.');
   }
 
+  const poolMax = parsePositiveIntegerEnv(process.env.DATABASE_POOL_MAX, 5);
+  const poolIdleTimeoutMs = parseNonNegativeIntegerEnv(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS, 30000);
+  const poolConnectionTimeoutMs = parseNonNegativeIntegerEnv(process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS, 2000);
+
   pgPool = new Pool({
     connectionString: databaseUrl,
-    // Add any necessary production pool settings here
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    max: poolMax,
+    idleTimeoutMillis: poolIdleTimeoutMs,
+    connectionTimeoutMillis: poolConnectionTimeoutMs,
   });
 
   return pgPool;

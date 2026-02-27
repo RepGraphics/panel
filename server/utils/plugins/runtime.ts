@@ -20,6 +20,18 @@ import type {
 } from '#server/utils/plugins/types';
 import { applyPluginSqlMigrations } from '#server/utils/plugins/migrations';
 
+const MIGRATION_FAILURE_PREFIX = 'Failed to apply plugin migrations:';
+const MIGRATION_STARTUP_RETRY_DELAY_MS = 1500;
+
+function shouldRunPluginMigrations(): boolean {
+  const nodeAppInstance = process.env.NODE_APP_INSTANCE;
+  if (typeof nodeAppInstance !== 'string' || nodeAppInstance.length === 0) {
+    return true;
+  }
+
+  return nodeAppInstance === '0';
+}
+
 interface RuntimePluginState {
   manifest: ResolvedPluginManifest;
   enabled: boolean;
@@ -85,6 +97,22 @@ function normalizeErrorMessage(error: unknown): string {
   }
 
   return String(error);
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
+
+function clearMigrationFailureErrors(pluginState: RuntimePluginState): void {
+  pluginState.errors = pluginState.errors.filter(
+    (errorMessage) => !errorMessage.startsWith(MIGRATION_FAILURE_PREFIX),
+  );
 }
 
 function createPluginLogger(pluginId: string): XyraPluginLogger {
@@ -266,6 +294,75 @@ function toSummaryItem(state: RuntimePluginState): PluginRuntimeSummaryItem {
   };
 }
 
+async function initializeRuntimePlugin(
+  manifest: ResolvedPluginManifest,
+  pluginState: RuntimePluginState,
+): Promise<{ migrationFailed: boolean }> {
+  if (!pluginState.enabled) {
+    return { migrationFailed: false };
+  }
+
+  if (manifest.migrationsPath && shouldRunPluginMigrations()) {
+    try {
+      const migrationResult = await applyPluginSqlMigrations(manifest);
+      if (migrationResult.applied > 0) {
+        console.info(
+          `[plugins:${manifest.id}] Applied ${migrationResult.applied}/${migrationResult.total} migration(s).`,
+        );
+      }
+    } catch (error) {
+      const message = `${MIGRATION_FAILURE_PREFIX} ${normalizeErrorMessage(error)}`;
+      pluginState.errors.push(message);
+      console.error(`[plugins:${manifest.id}] ${message}`);
+      return { migrationFailed: true };
+    }
+  }
+
+  if (!manifest.serverEntryPath) {
+    pluginState.loaded = true;
+    return { migrationFailed: false };
+  }
+
+  const pluginContext = createPluginContext(manifest);
+
+  try {
+    const importedModule = await importPluginModule(manifest.serverEntryPath);
+    const plugin = normalizeImportedPlugin(importedModule);
+
+    if (!plugin) {
+      const message = 'Plugin server entry must export a setup function or an object with setup/hooks.';
+      pluginState.errors.push(message);
+      console.error(`[plugins:${manifest.id}] ${message}`);
+      return { migrationFailed: false };
+    }
+
+    if (typeof plugin === 'function') {
+      await plugin(pluginContext);
+    } else if (typeof plugin.setup === 'function') {
+      await plugin.setup(pluginContext);
+    }
+
+    if (isPluginObject(plugin) && isPluginObject(plugin.hooks)) {
+      for (const [hookName, hookHandler] of Object.entries(plugin.hooks)) {
+        if (!isHookHandler(hookHandler)) {
+          pluginState.errors.push(`Hook "${hookName}" is not a function and was ignored.`);
+          continue;
+        }
+
+        registerHook(pluginState, hookName, hookHandler, pluginContext);
+      }
+    }
+
+    pluginState.loaded = true;
+  } catch (error) {
+    const message = normalizeErrorMessage(error);
+    pluginState.errors.push(message);
+    console.error(`[plugins:${manifest.id}] ${message}`);
+  }
+
+  return { migrationFailed: false };
+}
+
 export async function initializePluginRuntime(nitroApp: unknown): Promise<PluginRuntimeSummary> {
   if (runtimeState.initialized) {
     return getPluginRuntimeSummary();
@@ -276,66 +373,28 @@ export async function initializePluginRuntime(nitroApp: unknown): Promise<Plugin
 
   const discovery = discoverPlugins();
   runtimeState.discoveryErrors = discovery.errors;
+  const migrationRetryManifests: ResolvedPluginManifest[] = [];
 
   for (const manifest of discovery.plugins) {
     const pluginState = getOrCreateRuntimePluginState(manifest);
 
-    if (!pluginState.enabled) {
-      continue;
+    const result = await initializeRuntimePlugin(manifest, pluginState);
+    if (result.migrationFailed) {
+      migrationRetryManifests.push(manifest);
     }
+  }
 
-    if (manifest.migrationsPath) {
-      try {
-        const migrationResult = await applyPluginSqlMigrations(manifest);
-        if (migrationResult.applied > 0) {
-          console.info(
-            `[plugins:${manifest.id}] Applied ${migrationResult.applied}/${migrationResult.total} migration(s).`,
-          );
-        }
-      } catch (error) {
-        pluginState.errors.push(`Failed to apply plugin migrations: ${normalizeErrorMessage(error)}`);
-        continue;
-      }
-    }
+  if (migrationRetryManifests.length > 0) {
+    await sleep(MIGRATION_STARTUP_RETRY_DELAY_MS);
 
-    if (!manifest.serverEntryPath) {
-      pluginState.loaded = true;
-      continue;
-    }
-
-    const pluginContext = createPluginContext(manifest);
-
-    try {
-      const importedModule = await importPluginModule(manifest.serverEntryPath);
-      const plugin = normalizeImportedPlugin(importedModule);
-
-      if (!plugin) {
-        pluginState.errors.push(
-          'Plugin server entry must export a setup function or an object with setup/hooks.',
-        );
+    for (const manifest of migrationRetryManifests) {
+      const pluginState = runtimeState.plugins.get(manifest.id);
+      if (!pluginState || !pluginState.enabled || pluginState.loaded) {
         continue;
       }
 
-      if (typeof plugin === 'function') {
-        await plugin(pluginContext);
-      } else if (typeof plugin.setup === 'function') {
-        await plugin.setup(pluginContext);
-      }
-
-      if (isPluginObject(plugin) && isPluginObject(plugin.hooks)) {
-        for (const [hookName, hookHandler] of Object.entries(plugin.hooks)) {
-          if (!isHookHandler(hookHandler)) {
-            pluginState.errors.push(`Hook "${hookName}" is not a function and was ignored.`);
-            continue;
-          }
-
-          registerHook(pluginState, hookName, hookHandler, pluginContext);
-        }
-      }
-
-      pluginState.loaded = true;
-    } catch (error) {
-      pluginState.errors.push(normalizeErrorMessage(error));
+      clearMigrationFailureErrors(pluginState);
+      await initializeRuntimePlugin(manifest, pluginState);
     }
   }
 

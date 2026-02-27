@@ -5,6 +5,15 @@ import { dirname, resolve } from 'path';
 import { readFileSync } from 'fs';
 import type { Pool } from 'pg';
 
+function shouldRunProcessMigrations(): boolean {
+  const nodeAppInstance = process.env.NODE_APP_INSTANCE;
+  if (typeof nodeAppInstance !== 'string' || nodeAppInstance.length === 0) {
+    return true;
+  }
+
+  return nodeAppInstance === '0';
+}
+
 async function baselineIfNeeded(pool: Pool, migrationsFolder: string) {
   const client = await pool.connect();
   try {
@@ -64,6 +73,7 @@ async function baselineIfNeeded(pool: Pool, migrationsFolder: string) {
 
 export default defineNitroPlugin(async () => {
   if (process.env.NODE_ENV !== 'production') return;
+  if (!shouldRunProcessMigrations()) return;
 
   let pluginDir: string | null = null;
   try {

@@ -10,39 +10,20 @@ interface PluginScopeUpdateResponseData {
   scope: PluginRenderScope;
 }
 
-interface PluginStateUpdateResponseData {
-  pluginId: string;
-  enabled: boolean;
-  restartRequired: boolean;
-  restartMode: 'not-required' | 'dev-reload-triggered' | 'manual';
-  restartAutomated: boolean;
-  message: string;
-}
-
-interface PluginUninstallResponseData {
-  pluginId: string;
-  pluginName: string;
-  removed: boolean;
-  restartRequired: boolean;
-  restartMode: 'not-required' | 'dev-reload-triggered' | 'manual';
-  restartAutomated: boolean;
-  message: string;
-}
-
 definePageMeta({
   auth: true,
   adminTitle: 'Plugins',
   adminSubtitle: 'Installed plugin manifests and runtime status',
 });
 
-const requestFetch = useRequestFetch();
 const toast = useToast();
+const requestFetch = useRequestFetch();
 
 const { data, pending, error, refresh } = await useAsyncData<PluginRuntimeSummary>(
   'admin-plugins-summary',
   async () => {
-    const response = await requestFetch<{ data: PluginRuntimeSummary }>('/api/admin/plugins');
-    return response.data;
+    const response = (await requestFetch('/api/admin/plugins')) as { data: PluginRuntimeSummary };
+    return (response as { data: PluginRuntimeSummary }).data;
   },
   {
     default: () => ({
@@ -72,8 +53,10 @@ const {
 } = await useAsyncData<PluginScopeSummary>(
   'admin-plugin-scopes',
   async () => {
-    const response = await requestFetch<{ data: PluginScopeSummary }>('/api/admin/plugins/scopes');
-    return response.data;
+    const response = (await requestFetch('/api/admin/plugins/scopes')) as {
+      data: PluginScopeSummary;
+    };
+    return (response as { data: PluginScopeSummary }).data;
   },
   {
     default: () => ({
@@ -87,7 +70,7 @@ const {
 const scopeModeItems = [
   { label: 'Global extension', value: 'global' },
   { label: 'Specific eggs', value: 'eggs' },
-] as const;
+];
 
 const eggScopeOptions = computed(() =>
   pluginScopeSummary.value.eggs.map((egg) => ({
@@ -100,11 +83,6 @@ const pluginScopeModels = ref<Record<string, PluginRenderScope>>({});
 const pluginScopeSaving = ref<Record<string, boolean>>({});
 
 const pluginDetailsOpen = ref<Record<string, boolean>>({});
-const pluginStateBusy = ref<Record<string, boolean>>({});
-const pluginUninstallBusy = ref<Record<string, boolean>>({});
-const uninstallModalOpen = ref(false);
-const uninstallTargetPluginId = ref<string | null>(null);
-const uninstallTargetPluginName = ref('');
 
 function normalizeInstallErrorMessage(errorValue: unknown): string {
   if (!errorValue) {
@@ -188,6 +166,37 @@ function ensurePluginScopeModel(pluginId: string): PluginRenderScope {
   return seeded;
 }
 
+function getPluginScopeMode(pluginId: string): PluginRenderScope['mode'] {
+  return ensurePluginScopeModel(pluginId).mode;
+}
+
+function setPluginScopeMode(pluginId: string, mode: PluginRenderScope['mode']): void {
+  const existing = ensurePluginScopeModel(pluginId);
+  pluginScopeModels.value = {
+    ...pluginScopeModels.value,
+    [pluginId]: {
+      ...existing,
+      mode,
+      eggIds: mode === 'global' ? [] : existing.eggIds,
+    },
+  };
+}
+
+function getPluginScopeEggIds(pluginId: string): string[] {
+  return ensurePluginScopeModel(pluginId).eggIds;
+}
+
+function setPluginScopeEggIds(pluginId: string, eggIds: string[]): void {
+  const existing = ensurePluginScopeModel(pluginId);
+  pluginScopeModels.value = {
+    ...pluginScopeModels.value,
+    [pluginId]: {
+      ...existing,
+      eggIds,
+    },
+  };
+}
+
 watch(
   [summary, pluginScopeSummary],
   () => {
@@ -211,130 +220,12 @@ async function refreshPluginData(): Promise<void> {
   await Promise.all([refresh(), refreshPluginScopes(), refreshNuxtData('plugin-contributions')]);
 }
 
-function isPluginStateBusy(pluginId: string): boolean {
-  return Boolean(pluginStateBusy.value[pluginId]);
-}
-
-function isPluginUninstallBusy(pluginId: string): boolean {
-  return Boolean(pluginUninstallBusy.value[pluginId]);
-}
-
 function isPluginScopeSaving(pluginId: string): boolean {
   return Boolean(pluginScopeSaving.value[pluginId]);
 }
 
 function isPluginDetailsOpen(pluginId: string): boolean {
   return Boolean(pluginDetailsOpen.value[pluginId]);
-}
-
-async function togglePluginEnabled(plugin: PluginRuntimeSummary['plugins'][number]): Promise<void> {
-  if (isPluginStateBusy(plugin.id) || isPluginUninstallBusy(plugin.id)) {
-    return;
-  }
-
-  const targetEnabled = !plugin.enabled;
-  pluginStateBusy.value = {
-    ...pluginStateBusy.value,
-    [plugin.id]: true,
-  };
-
-  try {
-    const response = await requestFetch<{ data: PluginStateUpdateResponseData }>(
-      `/api/admin/plugins/${encodeURIComponent(plugin.id)}/state`,
-      {
-        method: 'PATCH',
-        body: {
-          enabled: targetEnabled,
-          autoRestart: true,
-        },
-      },
-    );
-
-    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-
-    toast.add({
-      color: requiresManualRestart ? 'warning' : 'success',
-      title: targetEnabled ? `Enabled ${plugin.name}` : `Disabled ${plugin.name}`,
-      description: response.data.message,
-    });
-
-    await refreshPluginData();
-  } catch (errorValue) {
-    const message = normalizeInstallErrorMessage(errorValue);
-    toast.add({
-      color: 'error',
-      title: `Failed to ${targetEnabled ? 'enable' : 'disable'} plugin`,
-      description: message,
-    });
-  } finally {
-    pluginStateBusy.value = {
-      ...pluginStateBusy.value,
-      [plugin.id]: false,
-    };
-  }
-}
-
-function openUninstallModal(plugin: PluginRuntimeSummary['plugins'][number]): void {
-  uninstallTargetPluginId.value = plugin.id;
-  uninstallTargetPluginName.value = plugin.name;
-  uninstallModalOpen.value = true;
-}
-
-function closeUninstallModal(): void {
-  uninstallModalOpen.value = false;
-  uninstallTargetPluginId.value = null;
-  uninstallTargetPluginName.value = '';
-}
-
-async function confirmPluginUninstall(): Promise<void> {
-  const pluginId = uninstallTargetPluginId.value;
-  if (!pluginId) {
-    return;
-  }
-
-  if (isPluginUninstallBusy(pluginId)) {
-    return;
-  }
-
-  pluginUninstallBusy.value = {
-    ...pluginUninstallBusy.value,
-    [pluginId]: true,
-  };
-
-  try {
-    const response = await requestFetch<{ data: PluginUninstallResponseData }>(
-      `/api/admin/plugins/${encodeURIComponent(pluginId)}`,
-      {
-        method: 'DELETE',
-        body: {
-          autoRestart: true,
-        },
-      },
-    );
-
-    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-
-    toast.add({
-      color: requiresManualRestart ? 'warning' : 'success',
-      title: `Uninstalled ${response.data.pluginName}`,
-      description: response.data.message,
-    });
-
-    closeUninstallModal();
-    await refreshPluginData();
-  } catch (errorValue) {
-    const message = normalizeInstallErrorMessage(errorValue);
-    toast.add({
-      color: 'error',
-      title: 'Plugin uninstall failed',
-      description: message,
-    });
-  } finally {
-    pluginUninstallBusy.value = {
-      ...pluginUninstallBusy.value,
-      [pluginId]: false,
-    };
-  }
 }
 
 async function savePluginScope(pluginId: string): Promise<void> {
@@ -356,13 +247,13 @@ async function savePluginScope(pluginId: string): Promise<void> {
   };
 
   try {
-    const response = await requestFetch<{ data: PluginScopeUpdateResponseData }>(
+    const response = (await ($fetch as unknown as (url: string, init?: unknown) => Promise<unknown>)(
       `/api/admin/plugins/${encodeURIComponent(pluginId)}/scope`,
       {
         method: 'PATCH',
         body: payload,
       },
-    );
+    )) as { data: PluginScopeUpdateResponseData };
 
     pluginScopeModels.value = {
       ...pluginScopeModels.value,
@@ -478,7 +369,12 @@ async function savePluginScope(pluginId: string): Promise<void> {
           :description="(error as Error).message"
         >
           <template #actions>
-            <UButton color="error" variant="soft" icon="i-lucide-refresh-cw" @click="refresh">
+            <UButton
+              color="error"
+              variant="soft"
+              icon="i-lucide-refresh-cw"
+              @click="() => { void refresh(); }"
+            >
               Retry
             </UButton>
           </template>
@@ -540,33 +436,6 @@ async function savePluginScope(pluginId: string): Promise<void> {
                     >
                       {{ plugin.loaded ? 'Loaded' : plugin.enabled ? 'Failed' : 'Skipped' }}
                     </UBadge>
-                    <UButton
-                      size="xs"
-                      color="neutral"
-                      variant="soft"
-                      :icon="plugin.enabled ? 'i-lucide-pause-circle' : 'i-lucide-play-circle'"
-                      :loading="isPluginStateBusy(plugin.id)"
-                      :disabled="
-                        isPluginUninstallBusy(plugin.id) ||
-                        isPluginScopeSaving(plugin.id) ||
-                        pending ||
-                        pluginScopePending
-                      "
-                      @click.stop="togglePluginEnabled(plugin)"
-                    >
-                      {{ plugin.enabled ? 'Disable' : 'Enable' }}
-                    </UButton>
-                    <UButton
-                      size="xs"
-                      color="error"
-                      variant="ghost"
-                      icon="i-lucide-trash-2"
-                      :loading="isPluginUninstallBusy(plugin.id)"
-                      :disabled="isPluginStateBusy(plugin.id) || pending || pluginScopePending"
-                      @click.stop="openUninstallModal(plugin)"
-                    >
-                      Uninstall
-                    </UButton>
                     <UButton
                       size="xs"
                       color="neutral"
@@ -652,19 +521,17 @@ async function savePluginScope(pluginId: string): Promise<void> {
                         variant="soft"
                         icon="i-lucide-save"
                         :loading="isPluginScopeSaving(plugin.id) || pluginScopePending"
+                        :disabled="pending || pluginScopePending"
                         @click="savePluginScope(plugin.id)"
                       >
                         Save scope
                       </UButton>
                     </div>
 
-                    <UFormField
-                      v-if="pluginScopeModels[plugin.id]"
-                      label="Scope mode"
-                      name="scopeMode"
-                    >
+                    <UFormField label="Scope mode" name="scopeMode">
                       <USelect
-                        v-model="pluginScopeModels[plugin.id].mode"
+                        :model-value="getPluginScopeMode(plugin.id)"
+                        @update:model-value="(value) => setPluginScopeMode(plugin.id, value as PluginRenderScope['mode'])"
                         :items="scopeModeItems"
                         value-key="value"
                         aria-label="Plugin scope mode"
@@ -673,14 +540,13 @@ async function savePluginScope(pluginId: string): Promise<void> {
                     </UFormField>
 
                     <UFormField
-                      v-if="
-                        pluginScopeModels[plugin.id] && pluginScopeModels[plugin.id].mode === 'eggs'
-                      "
+                      v-if="getPluginScopeMode(plugin.id) === 'eggs'"
                       label="Egg visibility"
                       name="scopeEggs"
                     >
                       <USelect
-                        v-model="pluginScopeModels[plugin.id].eggIds"
+                        :model-value="getPluginScopeEggIds(plugin.id)"
+                        @update:model-value="(value) => setPluginScopeEggIds(plugin.id, value)"
                         :items="eggScopeOptions"
                         multiple
                         value-key="value"
@@ -691,11 +557,7 @@ async function savePluginScope(pluginId: string): Promise<void> {
                     </UFormField>
 
                     <UAlert
-                      v-if="
-                        pluginScopeModels[plugin.id] &&
-                        pluginScopeModels[plugin.id].mode === 'eggs' &&
-                        pluginScopeModels[plugin.id].eggIds.length === 0
-                      "
+                      v-if="getPluginScopeMode(plugin.id) === 'eggs' && getPluginScopeEggIds(plugin.id).length === 0"
                       color="warning"
                       variant="soft"
                       icon="i-lucide-triangle-alert"
@@ -735,35 +597,5 @@ async function savePluginScope(pluginId: string): Promise<void> {
       </UContainer>
     </UPageBody>
 
-    <UModal
-      v-model:open="uninstallModalOpen"
-      :title="
-        uninstallTargetPluginName ? `Uninstall ${uninstallTargetPluginName}?` : 'Uninstall plugin?'
-      "
-      description="This permanently removes the plugin files from disk."
-    >
-      <template #body>
-        <p class="text-sm text-muted-foreground">
-          This action cannot be undone. Plugin scopes and runtime registrations will also be
-          removed.
-        </p>
-      </template>
-
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton variant="ghost" color="neutral" @click="closeUninstallModal">Cancel</UButton>
-          <UButton
-            color="error"
-            icon="i-lucide-trash-2"
-            :loading="
-              uninstallTargetPluginId ? isPluginUninstallBusy(uninstallTargetPluginId) : false
-            "
-            @click="confirmPluginUninstall"
-          >
-            Uninstall plugin
-          </UButton>
-        </div>
-      </template>
-    </UModal>
   </UPage>
 </template>
