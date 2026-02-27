@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import {
   mkdtemp,
   mkdir,
@@ -37,6 +37,17 @@ const ZIP_SIGNATURES: ReadonlyArray<ReadonlyArray<number>> = [
 ];
 const UNSUPPORTED_ENTRY_TYPES_ERROR_MESSAGE =
   'Archive contains unsupported entry types (symlinks/devices/fifos) and cannot be installed.';
+const panelPluginSystemVersion = (() => {
+  try {
+    const packageJsonPath = resolve(process.cwd(), 'package.json');
+    const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PluginSystemPackageJson;
+    if (typeof parsed.xyra?.pluginSystemVersion === 'string') {
+      return parsed.xyra.pluginSystemVersion.trim();
+    }
+  } catch {}
+
+  return '';
+})();
 
 type ArchiveFormat = 'tar' | 'zip';
 
@@ -44,6 +55,16 @@ interface NormalizedPluginManifest extends PluginManifest {
   id: string;
   name: string;
   version: string;
+  compatibility: string;
+  description: string;
+  author: string;
+  website: string;
+}
+
+interface PluginSystemPackageJson {
+  xyra?: {
+    pluginSystemVersion?: string;
+  };
 }
 
 export interface PluginInstallOptions {
@@ -248,6 +269,11 @@ async function readAndValidateManifest(manifestPath: string): Promise<Normalized
   const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
   const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
   const version = typeof parsed.version === 'string' ? parsed.version.trim() : '';
+  const compatibility =
+    typeof parsed.compatibility === 'string' ? parsed.compatibility.trim() : '';
+  const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+  const author = typeof parsed.author === 'string' ? parsed.author.trim() : '';
+  const website = typeof parsed.website === 'string' ? parsed.website.trim() : '';
 
   if (!id || !PLUGIN_ID_PATTERN.test(id)) {
     throw new PluginInstallError(
@@ -264,12 +290,81 @@ async function readAndValidateManifest(manifestPath: string): Promise<Normalized
     throw new PluginInstallError(400, `${PLUGIN_MANIFEST_FILE} is missing "version".`);
   }
 
+  if (!compatibility) {
+    throw new PluginInstallError(400, `${PLUGIN_MANIFEST_FILE} is missing "compatibility".`);
+  }
+
+  if (!description) {
+    throw new PluginInstallError(400, `${PLUGIN_MANIFEST_FILE} is missing "description".`);
+  }
+
+  if (!author) {
+    throw new PluginInstallError(400, `${PLUGIN_MANIFEST_FILE} is missing "author".`);
+  }
+
+  if (!website) {
+    throw new PluginInstallError(400, `${PLUGIN_MANIFEST_FILE} is missing "website".`);
+  }
+
+  if (!panelPluginSystemVersion) {
+    throw new PluginInstallError(
+      500,
+      'Plugin system version is not configured. Set "xyra.pluginSystemVersion" in package.json.',
+    );
+  }
+
+  if (compatibility !== panelPluginSystemVersion) {
+    throw new PluginInstallError(
+      400,
+      `Plugin compatibility "${compatibility}" does not match panel plugin system version "${panelPluginSystemVersion}".`,
+    );
+  }
+
   return {
     ...(parsed as PluginManifest),
     id,
     name,
     version,
+    compatibility,
+    description,
+    author,
+    website,
   };
+}
+
+async function setInstalledPluginManifestEnabled(manifestPath: string): Promise<void> {
+  let parsed: unknown;
+
+  try {
+    const raw = await readFile(manifestPath, 'utf8');
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new PluginInstallError(
+      500,
+      `Failed to update installed ${PLUGIN_MANIFEST_FILE}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    throw new PluginInstallError(
+      500,
+      `Installed ${PLUGIN_MANIFEST_FILE} must be a JSON object.`,
+    );
+  }
+
+  const nextManifest: Record<string, unknown> = {
+    ...parsed,
+    enabled: true,
+  };
+
+  try {
+    await writeFile(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, 'utf8');
+  } catch (error) {
+    throw new PluginInstallError(
+      500,
+      `Failed to persist installed ${PLUGIN_MANIFEST_FILE}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function resolveManagedInstallRoot(options: PluginInstallOptions): string {
@@ -596,6 +691,8 @@ export async function installPluginFromLocalSource(
     ]);
 
     if (sourceReal === destinationReal) {
+      await setInstalledPluginManifestEnabled(manifestPath);
+
       return {
         id: manifest.id,
         name: manifest.name,
@@ -621,6 +718,7 @@ export async function installPluginFromLocalSource(
 
   await mkdir(installRoot, { recursive: true });
   await cp(sourceDir, destinationDir, { recursive: true });
+  await setInstalledPluginManifestEnabled(join(destinationDir, PLUGIN_MANIFEST_FILE));
 
   return {
     id: manifest.id,

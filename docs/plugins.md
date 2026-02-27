@@ -16,7 +16,21 @@ XyraPanel has an experimental plugin system.
 
 ## Quick Start
 
-### Install via CLI (recommended)
+### Plugin System Version
+
+The Admin Plugins page version badge is read from `package.json`:
+
+```json
+{
+  "xyra": {
+    "pluginSystemVersion": "0.1 Alpha"
+  }
+}
+```
+
+Update this value when you want to bump the plugin system version shown in the UI.
+
+### Install via CLI
 
 Use the built-in installer instead of manually copying files:
 
@@ -41,26 +55,10 @@ Notes:
 
 - The installer expects a `plugin.json` manifest in the source root (or the folder passed via `--manifest`).
 - Use `--force` to overwrite an existing plugin directory.
-- Restart the panel process after install/remove so Nuxt layer changes are picked up.
-
-### Install from Admin UI
-
-Open `/admin/plugins` and use **Install Plugin**:
-
-- **From server path**: install from an existing directory on the panel host (or from a `plugin.json` path).
-- **From archive upload**: upload `.zip`, `.tar`, `.tar.gz`, or `.tgz` and install from the extracted contents.
-- **manifestPath** (optional): use this when `plugin.json` is nested inside a monorepo/archive.
-- **force overwrite**: replace an existing plugin that has the same `id`.
-
-Notes:
-
-- Uploaded archives are extracted to a temporary directory first, then copied into `extensions/<pluginId>/` (or `XYRA_PLUGIN_INSTALL_DIR` if configured).
-- `.zip` archives are unzipped; `.tar`, `.tar.gz`, and `.tgz` archives are untarred.
-- Source and archive installs reject symlinks/special file entries and unsafe traversal paths.
-- If a plugin includes `entry.nuxtLayer` or `entry.module`, the installer now attempts to apply changes automatically:
-  - Dev mode: triggers a Nuxt dev reload.
-  - Production: can schedule a process restart when a process manager is detected or when `XYRA_PLUGIN_AUTO_RESTART=true`.
-  - If auto-apply is disabled, restart manually.
+- After installing or removing, refresh `/admin/plugins` to reload runtime state.
+- If a plugin includes `entry.nuxtLayer` or `entry.module`, rebuild/restart behavior still applies:
+  - Dev mode: layer/module changes can be picked up after a dev reload.
+  - Production: Nuxt layer/module changes require rebuilding the panel, then restarting.
 - Each plugin now has a default **global** render scope in `/admin/plugins`.
   - Switch to **Specific eggs** to limit where server-side plugin UI renders.
   - This scope controls server plugin contributions (for example server sidebar items).
@@ -75,6 +73,7 @@ extensions/
       server.mjs
     migrations/
       001_initial.sql
+      001_initial.down.sql
     modules/
       xyra.ts
     ui/
@@ -90,7 +89,10 @@ extensions/
   "id": "acme-tools",
   "name": "Acme Tools",
   "version": "1.0.0",
+  "compatibility": "0.1 Alpha",
   "description": "Adds internal tooling",
+  "author": "Acme Dev Team",
+  "website": "https://example.com/acme-tools",
   "enabled": true,
   "entry": {
     "server": "./dist/server.mjs",
@@ -203,9 +205,10 @@ Nuxt module entries are loaded into the panel `modules` config automatically whe
 | `id`                            | `string`  | yes      | Must match `^[a-z0-9][a-z0-9._-]*$` and be unique. |
 | `name`                          | `string`  | yes      | Display name in admin/runtime summaries.           |
 | `version`                       | `string`  | yes      | Free-form version string.                          |
-| `description`                   | `string`  | no       | Optional metadata.                                 |
-| `author`                        | `string`  | no       | Optional metadata.                                 |
-| `website`                       | `string`  | no       | Optional metadata.                                 |
+| `compatibility`                 | `string`  | yes      | Must exactly match panel plugin system version.    |
+| `description`                   | `string`  | yes      | Plugin description metadata.                       |
+| `author`                        | `string`  | yes      | Plugin author metadata.                            |
+| `website`                       | `string`  | yes      | Plugin website metadata.                           |
 | `enabled`                       | `boolean` | no       | Defaults to enabled when omitted.                  |
 | `entry.server`                  | `string`  | no       | Relative file path inside plugin dir.              |
 | `entry.module`                  | `string`  | no       | Relative Nuxt module file path inside plugin dir.  |
@@ -221,6 +224,7 @@ Validation and safety rules:
 - `entry.server`, `entry.module`, `entry.nuxtLayer`, and `entry.migrations` must be relative paths.
 - Paths cannot escape the plugin directory.
 - Missing paths are reported as discovery errors.
+- `compatibility` must match `package.json` -> `xyra.pluginSystemVersion`.
 - `entry.module` must resolve to a file.
 - `entry.nuxtLayer` must resolve to a directory.
 - `entry.migrations` must resolve to a directory.
@@ -232,10 +236,15 @@ Plugins can ship SQL migrations by setting `entry.migrations` to a directory.
 Behavior:
 
 - All `*.sql` files under the directory (including subdirectories) are sorted by relative path and applied in order.
+  - Files ending in `.down.sql` are reserved for uninstall rollback and are not applied on install/startup.
 - Migrations are tracked in `public.xyra_plugin_migrations` by `plugin_id + migration_path + checksum`.
 - Already applied files are skipped.
 - Editing an already-applied migration file causes a checksum mismatch error; add a new migration file instead.
 - Migrations run during plugin runtime initialization/reload (startup, install, enable, or runtime reload).
+- Uninstall rollback:
+  - For each tracked migration `name.sql`, uninstall expects a rollback file `name.down.sql` in the same relative path.
+  - Rollbacks execute in reverse apply order.
+  - If a rollback file is missing, uninstall continues and returns a warning that related database entries were not removed.
 
 ## Runtime API
 
@@ -372,17 +381,23 @@ Default:
 XYRA_PLUGIN_DIRS="extensions"
 ```
 
-Optional restart automation env:
+Migration connection retry tuning:
 
 ```dotenv
-XYRA_PLUGIN_AUTO_RESTART="false" # set true in production when supervised (pm2/systemd/docker restart policy)
-XYRA_PLUGIN_RESTART_DELAY_MS="1500"
+XYRA_PLUGIN_MIGRATION_CONNECT_RETRIES="3" # retries after initial attempt for pg 53300 (too many clients)
+XYRA_PLUGIN_MIGRATION_CONNECT_RETRY_DELAY_MS="250" # base retry delay in ms (linear backoff)
+```
+
+Production note:
+
+```dotenv
+# Nuxt layer/module plugin changes require a production rebuild.
+# Example: pnpm build && restart your panel process manager.
 ```
 
 ## Inspection APIs
 
 - `GET /api/admin/plugins` (admin-only runtime summary; requires `admin.settings.read` for API keys)
-- `POST /api/admin/plugins/install` (admin-only install endpoint; JSON path mode or multipart archive mode; requires `admin.settings.write` for API keys)
 - `GET /api/admin/plugins/scopes` (admin-only plugin scope + available eggs; requires `admin.settings.read` for API keys)
 - `PATCH /api/admin/plugins/:id/scope` (admin-only; set plugin scope to `global` or `eggs`; requires `admin.settings.write` for API keys)
 - `PATCH /api/admin/plugins/:id/state` (admin-only; enable/disable a plugin; requires `admin.settings.write` for API keys)

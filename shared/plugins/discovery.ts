@@ -37,6 +37,26 @@ const GENERATED_LAYER_CONFIG_FILE = 'nuxt.config.ts';
 const GENERATED_LAYER_CONFIG_CONTENT = 'export default {};\n';
 const LAYER_COPY_IGNORE_SEGMENTS = new Set(['node_modules', '.nuxt', '.output']);
 
+interface PluginSystemPackageJson {
+  xyra?: {
+    pluginSystemVersion?: string;
+  };
+}
+
+function getPluginSystemVersionFromPackageJson(): string {
+  try {
+    const packageJsonPath = resolve(process.cwd(), 'package.json');
+    const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PluginSystemPackageJson;
+    if (typeof parsed.xyra?.pluginSystemVersion === 'string') {
+      return parsed.xyra.pluginSystemVersion.trim();
+    }
+  } catch {}
+
+  return '';
+}
+
+const pluginSystemVersion = getPluginSystemVersionFromPackageJson();
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -234,6 +254,11 @@ function parsePluginManifest(
   const id = typeof value.id === 'string' ? value.id.trim() : '';
   const name = typeof value.name === 'string' ? value.name.trim() : '';
   const version = typeof value.version === 'string' ? value.version.trim() : '';
+  const compatibility =
+    typeof value.compatibility === 'string' ? value.compatibility.trim() : '';
+  const description = typeof value.description === 'string' ? value.description.trim() : '';
+  const author = typeof value.author === 'string' ? value.author.trim() : '';
+  const website = typeof value.website === 'string' ? value.website.trim() : '';
 
   if (!id) {
     errors.push({ manifestPath, message: 'Plugin manifest is missing "id".' });
@@ -260,19 +285,54 @@ function parsePluginManifest(
     return null;
   }
 
-  const manifest: PluginManifest = { id, name, version };
-
-  if (typeof value.description === 'string' && value.description.trim().length > 0) {
-    manifest.description = value.description.trim();
+  if (!compatibility) {
+    errors.push({
+      pluginId: id,
+      manifestPath,
+      message: 'Plugin manifest is missing "compatibility".',
+    });
+    return null;
   }
 
-  if (typeof value.author === 'string' && value.author.trim().length > 0) {
-    manifest.author = value.author.trim();
+  if (!description) {
+    errors.push({
+      pluginId: id,
+      manifestPath,
+      message: 'Plugin manifest is missing "description".',
+    });
+    return null;
   }
 
-  if (typeof value.website === 'string' && value.website.trim().length > 0) {
-    manifest.website = value.website.trim();
+  if (!author) {
+    errors.push({ pluginId: id, manifestPath, message: 'Plugin manifest is missing "author".' });
+    return null;
   }
+
+  if (!website) {
+    errors.push({ pluginId: id, manifestPath, message: 'Plugin manifest is missing "website".' });
+    return null;
+  }
+
+  if (!pluginSystemVersion) {
+    errors.push({
+      pluginId: id,
+      manifestPath,
+      message:
+        'Plugin system version is not configured. Set "xyra.pluginSystemVersion" in package.json.',
+    });
+    return null;
+  }
+
+  if (compatibility !== pluginSystemVersion) {
+    errors.push({
+      pluginId: id,
+      manifestPath,
+      message: `Plugin compatibility "${compatibility}" does not match panel plugin system version "${pluginSystemVersion}".`,
+    });
+    return null;
+  }
+
+  const manifest: PluginManifest = { id, name, version, compatibility, description, author, website };
 
   if (typeof value.enabled === 'boolean') {
     manifest.enabled = value.enabled;

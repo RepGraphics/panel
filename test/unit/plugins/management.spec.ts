@@ -10,6 +10,12 @@ import {
 const tempDirs: string[] = [];
 const originalPluginDirsEnv = process.env.XYRA_PLUGIN_DIRS;
 const originalPluginsDirEnv = process.env.XYRA_PLUGINS_DIR;
+const pluginSystemVersion = (() => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+    xyra?: { pluginSystemVersion?: string };
+  };
+  return pkg.xyra?.pluginSystemVersion ?? '0.1 Alpha';
+})();
 
 function createTempRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'xyra-plugin-management-'));
@@ -25,6 +31,10 @@ function writePluginManifest(path: string, enabled = true): void {
         id: 'acme-tools',
         name: 'Acme Tools',
         version: '1.0.0',
+        compatibility: pluginSystemVersion,
+        description: 'Plugin management fixture',
+        author: 'Test Author',
+        website: 'https://example.com',
         enabled,
       },
       null,

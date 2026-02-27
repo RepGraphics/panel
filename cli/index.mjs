@@ -2,7 +2,7 @@
 import { defineCommand, runMain } from 'citty';
 import { consola } from 'consola';
 import { execa } from 'execa';
-import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, isAbsolute, join, resolve } from 'pathe';
@@ -11,6 +11,8 @@ import { colors } from 'consola/utils';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const pluginSystemVersion =
+  typeof pkg?.xyra?.pluginSystemVersion === 'string' ? pkg.xyra.pluginSystemVersion.trim() : '';
 const logger = consola.withDefaults({
   tag: 'xyra',
   fancy: process.stdout.isTTY,
@@ -180,6 +182,11 @@ function validatePluginManifest(rawManifest, sourcePath) {
   const id = typeof manifest.id === 'string' ? manifest.id.trim() : '';
   const name = typeof manifest.name === 'string' ? manifest.name.trim() : '';
   const version = typeof manifest.version === 'string' ? manifest.version.trim() : '';
+  const compatibility =
+    typeof manifest.compatibility === 'string' ? manifest.compatibility.trim() : '';
+  const description = typeof manifest.description === 'string' ? manifest.description.trim() : '';
+  const author = typeof manifest.author === 'string' ? manifest.author.trim() : '';
+  const website = typeof manifest.website === 'string' ? manifest.website.trim() : '';
 
   if (!id || !/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
     throw new Error(
@@ -195,7 +202,47 @@ function validatePluginManifest(rawManifest, sourcePath) {
     throw new Error(`Invalid plugin manifest at ${sourcePath}: "version" is required.`);
   }
 
-  return { ...manifest, id, name, version };
+  if (!compatibility) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "compatibility" is required.`);
+  }
+
+  if (!description) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "description" is required.`);
+  }
+
+  if (!author) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "author" is required.`);
+  }
+
+  if (!website) {
+    throw new Error(`Invalid plugin manifest at ${sourcePath}: "website" is required.`);
+  }
+
+  if (!pluginSystemVersion) {
+    throw new Error('Panel plugin system version is not configured in package.json (xyra.pluginSystemVersion).');
+  }
+
+  if (compatibility !== pluginSystemVersion) {
+    throw new Error(
+      `Plugin compatibility "${compatibility}" does not match panel plugin system version "${pluginSystemVersion}".`,
+    );
+  }
+
+  return { ...manifest, id, name, version, compatibility, description, author, website };
+}
+
+async function setInstalledPluginManifestEnabled(manifestPath) {
+  const rawManifest = await readJsonFile(manifestPath);
+  if (!rawManifest || typeof rawManifest !== 'object' || Array.isArray(rawManifest)) {
+    throw new Error(`Invalid plugin manifest at ${manifestPath}: expected a JSON object.`);
+  }
+
+  const nextManifest = {
+    ...rawManifest,
+    enabled: true,
+  };
+
+  await writeFile(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, 'utf8');
 }
 
 function looksLikeGitSource(source) {
@@ -418,7 +465,7 @@ async function runPm2Binary(args, options = {}) {
     env: {
       ...projectDotEnv,
       ...process.env,
-      ...(options.env || {}),
+      ...options.env,
     },
   };
 
@@ -615,17 +662,41 @@ const pluginsInstallCommand = defineCommand({
       default: false,
       description: 'Keep temporary cloned source on disk (debugging only)',
     },
+    json: {
+      type: 'boolean',
+      default: false,
+      description: 'Print machine-readable install result JSON',
+    },
   },
   run: async ({ args }) => {
+    const jsonOutput = Boolean(args.json);
+    const log = (level, message) => {
+      if (jsonOutput) {
+        return;
+      }
+
+      logger[level](message);
+    };
+    const fail = (message) => {
+      if (jsonOutput) {
+        process.stderr.write(`${JSON.stringify({ error: message })}\n`);
+      } else {
+        logger.error(message);
+      }
+      process.exit(1);
+    };
+
     const sourceInput = String(args.source || '').trim();
     if (!sourceInput) {
-      logger.error('A source is required. Example: xyra plugins install https://github.com/acme/plugin');
-      process.exit(1);
+      const message =
+        'A source is required. Example: xyra plugins install https://github.com/acme/plugin';
+      fail(message);
     }
 
     let sourceRoot = '';
     let tempCloneRoot = '';
     let cloned = false;
+    let replaced = false;
 
     try {
       const localCandidate = isAbsolute(sourceInput)
@@ -639,14 +710,19 @@ const pluginsInstallCommand = defineCommand({
         tempCloneRoot = await cloneSourceToTemp(sourceInput, String(args.branch || ''));
         sourceRoot = tempCloneRoot;
       } else {
-        logger.error(`Source not found as directory: ${localCandidate}`);
-        logger.error('If this is a repository, pass a full git URL.');
-        process.exit(1);
+        const message =
+          `Source not found as directory: ${localCandidate}\n` +
+          'If this is a repository, pass a full git URL.';
+        fail(message);
       }
 
       const pluginSourceDir = await resolvePluginSourceDirectory(sourceRoot, String(args.manifest || ''));
       const manifestPath = join(pluginSourceDir, pluginManifestFile);
       const manifest = validatePluginManifest(await readJsonFile(manifestPath), manifestPath);
+      const restartRequired = Boolean(
+        (typeof manifest.entry?.nuxtLayer === 'string' && manifest.entry.nuxtLayer.trim()) ||
+          (typeof manifest.entry?.module === 'string' && manifest.entry.module.trim()),
+      );
 
       await ensureDirectory(extensionsRoot);
       const destinationDir = join(extensionsRoot, manifest.id);
@@ -654,10 +730,27 @@ const pluginsInstallCommand = defineCommand({
       const sourceResolved = resolve(pluginSourceDir);
       const destinationResolved = resolve(destinationDir);
 
+      const installResult = {
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        manifestPath,
+        sourceDir: pluginSourceDir,
+        destinationDir,
+        replaced: false,
+        restartRequired,
+      };
+
       if (sourceResolved === destinationResolved) {
-        logger.success(
-          `Plugin "${manifest.name}" (${manifest.id}@${manifest.version}) is already installed at ${destinationDir}`,
-        );
+        await setInstalledPluginManifestEnabled(manifestPath);
+
+        if (jsonOutput) {
+          process.stdout.write(`${JSON.stringify(installResult)}\n`);
+        } else {
+          logger.success(
+            `Plugin "${manifest.name}" (${manifest.id}@${manifest.version}) is already installed at ${destinationDir}`,
+          );
+        }
         return;
       }
 
@@ -667,30 +760,43 @@ const pluginsInstallCommand = defineCommand({
           const destinationHasManifest = await pathExists(destinationManifestPath);
 
           if (destinationHasManifest) {
-            logger.error(
+            const message =
               `Plugin directory already exists: ${destinationDir}. ` +
-                `Use --force to overwrite.`,
-            );
-            process.exit(1);
+              `Use --force to overwrite.`;
+            fail(message);
           }
 
-          logger.warn(
+          log(
+            'warn',
             `Destination exists without ${pluginManifestFile}; replacing stale directory: ${destinationDir}`,
           );
           await rm(destinationDir, { recursive: true, force: true });
+          replaced = true;
         } else {
-          logger.warn(`Removing existing plugin directory: ${destinationDir}`);
+          log('warn', `Removing existing plugin directory: ${destinationDir}`);
           await rm(destinationDir, { recursive: true, force: true });
+          replaced = true;
         }
       }
 
-      logger.start(`Installing plugin "${manifest.name}" (${manifest.id}@${manifest.version})`);
+      log('start', `Installing plugin "${manifest.name}" (${manifest.id}@${manifest.version})`);
       await cp(pluginSourceDir, destinationDir, { recursive: true });
-      logger.success(`Installed to ${destinationDir}`);
-      logger.info('Restart your panel dev/build process so Nuxt layer changes are applied.');
+      await setInstalledPluginManifestEnabled(join(destinationDir, pluginManifestFile));
+
+      const finalInstallResult = {
+        ...installResult,
+        replaced,
+      };
+
+      if (jsonOutput) {
+        process.stdout.write(`${JSON.stringify(finalInstallResult)}\n`);
+      } else {
+        logger.success(`Installed to ${destinationDir}`);
+        logger.info('Run `pnpm run build` to apply plugin Nuxt layer/module changes.');
+      }
     } catch (error) {
-      logger.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+      const message = error instanceof Error ? error.message : String(error);
+      fail(message);
     } finally {
       if (cloned && tempCloneRoot && !args['keep-temp']) {
         await rm(tempCloneRoot, { recursive: true, force: true });
@@ -726,7 +832,7 @@ const pluginsRemoveCommand = defineCommand({
 
     await rm(targetDir, { recursive: true, force: true });
     logger.success(`Removed plugin "${id}"`);
-    logger.info('Restart your panel dev/build process so Nuxt layer changes are applied.');
+    logger.info('Run `pnpm run build` to apply plugin Nuxt layer/module changes.');
   },
 });
 

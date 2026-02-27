@@ -5,17 +5,6 @@ import type {
   PluginScopeSummary,
 } from '#shared/types/plugins';
 
-interface PluginInstallResponseData {
-  id: string;
-  name: string;
-  version: string;
-  replaced: boolean;
-  restartRequired: boolean;
-  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
-  restartAutomated: boolean;
-  message: string;
-}
-
 interface PluginScopeUpdateResponseData {
   pluginId: string;
   scope: PluginRenderScope;
@@ -25,7 +14,7 @@ interface PluginStateUpdateResponseData {
   pluginId: string;
   enabled: boolean;
   restartRequired: boolean;
-  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
+  restartMode: 'not-required' | 'dev-reload-triggered' | 'manual';
   restartAutomated: boolean;
   message: string;
 }
@@ -35,7 +24,7 @@ interface PluginUninstallResponseData {
   pluginName: string;
   removed: boolean;
   restartRequired: boolean;
-  restartMode: 'not-required' | 'dev-reload-triggered' | 'process-restart-scheduled' | 'manual';
+  restartMode: 'not-required' | 'dev-reload-triggered' | 'manual';
   restartAutomated: boolean;
   message: string;
 }
@@ -58,6 +47,7 @@ const { data, pending, error, refresh } = await useAsyncData<PluginRuntimeSummar
   {
     default: () => ({
       initialized: false,
+      pluginSystemVersion: 'unknown',
       plugins: [],
       discoveryErrors: [],
     }),
@@ -73,6 +63,7 @@ const loadedCount = computed(
 const failedCount = computed(
   () => summary.value.plugins.filter((plugin) => plugin.enabled && !plugin.loaded).length,
 );
+const pluginSystemVersion = computed(() => summary.value.pluginSystemVersion || 'unknown');
 
 const {
   data: pluginScopeSummary,
@@ -108,18 +99,6 @@ const eggScopeOptions = computed(() =>
 const pluginScopeModels = ref<Record<string, PluginRenderScope>>({});
 const pluginScopeSaving = ref<Record<string, boolean>>({});
 
-const installSourcePath = ref('');
-const installManifestPath = ref('');
-const installArchiveManifestPath = ref('');
-const installForce = ref(false);
-const installAutoRestart = ref(true);
-const installBusyPath = ref(false);
-const installBusyArchive = ref(false);
-const installStatusMessage = ref<string | null>(null);
-const installStatusWarning = ref(false);
-const archiveInputRef = ref<HTMLInputElement | null>(null);
-const archiveFile = ref<File | null>(null);
-const installSectionOpen = ref(false);
 const pluginDetailsOpen = ref<Record<string, boolean>>({});
 const pluginStateBusy = ref<Record<string, boolean>>({});
 const pluginUninstallBusy = ref<Record<string, boolean>>({});
@@ -127,18 +106,9 @@ const uninstallModalOpen = ref(false);
 const uninstallTargetPluginId = ref<string | null>(null);
 const uninstallTargetPluginName = ref('');
 
-const selectedArchiveLabel = computed(() => {
-  if (!archiveFile.value) {
-    return null;
-  }
-
-  const sizeInMb = archiveFile.value.size / (1024 * 1024);
-  return `${archiveFile.value.name} (${sizeInMb.toFixed(2)} MB)`;
-});
-
 function normalizeInstallErrorMessage(errorValue: unknown): string {
   if (!errorValue) {
-    return 'Plugin installation failed.';
+    return 'Request failed.';
   }
 
   if (typeof errorValue === 'string') {
@@ -169,20 +139,7 @@ function normalizeInstallErrorMessage(errorValue: unknown): string {
     }
   }
 
-  return 'Plugin installation failed.';
-}
-
-function onArchiveSelected(event: Event): void {
-  const input = event.target as HTMLInputElement | null;
-  const nextFile = input?.files?.[0] ?? null;
-  archiveFile.value = nextFile;
-}
-
-function clearArchiveSelection(): void {
-  archiveFile.value = null;
-  if (archiveInputRef.value) {
-    archiveInputRef.value.value = '';
-  }
+  return 'Request failed.';
 }
 
 function getDefaultPluginScope(): PluginRenderScope {
@@ -294,8 +251,6 @@ async function togglePluginEnabled(plugin: PluginRuntimeSummary['plugins'][numbe
     );
 
     const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-    installStatusMessage.value = response.data.message;
-    installStatusWarning.value = requiresManualRestart;
 
     toast.add({
       color: requiresManualRestart ? 'warning' : 'success',
@@ -358,8 +313,6 @@ async function confirmPluginUninstall(): Promise<void> {
     );
 
     const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-    installStatusMessage.value = response.data.message;
-    installStatusWarning.value = requiresManualRestart;
 
     toast.add({
       color: requiresManualRestart ? 'warning' : 'success',
@@ -441,291 +394,41 @@ async function savePluginScope(pluginId: string): Promise<void> {
   }
 }
 
-async function installFromPath(): Promise<void> {
-  const sourcePath = installSourcePath.value.trim();
-  if (!sourcePath) {
-    toast.add({
-      color: 'warning',
-      title: 'Source path required',
-      description: 'Enter a plugin source path before installing.',
-    });
-    return;
-  }
-
-  installBusyPath.value = true;
-  installStatusMessage.value = null;
-
-  try {
-    const response = await requestFetch<{ data: PluginInstallResponseData }>(
-      '/api/admin/plugins/install',
-      {
-        method: 'POST',
-        body: {
-          sourcePath,
-          manifestPath: installManifestPath.value.trim() || undefined,
-          force: installForce.value,
-          autoRestart: installAutoRestart.value,
-        },
-      },
-    );
-
-    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-    installStatusMessage.value = response.data.message;
-    installStatusWarning.value = requiresManualRestart;
-
-    toast.add({
-      color: requiresManualRestart ? 'warning' : 'success',
-      title: `Installed ${response.data.name}`,
-      description: response.data.message,
-    });
-
-    await refreshPluginData();
-  } catch (errorValue) {
-    const message = normalizeInstallErrorMessage(errorValue);
-    installStatusMessage.value = message;
-    installStatusWarning.value = true;
-    toast.add({
-      color: 'error',
-      title: 'Plugin install failed',
-      description: message,
-    });
-  } finally {
-    installBusyPath.value = false;
-  }
-}
-
-async function installFromArchive(): Promise<void> {
-  if (!archiveFile.value) {
-    toast.add({
-      color: 'warning',
-      title: 'Archive required',
-      description: 'Choose a plugin archive before uploading.',
-    });
-    return;
-  }
-
-  installBusyArchive.value = true;
-  installStatusMessage.value = null;
-
-  try {
-    const formData = new FormData();
-    formData.append('archive', archiveFile.value);
-    formData.append('force', installForce.value ? 'true' : 'false');
-    formData.append('autoRestart', installAutoRestart.value ? 'true' : 'false');
-
-    const manifestPath = installArchiveManifestPath.value.trim();
-    if (manifestPath.length > 0) {
-      formData.append('manifestPath', manifestPath);
-    }
-
-    const response = await requestFetch<{ data: PluginInstallResponseData }>(
-      '/api/admin/plugins/install',
-      {
-        method: 'POST',
-        body: formData,
-      },
-    );
-
-    const requiresManualRestart = response.data.restartRequired && !response.data.restartAutomated;
-    installStatusMessage.value = response.data.message;
-    installStatusWarning.value = requiresManualRestart;
-
-    toast.add({
-      color: requiresManualRestart ? 'warning' : 'success',
-      title: `Installed ${response.data.name}`,
-      description: response.data.message,
-    });
-
-    clearArchiveSelection();
-    await refreshPluginData();
-  } catch (errorValue) {
-    const message = normalizeInstallErrorMessage(errorValue);
-    installStatusMessage.value = message;
-    installStatusWarning.value = true;
-    toast.add({
-      color: 'error',
-      title: 'Plugin upload failed',
-      description: message,
-    });
-  } finally {
-    installBusyArchive.value = false;
-  }
-}
 </script>
 
 <template>
   <UPage>
     <UPageBody>
       <UContainer class="space-y-6">
-        <UCard class="border-default/80">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div class="max-w-2xl space-y-2">
-              <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Plugins
-              </p>
-              <h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Plugin Management</h2>
-              <p class="text-sm text-muted-foreground">
-                Install extensions, review load status, and control where each plugin renders.
-              </p>
+        <UCard class="border-default/80 shadow-sm">
+          <div class="space-y-4">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-base font-semibold">Plugin Runtime</h2>
+                <p class="text-sm text-muted-foreground">
+                  Plugin installation is managed on the panel host; this page only shows runtime and
+                  scope state.
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <UBadge color="neutral" variant="soft" size="sm">
+                  Plugin system v{{ pluginSystemVersion }}
+                </UBadge>
+              </div>
             </div>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-refresh-cw"
-              :loading="pending || pluginScopePending"
-              @click="refreshPluginData"
-            >
-              Refresh data
-            </UButton>
+
+            <div class="flex justify-end">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-refresh-cw"
+                :loading="pending || pluginScopePending"
+                @click="refreshPluginData"
+              >
+                Refresh data
+              </UButton>
+            </div>
           </div>
-        </UCard>
-
-        <UCard class="border-default/80 shadow-sm" :ui="{ body: 'p-0' }">
-          <UCollapsible v-model:open="installSectionOpen" :unmount-on-hide="false">
-            <template #default>
-              <div class="flex w-full items-center justify-between gap-3 p-4 sm:p-5 cursor-pointer">
-                <div>
-                  <h3 class="text-base font-semibold">Install Plugins</h3>
-                  <p class="text-sm text-muted-foreground">
-                    Install from a local path on the host or upload an archive.
-                  </p>
-                </div>
-                <div class="flex items-center gap-2">
-                  <UBadge color="primary" variant="soft" size="sm">Plugin installer</UBadge>
-                  <UIcon
-                    name="i-lucide-chevron-down"
-                    class="size-4 text-muted-foreground transition-transform duration-200"
-                    :class="{ 'rotate-180': installSectionOpen }"
-                  />
-                </div>
-              </div>
-            </template>
-
-            <template #content>
-              <div class="border-t border-default space-y-6 p-4 sm:p-5">
-                <div class="grid gap-4 xl:grid-cols-2">
-                  <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
-                    <div class="flex items-center gap-2 text-sm font-medium">
-                      <UIcon name="i-lucide-folder-open" class="size-4 text-primary" />
-                      Install from server path
-                    </div>
-
-                    <UFormField label="Source path" name="installSourcePath">
-                      <UInput
-                        v-model="installSourcePath"
-                        placeholder="C:/plugins/my-plugin or /opt/plugins/my-plugin"
-                        icon="i-lucide-folder-open"
-                      />
-                    </UFormField>
-
-                    <UFormField
-                      label="Manifest path (optional)"
-                      name="installManifestPath"
-                      help="Use this when plugin.json is not at the source root."
-                    >
-                      <UInput
-                        v-model="installManifestPath"
-                        placeholder="packages/plugin-a"
-                        icon="i-lucide-file-code"
-                      />
-                    </UFormField>
-
-                    <UButton
-                      color="primary"
-                      icon="i-lucide-download"
-                      :loading="installBusyPath"
-                      :disabled="installBusyArchive"
-                      class="w-full justify-center"
-                      @click="installFromPath"
-                    >
-                      Install from path
-                    </UButton>
-                  </div>
-
-                  <div class="space-y-4 rounded-xl border border-default/80 bg-muted/20 p-4">
-                    <div class="flex items-center gap-2 text-sm font-medium">
-                      <UIcon name="i-lucide-upload" class="size-4 text-primary" />
-                      Install from archive
-                    </div>
-
-                    <label
-                      class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-default px-4 py-6 text-center transition hover:border-primary/50 hover:bg-muted/40"
-                    >
-                      <input
-                        ref="archiveInputRef"
-                        type="file"
-                        accept=".zip,.tar,.tar.gz,.tgz"
-                        class="hidden"
-                        @change="onArchiveSelected"
-                      />
-                      <UIcon name="i-lucide-file-archive" class="size-5 text-primary" />
-                      <p class="text-sm font-medium">
-                        {{ selectedArchiveLabel || 'Choose plugin archive' }}
-                      </p>
-                      <p class="text-xs text-muted-foreground">
-                        Accepted: .zip, .tar, .tar.gz, .tgz
-                      </p>
-                    </label>
-
-                    <UFormField
-                      label="Manifest path in archive (optional)"
-                      name="installArchiveManifestPath"
-                      help="Leave empty when plugin.json is at archive root."
-                    >
-                      <UInput
-                        v-model="installArchiveManifestPath"
-                        placeholder="packages/plugin-a"
-                        icon="i-lucide-file-archive"
-                      />
-                    </UFormField>
-
-                    <UButton
-                      color="primary"
-                      icon="i-lucide-upload"
-                      :loading="installBusyArchive"
-                      :disabled="installBusyPath"
-                      class="w-full justify-center"
-                      @click="installFromArchive"
-                    >
-                      Upload and install
-                    </UButton>
-                  </div>
-                </div>
-
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
-                    <UCheckbox
-                      v-model="installForce"
-                      :disabled="installBusyPath || installBusyArchive"
-                      label="Overwrite existing plugin with the same id"
-                    />
-                    <p class="mt-1 pl-6 text-xs text-muted-foreground">
-                      Replaces the currently installed version.
-                    </p>
-                  </div>
-                  <div class="rounded-lg border border-default/80 bg-muted/10 p-3">
-                    <UCheckbox
-                      v-model="installAutoRestart"
-                      :disabled="installBusyPath || installBusyArchive"
-                      label="Automatically apply layer changes after install"
-                    />
-                    <p class="mt-1 pl-6 text-xs text-muted-foreground">
-                      Triggers reload or restart when runtime changes require it.
-                    </p>
-                  </div>
-                </div>
-
-                <UAlert
-                  v-if="installStatusMessage"
-                  :color="installStatusWarning ? 'warning' : 'success'"
-                  :icon="installStatusWarning ? 'i-lucide-triangle-alert' : 'i-lucide-check-circle'"
-                  title="Install status"
-                  :description="installStatusMessage"
-                  variant="soft"
-                />
-              </div>
-            </template>
-          </UCollapsible>
         </UCard>
 
         <div class="grid gap-4 md:grid-cols-3">
@@ -784,8 +487,8 @@ async function installFromArchive(): Promise<void> {
         <UCard v-else-if="summary.plugins.length === 0" :ui="{ body: 'space-y-3' }">
           <UEmpty
             icon="i-lucide-puzzle"
-            title="No Plugins Found"
-            description="No plugins detected. Add plugin manifests under extensions/*/plugin.json."
+            title="You have no plugins"
+            description="Install a plugin via the panel host CLI, then refresh this page."
           />
         </UCard>
 

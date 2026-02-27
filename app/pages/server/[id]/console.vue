@@ -629,7 +629,7 @@ function handleSearch() {
           />
           <ServerStatsChart v-if="showStats && stats" :stats="stats" :history="statsHistory" />
           <PluginOutlet
-            v-if="showStats && stats"
+            v-if="showStats"
             name="server.console.after-stats"
             :server-id="serverId"
             :contributions="pluginContributions"

@@ -69,9 +69,10 @@ export interface PluginManifest {
   id: string;
   name: string;
   version: string;
-  description?: string;
-  author?: string;
-  website?: string;
+  compatibility: string;
+  description: string;
+  author: string;
+  website: string;
   enabled?: boolean;
   entry?: PluginEntryManifest;
   contributions?: PluginContributionsManifest;

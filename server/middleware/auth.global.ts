@@ -1,9 +1,10 @@
-import { createError, sendRedirect, type H3Event } from 'h3';
+import { createError, sendRedirect, setHeader, setResponseStatus, type H3Event } from 'h3';
 import type { AuthContext, ResolvedSessionUser } from '#shared/types/auth';
 import type { ApiKeyPermissions, PermissionAction } from '#shared/types/admin';
 import { getServerSession } from '#server/utils/session';
 import { getAuth, normalizeHeadersForAuth } from '#server/utils/auth';
 import { requireSessionUser } from '#server/utils/auth/sessionUser';
+import { getSetting, SETTINGS_KEYS } from '#server/utils/settings';
 
 type EventContextWithAuth = H3Event['context'] & { auth?: AuthContext };
 
@@ -131,6 +132,72 @@ function isPublicApiPath(path: string): boolean {
   return matchesPattern(PUBLIC_API_PATTERNS, path);
 }
 
+function isAuthPagePath(path: string): boolean {
+  return /^\/auth(?:\/|$)/.test(path);
+}
+
+function isAdminPagePath(path: string): boolean {
+  return /^\/admin(?:\/|$)/.test(path);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function renderMaintenanceHtml(message: string): string {
+  const escapedMessage = escapeHtml(message);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Maintenance</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        color: #18181b;
+        font: 16px/1.5 "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .card {
+        width: min(92vw, 680px);
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        padding: 28px;
+        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+      }
+      h1 { margin: 0 0 10px; font-size: 1.5rem; }
+      p { margin: 0; color: #3f3f46; white-space: pre-wrap; word-break: break-word; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Under Maintenance</h1>
+      <p>${escapedMessage}</p>
+    </main>
+  </body>
+</html>`;
+}
+
+function sendMaintenanceResponse(event: H3Event, message: string): string {
+  setResponseStatus(event, 503, 'Service Unavailable');
+  setHeader(event, 'Content-Type', 'text/html; charset=utf-8');
+  setHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate');
+  setHeader(event, 'Retry-After', '60');
+  return renderMaintenanceHtml(message);
+}
+
 function redirectToLogin(event: H3Event, requestUrl: string) {
   const path = event.path ?? requestUrl.split('?')[0] ?? '/';
   const searchParams = new URLSearchParams();
@@ -154,6 +221,21 @@ export default defineEventHandler(async (event) => {
   }
 
   const isApiRequest = path.startsWith('/api/');
+
+  if (!isApiRequest) {
+    const maintenanceModeEnabled = (await getSetting(SETTINGS_KEYS.MAINTENANCE_MODE)) === 'true';
+
+    if (
+      maintenanceModeEnabled &&
+      !isAdminPagePath(path) &&
+      !isAuthPagePath(path)
+    ) {
+      const maintenanceMessage =
+        ((await getSetting(SETTINGS_KEYS.MAINTENANCE_MESSAGE)) ?? '').trim() ||
+        'Maintenance mode is currently enabled. Please try again shortly.';
+      return sendMaintenanceResponse(event, maintenanceMessage);
+    }
+  }
 
   if (isApiRequest && isPublicApiPath(path)) {
     return;

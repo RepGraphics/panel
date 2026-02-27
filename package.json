@@ -1,6 +1,9 @@
 {
   "name": "xyrapanel",
   "version": "0.1.0-alpha.1",
+  "xyra": {
+    "pluginSystemVersion": "0.1 Alpha"
+  },
   "private": true,
   "license": "MIT",
   "maintainers": [

@@ -8,7 +8,29 @@ const buildArgs = ['--no-deprecation', './node_modules/nuxt/bin/nuxt.mjs', 'buil
 const cleanArgs = ['./scripts/clean-build.mjs'];
 
 function stripAnsi(value) {
-  return value.replace(/\u001b\[[0-9;]*m/g, '');
+  let result = '';
+
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    const nextCode = value.charCodeAt(i + 1);
+
+    // Skip CSI ANSI escape sequences: ESC [ ... final-byte
+    if (code === 0x1b && nextCode === 0x5b) {
+      i += 2;
+      while (i < value.length) {
+        const sequenceCode = value.charCodeAt(i);
+        if (sequenceCode >= 0x40 && sequenceCode <= 0x7e) {
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+
+    result += value[i];
+  }
+
+  return result;
 }
 
 function streamWrite(isErr, chunk) {

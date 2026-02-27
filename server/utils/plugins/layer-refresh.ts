@@ -1,10 +1,9 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 export type PluginLayerRefreshMode =
   | 'not-required'
   | 'dev-reload-triggered'
-  | 'process-restart-scheduled'
   | 'manual';
 
 export interface PluginLayerRefreshResult {
@@ -29,46 +28,21 @@ interface ApplyPluginLayerRefreshOptions {
   autoRestart?: boolean;
 }
 
-const PROCESS_MANAGER_HINTS = [
-  'PM2_HOME',
-  'NODE_APP_INSTANCE',
-  'KUBERNETES_SERVICE_HOST',
-  'CONTAINER',
-  'DOCKER_CONTAINER',
-  'INVOCATION_ID',
-] as const;
-
-const DEFAULT_RESTART_DELAY_MS = 1500;
-
-function parseBooleanEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
-function parseRestartDelayMs(value: string | undefined): number {
-  if (!value) return DEFAULT_RESTART_DELAY_MS;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return DEFAULT_RESTART_DELAY_MS;
-  }
-
-  return parsed;
-}
-
-function isManagedProcessLikely(): boolean {
-  return PROCESS_MANAGER_HINTS.some((name) => {
-    const value = process.env[name];
-    return typeof value === 'string' && value.trim().length > 0;
-  });
-}
-
 async function touchNuxtConfigForDevRestart(rootDir: string): Promise<boolean> {
   const nuxtConfigPath = resolve(rootDir, 'nuxt.config.ts');
 
   try {
-    const current = await readFile(nuxtConfigPath, 'utf8');
-    await writeFile(nuxtConfigPath, current, 'utf8');
+    const before = await stat(nuxtConfigPath);
+    const bumpedMs = Math.max(Date.now(), Math.ceil(before.mtimeMs) + 1000);
+    const touchedAt = new Date(bumpedMs);
+    await utimes(nuxtConfigPath, touchedAt, touchedAt);
+
+    const after = await stat(nuxtConfigPath);
+    if (after.mtimeMs <= before.mtimeMs) {
+      // Fallback for environments where mtime updates are coalesced.
+      const current = await readFile(nuxtConfigPath, 'utf8');
+      await writeFile(nuxtConfigPath, current, 'utf8');
+    }
     return true;
   } catch (error) {
     console.warn(
@@ -78,37 +52,6 @@ async function touchNuxtConfigForDevRestart(rootDir: string): Promise<boolean> {
     );
     return false;
   }
-}
-
-function scheduleProcessRestartAfterResponse(event: PluginLayerRefreshEventLike): boolean {
-  const delayMs = parseRestartDelayMs(process.env.XYRA_PLUGIN_RESTART_DELAY_MS);
-  const response = event.node.res;
-  let scheduled = false;
-
-  const queueRestart = (): void => {
-    if (scheduled) return;
-    scheduled = true;
-
-    setTimeout(() => {
-      console.warn('[plugins] Restarting panel process to apply plugin Nuxt runtime changes.');
-
-      if (process.platform === 'win32') {
-        process.exit(0);
-        return;
-      }
-
-      process.kill(process.pid, 'SIGTERM');
-    }, delayMs).unref();
-  };
-
-  if (response.writableEnded || response.writableFinished) {
-    queueRestart();
-    return true;
-  }
-
-  response.once('finish', queueRestart);
-  response.once('close', queueRestart);
-  return true;
 }
 
 export async function applyPluginLayerRefresh(
@@ -127,7 +70,10 @@ export async function applyPluginLayerRefresh(
     return {
       mode: 'manual',
       automated: false,
-      message: 'Plugin installed. Restart the panel process to apply Nuxt plugin runtime changes.',
+      message:
+        process.env.NODE_ENV === 'production'
+          ? 'Plugin installed. Rebuild and restart the panel process to apply Nuxt plugin runtime changes.'
+          : 'Plugin installed. Restart the panel process to apply Nuxt plugin runtime changes.',
     };
   }
 
@@ -140,22 +86,17 @@ export async function applyPluginLayerRefresh(
         message: 'Plugin installed. Triggered a Nuxt dev reload to apply plugin runtime changes.',
       };
     }
-  }
 
-  const allowProcessRestart = parseBooleanEnv(process.env.XYRA_PLUGIN_AUTO_RESTART);
-  if (!allowProcessRestart && !isManagedProcessLikely()) {
     return {
       mode: 'manual',
       automated: false,
-      message:
-        'Plugin installed. Restart the panel process to apply Nuxt plugin runtime changes (or set XYRA_PLUGIN_AUTO_RESTART=true).',
+      message: 'Plugin installed. Restart the panel process to apply Nuxt plugin runtime changes.',
     };
   }
 
-  scheduleProcessRestartAfterResponse(options.event);
   return {
-    mode: 'process-restart-scheduled',
-    automated: true,
-    message: 'Plugin installed. Panel restart has been scheduled to apply Nuxt plugin runtime changes.',
+    mode: 'manual',
+    automated: false,
+    message: 'Plugin installed. Rebuild and restart the panel process to apply Nuxt plugin runtime changes.',
   };
 }

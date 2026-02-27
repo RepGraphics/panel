@@ -13,6 +13,10 @@ import {
 import { buildPluginScopeSettingKey } from '#server/utils/plugins/scope';
 import { applyPluginLayerRefresh } from '#server/utils/plugins/layer-refresh';
 import { recordAuditEventFromRequest } from '#server/utils/audit';
+import {
+  PluginMigrationError,
+  rollbackPluginSqlMigrations,
+} from '#server/utils/plugins/migrations';
 
 const uninstallPluginSchema = z.object({
   autoRestart: z.boolean().optional().default(true),
@@ -52,6 +56,42 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  let rollbackSummary: { tracked: number; reverted: number; skipped: number; warnings: string[] } = {
+    tracked: 0,
+    reverted: 0,
+    skipped: 0,
+    warnings: [],
+  };
+
+  try {
+    rollbackSummary = await rollbackPluginSqlMigrations({
+      id: targetPlugin.id,
+      migrationsPath: targetPlugin.migrationsPath,
+    });
+  } catch (error) {
+    if (error instanceof PluginMigrationError) {
+      throw createError({
+        status: error.statusCode,
+        statusText: error.statusCode >= 500 ? 'Plugin uninstall failed' : 'Bad Request',
+        message: error.message,
+      });
+    }
+
+    throw createError({
+      status: 500,
+      statusText: 'Plugin uninstall failed',
+      message: `Failed to rollback plugin migrations: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+  }
+
+  if (rollbackSummary.warnings.length > 0) {
+    for (const warningMessage of rollbackSummary.warnings) {
+      console.warn(`[plugins:${pluginId}] ${warningMessage}`);
+    }
+  }
+
   try {
     await uninstallPluginSourceDirectory(targetPlugin.sourceDir);
   } catch (error) {
@@ -78,6 +118,15 @@ export default defineEventHandler(async (event) => {
     restartRequired,
     autoRestart: body.autoRestart,
   });
+  const rollbackWarningSummary =
+    rollbackSummary.warnings.length > 0
+      ? ` Migration rollback warning: ${rollbackSummary.warnings[0]}${
+          rollbackSummary.warnings.length > 1
+            ? ` (+${rollbackSummary.warnings.length - 1} more warning(s)).`
+            : ''
+        }`
+      : '';
+  const responseMessage = `${restart.message}${rollbackWarningSummary}`;
 
   await recordAuditEventFromRequest(event, {
     actor: session.user.email || session.user.id,
@@ -88,6 +137,10 @@ export default defineEventHandler(async (event) => {
       pluginId,
       pluginName: targetPlugin.name,
       sourceDir: targetPlugin.sourceDir,
+      rollbackTrackedMigrations: rollbackSummary.tracked,
+      rollbackRevertedMigrations: rollbackSummary.reverted,
+      rollbackSkippedMigrations: rollbackSummary.skipped,
+      rollbackWarnings: rollbackSummary.warnings,
       restartRequired,
       restartMode: restart.mode,
       restartAutomated: restart.automated,
@@ -102,7 +155,8 @@ export default defineEventHandler(async (event) => {
       restartRequired,
       restartMode: restart.mode,
       restartAutomated: restart.automated,
-      message: restart.message,
+      message: responseMessage,
+      migrationRollback: rollbackSummary,
       summary: {
         initialized: runtimeSummary.initialized,
         pluginCount: runtimeSummary.plugins.length,

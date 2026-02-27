@@ -1,4 +1,7 @@
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { discoverPlugins, isPluginEnabled } from '#shared/plugins/discovery';
 import type { ResolvedPluginManifest } from '#shared/plugins/types';
 import type {
@@ -44,6 +47,27 @@ const runtimeState: {
   hookHandlers: new Map(),
   discoveryErrors: [],
 };
+
+interface PackageJsonWithPluginSystemVersion {
+  xyra?: {
+    pluginSystemVersion?: string;
+  };
+}
+
+function getPluginSystemVersionFromPackageJson(): string {
+  try {
+    const pkgPath = resolve(process.cwd(), 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as PackageJsonWithPluginSystemVersion;
+    const candidate = pkg.xyra?.pluginSystemVersion?.trim();
+    if (candidate) {
+      return candidate;
+    }
+  } catch {}
+
+  return 'unknown';
+}
+
+const pluginSystemVersion = getPluginSystemVersionFromPackageJson();
 
 function clearRuntimeState({ clearNitroApp = false }: { clearNitroApp?: boolean } = {}): void {
   runtimeState.initialized = false;
@@ -106,6 +130,20 @@ function normalizeImportedPlugin(moduleValue: unknown): XyraServerPlugin | null 
 
 function isHookHandler(value: unknown): value is XyraPluginHookHandler {
   return typeof value === 'function';
+}
+
+async function importPluginModule(serverEntryPath: string): Promise<unknown> {
+  const importUrl = pathToFileURL(serverEntryPath);
+
+  // Bust Node's ESM module cache when plugin files change on disk.
+  try {
+    const entryStats = await stat(serverEntryPath);
+    importUrl.searchParams.set('xyra_plugin_mtime', String(Math.trunc(entryStats.mtimeMs)));
+  } catch {
+    importUrl.searchParams.set('xyra_plugin_mtime', String(Date.now()));
+  }
+
+  return await import(importUrl.href);
 }
 
 function getOrCreateRuntimePluginState(manifest: ResolvedPluginManifest): RuntimePluginState {
@@ -205,6 +243,7 @@ function toSummaryItem(state: RuntimePluginState): PluginRuntimeSummaryItem {
     id: state.manifest.id,
     name: state.manifest.name,
     version: state.manifest.version,
+    compatibility: state.manifest.compatibility,
     description: state.manifest.description,
     author: state.manifest.author,
     website: state.manifest.website,
@@ -267,7 +306,7 @@ export async function initializePluginRuntime(nitroApp: unknown): Promise<Plugin
     const pluginContext = createPluginContext(manifest);
 
     try {
-      const importedModule = await import(pathToFileURL(manifest.serverEntryPath).href);
+      const importedModule = await importPluginModule(manifest.serverEntryPath);
       const plugin = normalizeImportedPlugin(importedModule);
 
       if (!plugin) {
@@ -350,6 +389,7 @@ export function getPluginRuntimeSummary(): PluginRuntimeSummary {
 
   return {
     initialized: runtimeState.initialized,
+    pluginSystemVersion,
     plugins: Array.from(runtimeState.plugins.values())
       .map((state) => toSummaryItem(state))
       .sort((a, b) => a.id.localeCompare(b.id)),

@@ -267,12 +267,6 @@ export default defineNuxtConfig({
         xssValidator: false,
       },
     },
-    '/api/admin/plugins/install': {
-      security: {
-        requestSizeLimiter: false,
-        xssValidator: false,
-      },
-    },
     '/api/remote/**': {
       security: {
         xssValidator: false,

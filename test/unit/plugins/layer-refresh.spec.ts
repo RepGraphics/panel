@@ -10,7 +10,6 @@ import {
 const tempDirs: string[] = [];
 const originalCwd = process.cwd();
 const originalNodeEnv = process.env.NODE_ENV;
-const originalAutoRestartEnv = process.env.XYRA_PLUGIN_AUTO_RESTART;
 
 function createTempRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'xyra-plugin-layer-refresh-'));
@@ -40,7 +39,6 @@ function createEventStub(): PluginLayerRefreshEventLike {
 afterEach(() => {
   process.chdir(originalCwd);
   process.env.NODE_ENV = originalNodeEnv;
-  process.env.XYRA_PLUGIN_AUTO_RESTART = originalAutoRestartEnv;
 
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
@@ -77,7 +75,6 @@ describe('server/utils/plugins/layer-refresh', () => {
 
     process.chdir(root);
     process.env.NODE_ENV = 'development';
-    process.env.XYRA_PLUGIN_AUTO_RESTART = 'false';
 
     const result = await applyPluginLayerRefresh({
       event: createEventStub(),
@@ -89,9 +86,8 @@ describe('server/utils/plugins/layer-refresh', () => {
     expect(result.automated).toBe(true);
   });
 
-  it('schedules process restart when explicitly enabled in production', async () => {
+  it('returns manual rebuild message in production', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.XYRA_PLUGIN_AUTO_RESTART = 'true';
 
     const result = await applyPluginLayerRefresh({
       event: createEventStub(),
@@ -99,7 +95,8 @@ describe('server/utils/plugins/layer-refresh', () => {
       autoRestart: true,
     });
 
-    expect(result.mode).toBe('process-restart-scheduled');
-    expect(result.automated).toBe(true);
+    expect(result.mode).toBe('manual');
+    expect(result.automated).toBe(false);
+    expect(result.message.toLowerCase()).toContain('rebuild');
   });
 });

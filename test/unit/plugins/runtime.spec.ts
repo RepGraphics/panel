@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,7 @@ import {
   getPluginClientContributions,
   getPluginRuntimeSummary,
   initializePluginRuntime,
+  reloadPluginRuntime,
   resetPluginRuntimeStateForTests,
 } from '../../../server/utils/plugins/runtime';
 
@@ -16,6 +17,22 @@ const globalMarker = globalThis as typeof globalThis & {
   __xyraPluginSetupCount?: number;
   __xyraPluginPayloads?: unknown[];
 };
+const pluginSystemVersion = (() => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+    xyra?: { pluginSystemVersion?: string };
+  };
+  return pkg.xyra?.pluginSystemVersion ?? '0.1 Alpha';
+})();
+
+function createPluginManifest(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    compatibility: pluginSystemVersion,
+    description: 'Test plugin runtime manifest',
+    author: 'Test Author',
+    website: 'https://example.com',
+    ...overrides,
+  };
+}
 
 function createPluginRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'xyra-plugin-runtime-'));
@@ -50,7 +67,7 @@ describe('server/utils/plugins/runtime', () => {
     writeFileSync(
       join(pluginDir, 'plugin.json'),
       JSON.stringify(
-        {
+        createPluginManifest({
           id: 'acme-tools',
           name: 'Acme Tools',
           version: '1.0.0',
@@ -73,7 +90,7 @@ describe('server/utils/plugins/runtime', () => {
               },
             ],
           },
-        },
+        }),
         null,
         2,
       ),
@@ -140,14 +157,14 @@ describe('server/utils/plugins/runtime', () => {
     writeFileSync(
       join(pluginDir, 'plugin.json'),
       JSON.stringify(
-        {
+        createPluginManifest({
           id: 'broken-hooks',
           name: 'Broken Hooks',
           version: '1.0.0',
           entry: {
             server: './dist/server.mjs',
           },
-        },
+        }),
         null,
         2,
       ),
@@ -178,5 +195,54 @@ describe('server/utils/plugins/runtime', () => {
 
     expect(plugin).toBeDefined();
     expect(plugin?.errors.some((error) => error.includes('Hook "test:failing" failed'))).toBe(true);
+  });
+
+  it('reloads updated plugin server entry code after reinstall/update', async () => {
+    const root = createPluginRoot();
+    const pluginDir = join(root, 'reloadable-plugin');
+
+    mkdirSync(join(pluginDir, 'dist'), { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify(
+        createPluginManifest({
+          id: 'reloadable-plugin',
+          name: 'Reloadable Plugin',
+          version: '1.0.0',
+          entry: {
+            server: './dist/server.mjs',
+          },
+        }),
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const serverEntryPath = join(pluginDir, 'dist', 'server.mjs');
+    const writeServerEntry = (label: string): void => {
+      writeFileSync(
+        serverEntryPath,
+        `
+        export default {
+          setup() {
+            globalThis.__xyraPluginPayloads = ['${label}'];
+          },
+        };
+        `,
+        'utf8',
+      );
+    };
+
+    writeServerEntry('v1');
+    process.env.XYRA_PLUGIN_DIRS = root;
+
+    await initializePluginRuntime({});
+    expect(globalMarker.__xyraPluginPayloads).toEqual(['v1']);
+
+    writeServerEntry('v2');
+    await reloadPluginRuntime();
+
+    expect(globalMarker.__xyraPluginPayloads).toEqual(['v2']);
   });
 });

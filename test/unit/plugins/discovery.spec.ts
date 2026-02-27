@@ -9,6 +9,12 @@ import {
 } from '../../../shared/plugins/discovery';
 
 const tempDirs: string[] = [];
+const pluginSystemVersion = (() => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+    xyra?: { pluginSystemVersion?: string };
+  };
+  return pkg.xyra?.pluginSystemVersion ?? '0.1 Alpha';
+})();
 
 function makeTempRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'xyra-plugin-discovery-'));
@@ -23,7 +29,17 @@ function writePluginManifest(
 ): string {
   const pluginDir = join(root, 'extensions', pluginId);
   mkdirSync(pluginDir, { recursive: true });
-  writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  const normalizedManifest = {
+    id: pluginId,
+    name: 'Test Plugin',
+    version: '1.0.0',
+    compatibility: pluginSystemVersion,
+    description: 'Test plugin manifest',
+    author: 'Test Author',
+    website: 'https://example.com',
+    ...manifest,
+  };
+  writeFileSync(join(pluginDir, 'plugin.json'), JSON.stringify(normalizedManifest, null, 2), 'utf8');
   return pluginDir;
 }
 
@@ -112,6 +128,10 @@ describe('shared/plugins/discovery', () => {
           id: 'player-listing',
           name: 'Player Listing',
           version: '1.0.0',
+          compatibility: pluginSystemVersion,
+          description: 'Player listing plugin',
+          author: 'Test Author',
+          website: 'https://example.com',
           entry: {
             nuxtLayer: './ui',
           },
@@ -132,6 +152,23 @@ describe('shared/plugins/discovery', () => {
     expect(result.plugins[0]?.id).toBe('player-listing');
     expect(result.plugins[0]?.sourceDir).toBe(pluginDir);
     expect(result.plugins[0]?.nuxtLayerPath).toBe(join(pluginDir, 'ui'));
+  });
+
+  it('rejects plugins when compatibility does not match plugin system version', () => {
+    const root = makeTempRoot();
+    writePluginManifest(root, 'incompatible-plugin', {
+      id: 'incompatible-plugin',
+      name: 'Incompatible Plugin',
+      version: '1.0.0',
+      compatibility: 'legacy-compat',
+    });
+
+    const result = discoverPlugins({ rootDir: root });
+
+    expect(result.plugins).toHaveLength(0);
+    expect(
+      result.errors.some((entry) => entry.message.includes('does not match panel plugin system version')),
+    ).toBe(true);
   });
 
   it('rejects manifest entry paths that escape the plugin directory', () => {
